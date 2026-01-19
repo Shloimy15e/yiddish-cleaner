@@ -4,6 +4,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -48,5 +50,39 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function apiCredentials(): HasMany
+    {
+        return $this->hasMany(ApiCredential::class);
+    }
+
+    public function googleCredential(): HasOne
+    {
+        return $this->hasOne(GoogleCredential::class);
+    }
+
+    public function processingRuns(): HasMany
+    {
+        return $this->hasMany(ProcessingRun::class);
+    }
+
+    public function trainingVersions(): HasMany
+    {
+        return $this->hasMany(TrainingVersion::class);
+    }
+
+    public function getApiCredential(string $provider, string $type = 'llm'): ?ApiCredential
+    {
+        return $this->apiCredentials()
+            ->forProvider($provider)
+            ->forType($type)
+            ->active()
+            ->first();
+    }
+
+    public function hasGoogleCredential(): bool
+    {
+        return $this->googleCredential()->exists();
     }
 }

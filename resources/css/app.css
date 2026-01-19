@@ -9,9 +9,13 @@
 
 @theme inline {
     --font-sans:
-        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
+        Inter, ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    
+    --font-mono:
+        'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+        Consolas, 'Liberation Mono', 'Courier New', monospace;
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -83,83 +87,85 @@
     body,
     html {
         --font-sans:
-            'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+            'Inter', ui-sans-serif, system-ui, sans-serif,
             'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
             'Noto Color Emoji';
     }
 }
 
 :root {
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(0 0% 3.9%);
-    --card: hsl(0 0% 100%);
-    --card-foreground: hsl(0 0% 3.9%);
-    --popover: hsl(0 0% 100%);
-    --popover-foreground: hsl(0 0% 3.9%);
-    --primary: hsl(0 0% 9%);
-    --primary-foreground: hsl(0 0% 98%);
-    --secondary: hsl(0 0% 92.1%);
-    --secondary-foreground: hsl(0 0% 9%);
-    --muted: hsl(0 0% 96.1%);
-    --muted-foreground: hsl(0 0% 45.1%);
-    --accent: hsl(0 0% 96.1%);
-    --accent-foreground: hsl(0 0% 9%);
-    --destructive: hsl(0 84.2% 60.2%);
-    --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(0 0% 92.8%);
-    --input: hsl(0 0% 89.8%);
-    --ring: hsl(0 0% 3.9%);
-    --chart-1: hsl(12 76% 61%);
-    --chart-2: hsl(173 58% 39%);
-    --chart-3: hsl(197 37% 24%);
-    --chart-4: hsl(43 74% 66%);
-    --chart-5: hsl(27 87% 67%);
-    --radius: 0.5rem;
-    --sidebar-background: hsl(0 0% 98%);
-    --sidebar-foreground: hsl(240 5.3% 26.1%);
-    --sidebar-primary: hsl(0 0% 10%);
-    --sidebar-primary-foreground: hsl(0 0% 98%);
-    --sidebar-accent: hsl(0 0% 94%);
-    --sidebar-accent-foreground: hsl(0 0% 30%);
-    --sidebar-border: hsl(0 0% 91%);
-    --sidebar-ring: hsl(217.2 91.2% 59.8%);
-    --sidebar: hsl(0 0% 98%);
+    /* Midnight Neon Studio - Light mode (fallback, app is dark-first) */
+    --background: #f5f5f7;
+    --foreground: #0a0a0f;
+    --card: #ffffff;
+    --card-foreground: #0a0a0f;
+    --popover: #ffffff;
+    --popover-foreground: #0a0a0f;
+    --primary: #00b8d9;
+    --primary-foreground: #ffffff;
+    --secondary: #ff006e;
+    --secondary-foreground: #ffffff;
+    --muted: #e8e8ec;
+    --muted-foreground: #6e6e7e;
+    --accent: #f0f0f5;
+    --accent-foreground: #0a0a0f;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #d4d4dc;
+    --input: #e8e8ec;
+    --ring: #00b8d9;
+    --chart-1: #00d4ff;
+    --chart-2: #00e5cc;
+    --chart-3: #ffa726;
+    --chart-4: #ff006e;
+    --chart-5: #a855f7;
+    --radius: 0.75rem;
+    --sidebar-background: #f8f8fa;
+    --sidebar-foreground: #1a1a24;
+    --sidebar-primary: #00b8d9;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e8e8ec;
+    --sidebar-accent-foreground: #1a1a24;
+    --sidebar-border: #d4d4dc;
+    --sidebar-ring: #00d4ff;
+    --sidebar: #f8f8fa;
 }
 
+/* Midnight Neon Studio - Dark mode (primary theme) */
 .dark {
-    --background: hsl(0 0% 3.9%);
-    --foreground: hsl(0 0% 98%);
-    --card: hsl(0 0% 3.9%);
-    --card-foreground: hsl(0 0% 98%);
-    --popover: hsl(0 0% 3.9%);
-    --popover-foreground: hsl(0 0% 98%);
-    --primary: hsl(0 0% 98%);
-    --primary-foreground: hsl(0 0% 9%);
-    --secondary: hsl(0 0% 14.9%);
-    --secondary-foreground: hsl(0 0% 98%);
-    --muted: hsl(0 0% 16.08%);
-    --muted-foreground: hsl(0 0% 63.9%);
-    --accent: hsl(0 0% 14.9%);
-    --accent-foreground: hsl(0 0% 98%);
-    --destructive: hsl(0 84% 60%);
-    --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(0 0% 14.9%);
-    --input: hsl(0 0% 14.9%);
-    --ring: hsl(0 0% 83.1%);
-    --chart-1: hsl(220 70% 50%);
-    --chart-2: hsl(160 60% 45%);
-    --chart-3: hsl(30 80% 55%);
-    --chart-4: hsl(280 65% 60%);
-    --chart-5: hsl(340 75% 55%);
-    --sidebar-background: hsl(0 0% 7%);
-    --sidebar-foreground: hsl(0 0% 95.9%);
-    --sidebar-primary: hsl(360, 100%, 100%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(0 0% 15.9%);
-    --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-    --sidebar-border: hsl(0 0% 15.9%);
-    --sidebar-ring: hsl(217.2 91.2% 59.8%);
-    --sidebar: hsl(240 5.9% 10%);
+    --background: #0a0a0f;
+    --foreground: #f5f5f7;
+    --card: #1a1a24;
+    --card-foreground: #f5f5f7;
+    --popover: #1a1a24;
+    --popover-foreground: #f5f5f7;
+    --primary: #00d4ff;
+    --primary-foreground: #0a0a0f;
+    --secondary: #ff006e;
+    --secondary-foreground: #ffffff;
+    --muted: #252533;
+    --muted-foreground: #a8a8b8;
+    --accent: #252533;
+    --accent-foreground: #f5f5f7;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #2a2a3a;
+    --input: #252533;
+    --ring: #00d4ff;
+    --chart-1: #00d4ff;
+    --chart-2: #00e5cc;
+    --chart-3: #ffa726;
+    --chart-4: #ff006e;
+    --chart-5: #a855f7;
+    --sidebar-background: #0f0f14;
+    --sidebar-foreground: #f5f5f7;
+    --sidebar-primary: #00d4ff;
+    --sidebar-primary-foreground: #0a0a0f;
+    --sidebar-accent: #1a1a24;
+    --sidebar-accent-foreground: #f5f5f7;
+    --sidebar-border: #2a2a3a;
+    --sidebar-ring: #00d4ff;
+    --sidebar: #0f0f14;
 }
 
 @layer base {
@@ -168,5 +174,62 @@
     }
     body {
         @apply bg-background text-foreground;
+    }
+}
+
+/* Custom utilities for Midnight Neon Studio design */
+@layer utilities {
+    .gradient-text {
+        background: linear-gradient(135deg, #00d4ff 0%, #ff006e 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .gradient-bg {
+        background: linear-gradient(135deg, #00d4ff 0%, #ff006e 100%);
+    }
+
+    .gradient-border {
+        border: 2px solid transparent;
+        background: linear-gradient(#1a1a24, #1a1a24) padding-box,
+                    linear-gradient(135deg, #00d4ff, #ff006e) border-box;
+    }
+
+    .shadow-glow {
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(255, 0, 110, 0.1);
+    }
+
+    .shadow-glow-sm {
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+    }
+
+    .shadow-glow-azure {
+        box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+    }
+
+    .shadow-glow-magenta {
+        box-shadow: 0 0 15px rgba(255, 0, 110, 0.4);
+    }
+
+    .shadow-glow-teal {
+        box-shadow: 0 0 15px rgba(0, 229, 204, 0.4);
+    }
+
+    /* Clean rate category colors */
+    .clean-rate-excellent {
+        @apply bg-teal-500/15 text-teal-400;
+    }
+    .clean-rate-good {
+        @apply bg-cyan-500/15 text-cyan-400;
+    }
+    .clean-rate-moderate {
+        @apply bg-amber-500/15 text-amber-400;
+    }
+    .clean-rate-low {
+        @apply bg-pink-500/15 text-pink-400;
+    }
+    .clean-rate-poor {
+        @apply bg-red-500/15 text-red-400;
     }
 }

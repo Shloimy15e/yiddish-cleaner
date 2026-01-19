@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
+import { BookOpen, FileText, LayoutGrid, Play, Settings, Sparkles, Github } from 'lucide-vue-next';
 
+import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -14,28 +15,45 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
-
-import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: dashboard(),
+        href: 'dashboard',
         icon: LayoutGrid,
+    },
+    {
+        title: 'Process',
+        href: 'process.index',
+        icon: Play,
+    },
+    {
+        title: 'Documents',
+        href: 'documents.index',
+        icon: FileText,
+    },
+    {
+        title: 'Training',
+        href: 'training.index',
+        icon: Sparkles,
+    },
+    {
+        title: 'Settings',
+        href: 'settings.profile.edit',
+        icon: Settings,
     },
 ];
 
 const footerNavItems: NavItem[] = [
     {
-        title: 'Github Repo',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: Folder,
+        title: 'Source Code',
+        href: 'https://github.com/shloi/yiddish-cleaner',
+        icon: Github,
     },
     {
         title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
+        href: 'docs',
         icon: BookOpen,
     },
 ];
@@ -47,7 +65,7 @@ const footerNavItems: NavItem[] = [
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
-                        <Link :href="dashboard()">
+                        <Link href="/dashboard">
                             <AppLogo />
                         </Link>
                     </SidebarMenuButton>
