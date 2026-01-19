@@ -2,18 +2,16 @@
 
 namespace App\Services\Document;
 
-use Illuminate\Support\Facades\Process;
+use PhpOffice\PhpWord\IOFactory;
 use RuntimeException;
 
 class ParserService
 {
     protected string $tempDir;
-    protected string $libreOfficePath;
 
     public function __construct()
     {
         $this->tempDir = config('cleaning.temp_dir');
-        $this->libreOfficePath = config('cleaning.libreoffice_path');
 
         if (!is_dir($this->tempDir)) {
             mkdir($this->tempDir, 0755, true);
@@ -29,43 +27,86 @@ class ParserService
 
         return match ($extension) {
             'txt' => file_get_contents($filePath),
-            'docx', 'doc' => $this->extractFromWord($filePath),
+            'docx' => $this->extractFromDocx($filePath),
+            'doc' => $this->extractFromDoc($filePath),
             default => throw new RuntimeException("Unsupported file type: {$extension}"),
         };
     }
 
     /**
-     * Extract text from Word document using LibreOffice.
+     * Extract text from .docx using PhpWord (no LibreOffice needed).
      */
-    protected function extractFromWord(string $filePath): string
+    protected function extractFromDocx(string $filePath): string
     {
-        $outputFile = $this->tempDir . '/' . pathinfo($filePath, PATHINFO_FILENAME) . '.txt';
+        try {
+            $phpWord = IOFactory::load($filePath, 'Word2007');
+            $text = [];
 
-        // Convert to text using LibreOffice
-        $result = Process::timeout(60)->run([
-            $this->libreOfficePath,
-            '--headless',
-            '--convert-to', 'txt:Text',
-            '--outdir', $this->tempDir,
-            $filePath,
-        ]);
+            foreach ($phpWord->getSections() as $section) {
+                foreach ($section->getElements() as $element) {
+                    $text[] = $this->extractTextFromElement($element);
+                }
+            }
 
-        if (!$result->successful()) {
-            throw new RuntimeException(
-                "LibreOffice conversion failed: " . $result->errorOutput()
-            );
+            return implode("\n", array_filter($text));
+        } catch (\Exception $e) {
+            throw new RuntimeException("Failed to parse DOCX: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Extract text from a PhpWord element recursively.
+     */
+    protected function extractTextFromElement($element): string
+    {
+        $text = '';
+
+        if (method_exists($element, 'getText')) {
+            $elementText = $element->getText();
+            if (is_string($elementText)) {
+                $text = $elementText;
+            } elseif (is_object($elementText) && method_exists($elementText, 'getText')) {
+                $text = $elementText->getText();
+            }
         }
 
-        if (!file_exists($outputFile)) {
-            throw new RuntimeException("Converted file not found: {$outputFile}");
+        if (method_exists($element, 'getElements')) {
+            $childTexts = [];
+            foreach ($element->getElements() as $child) {
+                $childTexts[] = $this->extractTextFromElement($child);
+            }
+            $text = implode('', array_filter($childTexts));
         }
-
-        $text = file_get_contents($outputFile);
-
-        // Clean up temp file
-        @unlink($outputFile);
 
         return $text;
+    }
+
+    /**
+     * Extract text from .doc (old Word format).
+     * Falls back to basic text extraction.
+     */
+    protected function extractFromDoc(string $filePath): string
+    {
+        try {
+            // Try MSDoc reader
+            $phpWord = IOFactory::load($filePath, 'MsDoc');
+            $text = [];
+
+            foreach ($phpWord->getSections() as $section) {
+                foreach ($section->getElements() as $element) {
+                    $text[] = $this->extractTextFromElement($element);
+                }
+            }
+
+            return implode("\n", array_filter($text));
+        } catch (\Exception $e) {
+            // Fall back to raw text extraction for .doc
+            $content = file_get_contents($filePath);
+            // Extract visible text (rough extraction)
+            $text = preg_replace('/[\x00-\x1F\x7F-\xFF]/', ' ', $content);
+            $text = preg_replace('/\s+/', ' ', $text);
+            return trim($text);
+        }
     }
 
     /**

@@ -14,17 +14,27 @@ return [
         'titles_only' => [
             'name' => 'Titles Only (5710-5711)',
             'description' => 'Removes titles/headings, keeps brackets',
-            'processors' => ['whitespace', 'special_chars', 'title_style', 'seif_marker'],
+            'processors' => ['special_chars', 'seif_marker', 'title_style', 'whitespace'],
         ],
         'full_clean' => [
             'name' => 'Full Clean (5712+)',
             'description' => 'Removes titles AND inline brackets',
-            'processors' => ['whitespace', 'special_chars', 'title_style', 'seif_marker', 'brackets_inline', 'parentheses'],
+            'processors' => ['special_chars', 'seif_marker', 'title_style', 'brackets_inline', 'whitespace'],
+        ],
+        'with_editorial' => [
+            'name' => 'With Editorial Removal',
+            'description' => 'Standard cleaning + editorial Hebrew citations',
+            'processors' => ['special_chars', 'seif_marker', 'title_style', 'brackets_inline', 'editorial_hebrew', 'whitespace'],
+        ],
+        'heavy' => [
+            'name' => 'Heavy Cleaning',
+            'description' => 'All processors including parentheses and force remove',
+            'processors' => ['special_chars', 'seif_marker', 'title_style', 'brackets_inline', 'parentheses', 'editorial_hebrew', 'force_remove', 'whitespace'],
         ],
         'minimal' => [
             'name' => 'Minimal',
-            'description' => 'Only whitespace normalization',
-            'processors' => ['whitespace', 'special_chars'],
+            'description' => 'Only whitespace and special character cleanup',
+            'processors' => ['special_chars', 'whitespace'],
         ],
     ],
 

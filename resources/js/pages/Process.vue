@@ -30,6 +30,7 @@ import {
 } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import ProcessorSelector from '@/components/ProcessorSelector.vue';
+import UploadZone from '@/components/UploadZone.vue';
 import { type BreadcrumbItem } from '@/types';
 
 interface Run {
@@ -217,6 +218,14 @@ const handleFileChange = (event: Event) => {
     if (target.files?.[0]) {
         uploadForm.file = target.files[0];
     }
+};
+
+const handleUploadFileSelected = (file: File) => {
+    uploadForm.file = file;
+};
+
+const handleUploadFileRemoved = () => {
+    uploadForm.file = null;
 };
 
 const submitUpload = () => {
@@ -848,11 +857,11 @@ onUnmounted(() => {
                             <form @submit.prevent="submitUpload" class="space-y-6">
                                 <div>
                                     <label class="block text-sm font-medium mb-2">Select File</label>
-                                    <input 
-                                        type="file" 
+                                    <UploadZone 
                                         accept=".docx,.doc,.txt"
-                                        @change="handleFileChange"
-                                        class="block w-full text-sm file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 file:cursor-pointer cursor-pointer"
+                                        :disabled="uploadForm.processing"
+                                        @file-selected="handleUploadFileSelected"
+                                        @file-removed="handleUploadFileRemoved"
                                     />
                                     <p v-if="uploadForm.errors.file" class="mt-1 text-sm text-destructive">{{ uploadForm.errors.file }}</p>
                                 </div>
