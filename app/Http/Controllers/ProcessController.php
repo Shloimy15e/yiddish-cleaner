@@ -46,6 +46,8 @@ class ProcessController extends Controller
             'file' => 'required|file|mimes:doc,docx,txt|max:10240',
             'preset' => 'required|string',
             'mode' => 'required|in:rule,llm',
+            'llm_provider' => 'nullable|string',
+            'llm_model' => 'nullable|string',
         ]);
 
         $user = $request->user();
@@ -57,6 +59,8 @@ class ProcessController extends Controller
             'batch_id' => Str::uuid(),
             'preset' => $request->preset,
             'mode' => $request->mode,
+            'llm_provider' => $request->llm_provider ?? 'openrouter',
+            'llm_model' => $request->llm_model ?? 'anthropic/claude-sonnet-4',
             'source_type' => 'upload',
             'total' => 1,
             'status' => 'pending',
@@ -86,6 +90,8 @@ class ProcessController extends Controller
             'url' => 'required|url',
             'preset' => 'required|string',
             'mode' => 'required|in:rule,llm',
+            'llm_provider' => 'nullable|string',
+            'llm_model' => 'nullable|string',
         ]);
 
         $user = $request->user();
@@ -102,6 +108,8 @@ class ProcessController extends Controller
             'batch_id' => Str::uuid(),
             'preset' => $request->preset,
             'mode' => $request->mode,
+            'llm_provider' => $request->llm_provider ?? 'openrouter',
+            'llm_model' => $request->llm_model ?? 'anthropic/claude-sonnet-4',
             'source_type' => 'drive',
             'source_url' => $url,
             'total' => 1,
@@ -145,6 +153,8 @@ class ProcessController extends Controller
             'url' => 'required|url',
             'preset' => 'required|string',
             'mode' => 'required|in:rule,llm',
+            'llm_provider' => 'nullable|string',
+            'llm_model' => 'nullable|string',
             'sheet_name' => 'nullable|string',
             'doc_link_column' => 'nullable|string',
             'processors' => 'nullable|array',
@@ -168,6 +178,8 @@ class ProcessController extends Controller
             'batch_id' => Str::uuid(),
             'preset' => $request->preset,
             'mode' => $request->mode,
+            'llm_provider' => $request->llm_provider ?? 'openrouter',
+            'llm_model' => $request->llm_model ?? 'anthropic/claude-sonnet-4',
             'source_type' => 'sheet',
             'source_url' => $url,
             'status' => 'pending',

@@ -13,6 +13,8 @@ class ProcessingRun extends Model
         'batch_id',
         'preset',
         'mode',
+        'llm_provider',
+        'llm_model',
         'source_type',
         'source_url',
         'total',
@@ -20,6 +22,7 @@ class ProcessingRun extends Model
         'failed',
         'status',
         'error_message',
+        'options',
     ];
 
     protected function casts(): array
@@ -28,6 +31,7 @@ class ProcessingRun extends Model
             'total' => 'integer',
             'completed' => 'integer',
             'failed' => 'integer',
+            'options' => 'array',
         ];
     }
 

@@ -54,8 +54,15 @@ class ProcessDocumentJob implements ShouldQueue
             // Clean based on mode
             if ($run->mode === 'llm') {
                 $user = $run->user;
-                $credential = $user->getApiCredential('openai', 'llm'); // Default to OpenAI
-                $cleanedText = $llm->clean($text, 'openai', $credential);
+                $provider = $run->llm_provider ?? 'openrouter';
+                $model = $run->llm_model ?? 'anthropic/claude-sonnet-4';
+                $credential = $user->getApiCredential($provider, 'llm');
+                
+                if (!$credential) {
+                    throw new \RuntimeException("No API key configured for {$provider}");
+                }
+                
+                $cleanedText = $llm->clean($text, $provider, $credential, $model);
 
                 // Still calculate metrics
                 $result = new \App\Services\Cleaning\CleaningResult(

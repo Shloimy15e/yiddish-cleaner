@@ -13,7 +13,7 @@ class LlmManager
     /**
      * Get a driver instance for the given provider.
      */
-    public function driver(string $provider, ?ApiCredential $credential = null): LlmDriverInterface
+    public function driver(string $provider, ?ApiCredential $credential = null, ?string $model = null): LlmDriverInterface
     {
         $config = config("cleaning.llm_providers.{$provider}");
 
@@ -21,13 +21,13 @@ class LlmManager
             throw new InvalidArgumentException("Unknown LLM provider: {$provider}");
         }
 
-        $key = $provider . ($credential?->id ?? 'default');
+        $key = $provider . ($credential?->id ?? 'default') . ($model ?? '');
 
         if (!isset($this->drivers[$key])) {
             $driverClass = $config['driver'];
             $this->drivers[$key] = new $driverClass(
                 apiKey: $credential?->api_key,
-                model: $credential?->default_model ?? $config['default_model'],
+                model: $model ?? $credential?->default_model ?? $config['default_model'],
                 baseUrl: $config['base_url'] ?? null,
             );
         }
@@ -38,9 +38,9 @@ class LlmManager
     /**
      * Clean text using LLM.
      */
-    public function clean(string $text, string $provider, ?ApiCredential $credential = null, ?string $prompt = null): string
+    public function clean(string $text, string $provider, ?ApiCredential $credential = null, ?string $model = null, ?string $prompt = null): string
     {
-        $driver = $this->driver($provider, $credential);
+        $driver = $this->driver($provider, $credential, $model);
 
         $prompt = $prompt ?? config('cleaning.default_llm_prompt');
         $prompt = str_replace('{document_text}', $text, $prompt);
