@@ -4,7 +4,7 @@ namespace App\Services\Cleaning\Processors;
 
 class WhitespaceProcessor implements ProcessorInterface
 {
-    public function process(string $text): ProcessorResult
+    public function process(string $text, ?array $context = null): ProcessorResult
     {
         $original = $text;
 

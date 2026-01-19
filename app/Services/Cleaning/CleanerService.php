@@ -13,7 +13,7 @@ class CleanerService
     /**
      * Clean text using a preset configuration.
      */
-    public function cleanWithPreset(string $text, string $presetName): CleaningResult
+    public function cleanWithPreset(string $text, string $presetName, ?array $context = null): CleaningResult
     {
         $preset = config("cleaning.presets.{$presetName}");
 
@@ -21,13 +21,13 @@ class CleanerService
             throw new InvalidArgumentException("Unknown preset: {$presetName}");
         }
 
-        return $this->clean($text, $preset['processors']);
+        return $this->clean($text, $preset['processors'], $context);
     }
 
     /**
      * Clean text using a specific list of processors.
      */
-    public function clean(string $text, array $processorNames): CleaningResult
+    public function clean(string $text, array $processorNames, ?array $context = null): CleaningResult
     {
         $originalText = $text;
         $allRemovals = [];
@@ -35,7 +35,7 @@ class CleanerService
 
         foreach ($processorNames as $name) {
             $processor = $this->getProcessor($name);
-            $result = $processor->process($text);
+            $result = $processor->process($text, $context);
 
             $text = $result->text;
             $allRemovals = array_merge($allRemovals, $result->removals);

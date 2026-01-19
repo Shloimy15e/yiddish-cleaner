@@ -11,7 +11,6 @@ import {
     InputOTPSlot,
 } from '@/components/ui/input-otp';
 import AuthLayout from '@/layouts/AuthLayout.vue';
-import { store } from '@/routes/two-factor/login';
 
 interface AuthConfigContent {
     title: string;
@@ -58,7 +57,8 @@ const code = ref<string>('');
         <div class="space-y-6">
             <template v-if="!showRecoveryInput">
                 <Form
-                    v-bind="store.form()"
+                    :action="route('two-factor.login')"
+                    method="post"
                     class="space-y-4"
                     reset-on-error
                     @error="code = ''"

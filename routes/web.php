@@ -37,6 +37,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
     Route::get('/documents/{document}', [DocumentController::class, 'show'])->name('documents.show');
     Route::get('/documents/{document}/diff', [DocumentController::class, 'diff'])->name('documents.diff');
+    Route::get('/documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
+    Route::get('/documents/{document}/download/original', [DocumentController::class, 'downloadOriginal'])->name('documents.download.original');
+    Route::get('/documents/{document}/download/text', [DocumentController::class, 'downloadText'])->name('documents.download.text');
     Route::post('/documents/{document}/validate', [DocumentController::class, 'validate'])->name('documents.validate');
     Route::delete('/documents/{document}/validate', [DocumentController::class, 'unvalidate'])->name('documents.unvalidate');
 

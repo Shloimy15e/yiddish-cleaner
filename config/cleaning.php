@@ -44,6 +44,8 @@ return [
         'seif_marker' => \App\Services\Cleaning\Processors\SeifMarkerProcessor::class,
         'brackets_inline' => \App\Services\Cleaning\Processors\BracketsProcessor::class,
         'parentheses' => \App\Services\Cleaning\Processors\ParenthesesProcessor::class,
+        'force_remove' => \App\Services\Cleaning\Processors\ForceRemoveProcessor::class,
+        'editorial_hebrew' => \App\Services\Cleaning\Processors\EditorialHebrewProcessor::class,
     ],
 
     /*
@@ -95,6 +97,40 @@ return [
         'moderate' => 50,
         'low' => 25,
         // Below 25 = 'poor'
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Exception Patterns
+    |--------------------------------------------------------------------------
+    |
+    | Regex patterns for content that should NEVER be removed.
+    | If text matches any pattern here, it will be preserved.
+    |
+    */
+    'exception_patterns' => [
+        'לחיים',           // "L'chaim" toasts - always keep
+        // Add more patterns as needed:
+        // '^ב״ה$',        // Keep standalone "B'H"
+        // 'מרן.*הרב',      // Keep references to rabbis
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Force Remove Patterns
+    |--------------------------------------------------------------------------
+    |
+    | Regex patterns for content that should ALWAYS be removed.
+    | Matches are removed regardless of other processing rules.
+    |
+    */
+    'force_remove_patterns' => [
+        'בס"ד',              // "B'S'D" header
+        'כ"ק אד"ש צוה',      // Specific editorial phrase
+        'אח"כ צוה לנגן',     // Specific editorial phrase
+        'מאמר זה רשמתי',     // Specific editorial phrase
+        '-----------',       // Separator lines
+        // Add more patterns as needed
     ],
 
     /*

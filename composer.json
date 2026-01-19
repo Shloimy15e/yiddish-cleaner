@@ -17,6 +17,7 @@
         "laravel/reverb": "^1.7",
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.9",
+        "phpoffice/phpword": "^1.4",
         "tightenco/ziggy": "^2.6"
     },
     "require-dev": {
@@ -25,9 +26,9 @@
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.24",
         "laravel/sail": "^1.41",
+        "larastan/larastan": "^3.9",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
-        "nunomaduro/larastan": "^3.9",
         "pestphp/pest": "^4.3",
         "pestphp/pest-plugin-laravel": "^4.0",
         "php-stubs/wordpress-stubs": "^6.9"

@@ -11,6 +11,9 @@ import {
     ListboxButton,
     ListboxOptions,
     ListboxOption,
+    Disclosure,
+    DisclosureButton,
+    DisclosurePanel,
 } from '@headlessui/vue';
 import {
     TableCellsIcon,
@@ -18,12 +21,15 @@ import {
     DocumentArrowUpIcon,
     CheckIcon,
     ChevronUpDownIcon,
+    ChevronDownIcon,
     SparklesIcon,
     CpuChipIcon,
     InformationCircleIcon,
     ArrowPathIcon,
+    Cog6ToothIcon,
 } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
+import ProcessorSelector from '@/components/ProcessorSelector.vue';
 import { type BreadcrumbItem } from '@/types';
 
 interface Run {
@@ -86,6 +92,7 @@ const presetOptions = computed(() =>
         id: key,
         name: value.name,
         description: value.description,
+        processors: value.processors,
     }))
 );
 
@@ -100,10 +107,14 @@ const sheetForm = useForm({
     url: '',
     preset: 'titles_only',
     mode: 'llm',
+    processors: [] as string[],
     llm_provider: 'openrouter',
     llm_model: 'anthropic/claude-sonnet-4',
     sheet_name: '',
     doc_link_column: 'Doc Link',
+    row_limit: 100,
+    skip_completed: true,
+    output_folder_url: '',
 });
 
 // Drive form
@@ -111,6 +122,7 @@ const driveForm = useForm({
     url: '',
     preset: 'titles_only',
     mode: 'llm',
+    processors: [] as string[],
     llm_provider: 'openrouter',
     llm_model: 'anthropic/claude-sonnet-4',
 });
@@ -120,9 +132,32 @@ const uploadForm = useForm({
     file: null as File | null,
     preset: 'titles_only',
     mode: 'llm',
+    processors: [] as string[],
     llm_provider: 'openrouter',
     llm_model: 'anthropic/claude-sonnet-4',
 });
+
+// Sync processors when preset changes
+watch(() => sheetForm.preset, (newPreset) => {
+    const preset = props.presets[newPreset];
+    if (preset?.processors) {
+        sheetForm.processors = [...preset.processors];
+    }
+}, { immediate: true });
+
+watch(() => driveForm.preset, (newPreset) => {
+    const preset = props.presets[newPreset];
+    if (preset?.processors) {
+        driveForm.processors = [...preset.processors];
+    }
+}, { immediate: true });
+
+watch(() => uploadForm.preset, (newPreset) => {
+    const preset = props.presets[newPreset];
+    if (preset?.processors) {
+        uploadForm.processors = [...preset.processors];
+    }
+}, { immediate: true });
 
 // Fetch LLM providers on mount
 const fetchProviders = async () => {
@@ -450,6 +485,72 @@ onUnmounted(() => {
                                     </div>
                                 </div>
 
+                                <!-- Advanced Options -->
+                                <Disclosure v-slot="{ open }">
+                                    <DisclosureButton class="flex w-full items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-left text-sm font-medium hover:bg-muted/50 transition-colors">
+                                        <span class="flex items-center gap-2">
+                                            <Cog6ToothIcon class="w-4 h-4" />
+                                            Advanced Options
+                                        </span>
+                                        <ChevronUpDownIcon :class="['w-5 h-5 transition-transform', open && 'rotate-180']" />
+                                    </DisclosureButton>
+                                    <DisclosurePanel class="space-y-4 px-4 pt-4 pb-2">
+                                        <!-- Processing Limits -->
+                                        <div class="grid gap-4 md:grid-cols-3">
+                                            <div>
+                                                <label class="block text-sm font-medium mb-2">
+                                                    Row Limit
+                                                    <InformationCircleIcon 
+                                                        class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
+                                                        v-tippy="'Maximum number of rows to process'"
+                                                    />
+                                                </label>
+                                                <input 
+                                                    v-model.number="sheetForm.row_limit"
+                                                    type="number" 
+                                                    min="1" 
+                                                    max="1000"
+                                                    class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium mb-2">
+                                                    Output Folder URL
+                                                    <InformationCircleIcon 
+                                                        class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
+                                                        v-tippy="'Google Drive folder to save cleaned documents'"
+                                                    />
+                                                </label>
+                                                <input 
+                                                    v-model="sheetForm.output_folder_url"
+                                                    type="url" 
+                                                    placeholder="https://drive.google.com/drive/folders/..."
+                                                    class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                                />
+                                            </div>
+                                            <div class="flex items-end">
+                                                <label class="flex items-center gap-2 cursor-pointer">
+                                                    <input 
+                                                        v-model="sheetForm.skip_completed"
+                                                        type="checkbox" 
+                                                        class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
+                                                    />
+                                                    <span class="text-sm font-medium">Skip completed rows</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Processor Selection -->
+                                        <div class="pt-2 border-t border-border">
+                                            <ProcessorSelector
+                                                v-model="sheetForm.processors"
+                                                :processors="props.processors"
+                                                :preset-processors="getSelectedPreset(sheetForm.preset)?.processors"
+                                            />
+                                        </div>
+                                    </DisclosurePanel>
+                                </Disclosure>
+
                                 <!-- LLM Options (shown when mode is 'llm') -->
                                 <div v-if="sheetForm.mode === 'llm'" class="grid gap-4 md:grid-cols-2 p-4 rounded-lg bg-muted/30 border border-border">
                                     <div>
@@ -710,6 +811,24 @@ onUnmounted(() => {
                                     </div>
                                 </div>
 
+                                <!-- Advanced Options -->
+                                <Disclosure v-slot="{ open }">
+                                    <DisclosureButton class="flex w-full items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-left text-sm font-medium hover:bg-muted/50 transition-colors">
+                                        <span class="flex items-center gap-2">
+                                            <Cog6ToothIcon class="w-4 h-4" />
+                                            Advanced Options
+                                        </span>
+                                        <ChevronUpDownIcon :class="['w-5 h-5 transition-transform', open && 'rotate-180']" />
+                                    </DisclosureButton>
+                                    <DisclosurePanel class="px-4 pt-4 pb-2">
+                                        <ProcessorSelector
+                                            v-model="driveForm.processors"
+                                            :processors="props.processors"
+                                            :preset-processors="getSelectedPreset(driveForm.preset)?.processors"
+                                        />
+                                    </DisclosurePanel>
+                                </Disclosure>
+
                                 <button 
                                     type="submit" 
                                     :disabled="driveForm.processing || !driveForm.url"
@@ -880,6 +999,24 @@ onUnmounted(() => {
                                         </Listbox>
                                     </div>
                                 </div>
+
+                                <!-- Advanced Options -->
+                                <Disclosure v-slot="{ open }">
+                                    <DisclosureButton class="flex w-full items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-left text-sm font-medium hover:bg-muted/50 transition-colors">
+                                        <span class="flex items-center gap-2">
+                                            <Cog6ToothIcon class="w-4 h-4" />
+                                            Advanced Options
+                                        </span>
+                                        <ChevronUpDownIcon :class="['w-5 h-5 transition-transform', open && 'rotate-180']" />
+                                    </DisclosureButton>
+                                    <DisclosurePanel class="px-4 pt-4 pb-2">
+                                        <ProcessorSelector
+                                            v-model="uploadForm.processors"
+                                            :processors="props.processors"
+                                            :preset-processors="getSelectedPreset(uploadForm.preset)?.processors"
+                                        />
+                                    </DisclosurePanel>
+                                </Disclosure>
 
                                 <button 
                                     type="submit" 
