@@ -30,7 +30,7 @@ class BenchmarkController extends Controller
             ->selectRaw('AVG(deletions) as avg_deletions')
             ->whereNotNull('wer')
             ->groupBy('model_name')
-            ->having('sample_count', '>=', 1)
+            ->havingRaw('COUNT(*) >= 1')
             ->orderBy($sortBy === 'wer' ? 'avg_wer' : ($sortBy === 'cer' ? 'avg_cer' : 'sample_count'), $sortDir)
             ->get()
             ->map(function ($model, $index) {
