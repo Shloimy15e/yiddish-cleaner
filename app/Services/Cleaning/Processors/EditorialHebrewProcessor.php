@@ -30,7 +30,7 @@ class EditorialHebrewProcessor implements ProcessorInterface
         '/\bראה\s+(?:לעיל|לקמן|שם|הנ"ל|כנ"ל)/u',      // "see above/below/there/aforementioned"
         '/\bעיי?ן\s+(?:לעיל|לקמן|שם|הנ"ל|כנ"ל|ב[\x{05D0}-\x{05EA}]+)/u',  // "refer to above/below/in..."
         '/\bעי[\'׳]\s+[\x{05D0}-\x{05EA}]+/u',        // "see (abbreviation)"
-        
+
         // Position/reference markers
         '/\bלעיל\s+(?:סעיף|אות|פרק|סי[\'׳]|סימן)/u',   // "above section/letter/chapter"
         '/\bלקמן\s+(?:סעיף|אות|פרק|סי[\'׳]|סימן)/u',   // "below section/letter/chapter"
@@ -41,7 +41,7 @@ class EditorialHebrewProcessor implements ProcessorInterface
         '/\bכדלעיל\b/u', // "as above"
         '/\bכדלקמן\b/u', // "as below"
         '/(?<!\S)שם(?=[\s\.,;:]|$)/u',  // "ibid" - standalone or end of sentence
-        
+
         // Source citations with page/chapter references
         '/\bדף\s+[\x{05D0}-\x{05EA}]{1,3}[\'׳]?\s*[עב]?[\'׳]?(?:\s*[-–]\s*[\x{05D0}-\x{05EA}]{1,3}[\'׳]?\s*[עב]?[\'׳]?)?/u',  // "page [gematria] [a/b]"
         '/\bעמ?[\'׳]\s*\d+/u',    // "page [number]"
@@ -52,14 +52,14 @@ class EditorialHebrewProcessor implements ProcessorInterface
         '/\bאות\s+[\x{05D0}-\x{05EA}]{1,3}/u',    // "letter [gematria]"
         '/\bהלכה\s+[\x{05D0}-\x{05EA}]{1,3}/u',   // "halacha [gematria]"
         '/\bמשנה\s+[\x{05D0}-\x{05EA}]{1,3}/u',   // "mishna [gematria]"
-        
+
         // Editor/transcriber notes
         '/\bהערה\b/u',     // "note"
         '/\bהע[\'׳]\b/u',  // "note" abbreviation
         '/\bהערת\s+(?:המתקן|המעתיק|העורך|המהדיר)/u',  // "note of the corrector/transcriber/editor"
         '/\bהוספת\s+(?:המתקן|המעתיק|העורך)/u',        // "addition of the..."
         '/\bתיקון\s+(?:המעתיק|העורך)/u',              // "correction of..."
-        
+
         // Continuation/structural markers
         '/\(המשך\)/u',    // "(continuation)"
         '/\(סיום\)/u',    // "(end)"
@@ -68,7 +68,7 @@ class EditorialHebrewProcessor implements ProcessorInterface
         '/\(שם\)/u',      // "(ibid)" in parentheses
         '/\(הנ"ל\)/u',    // "(aforementioned)" in parentheses
         '/\(כנ"ל\)/u',    // "(as above)" in parentheses
-        
+
         // Citations in parentheses (book + chapter + verse format)
         '/\([\x{05D0}-\x{05EA}]+\s+[\x{05D0}-\x{05EA}]{1,3}[\'׳]?\s*[,:]?\s*[\x{05D0}-\x{05EA}]{1,3}\)/u',  // (Book ch, v) - gematria
         '/\([\x{05D0}-\x{05EA}]+\s+\d+\s*[,:]\s*\d+\)/u',  // (Book 1:1) - numbers
@@ -84,15 +84,16 @@ class EditorialHebrewProcessor implements ProcessorInterface
         foreach ($this->editorialPatterns as $pattern) {
             $text = preg_replace_callback(
                 $pattern,
-                function ($matches) use (&$removals, &$changesCount, $pattern) {
+                function ($matches) use (&$removals, &$changesCount) {
                     $matched = $matches[0];
                     $removals[] = [
-                        'text' => mb_strlen($matched) > 50 ? mb_substr($matched, 0, 50) . '...' : $matched,
+                        'text' => mb_strlen($matched) > 50 ? mb_substr($matched, 0, 50).'...' : $matched,
                         'full_text' => $matched,
                         'reason' => 'Editorial Hebrew pattern',
                         'processor' => $this->getName(),
                     ];
                     $changesCount++;
+
                     return '';
                 },
                 $text
@@ -101,7 +102,7 @@ class EditorialHebrewProcessor implements ProcessorInterface
 
         // Clean up any double spaces left behind
         $text = preg_replace('/  +/', ' ', $text);
-        
+
         // Clean up spaces before punctuation
         $text = preg_replace('/\s+([,\.;:])/u', '$1', $text);
 

@@ -2,24 +2,22 @@
 
 namespace App\Services;
 
-use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\IOFactory;
-use PhpOffice\PhpWord\Settings;
+use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Style\Font;
-use PhpOffice\PhpWord\Shared\Html;
 
 class DocxWriterService
 {
     /**
      * Create a .docx document from cleaned text.
      *
-     * @param string $text The cleaned text
-     * @param array|null $context Optional context with paragraph metadata
+     * @param  string  $text  The cleaned text
+     * @param  array|null  $context  Optional context with paragraph metadata
      * @return string The generated .docx file as binary string
      */
     public function createDocument(string $text, ?array $context = null): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
 
         // Configure default styles for RTL
         $this->configureStyles($phpWord);
@@ -43,6 +41,7 @@ class DocxWriterService
             if (empty($paraText)) {
                 // Add empty paragraph for spacing
                 $section->addTextBreak();
+
                 continue;
             }
 

@@ -196,28 +196,28 @@ const copyOriginalText = () => {
         <div class="flex flex-wrap items-center justify-between gap-3 border-t p-4 bg-muted/30">
             <div class="flex flex-wrap gap-2">
                 <a 
-                    :href="`/documents/${document.id}/download`"
+                    :href="`/audio-samples/${document.id}/download`"
                     class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium hover:bg-emerald-700 transition-colors"
                 >
                     <ArrowDownTrayIcon class="w-4 h-4" />
                     Download .docx
                 </a>
                 <a 
-                    :href="`/documents/${document.id}/download/text`"
+                    :href="`/audio-samples/${document.id}/download/text`"
                     class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
                 >
                     <DocumentTextIcon class="w-4 h-4" />
                     Download .txt
                 </a>
                 <Link
-                    :href="`/documents/${document.id}`"
+                    :href="`/audio-samples/${document.id}`"
                     class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
                 >
                     <EyeIcon class="w-4 h-4" />
                     View Details
                 </Link>
                 <Link
-                    :href="`/documents/${document.id}/diff`"
+                    :href="`/audio-samples/${document.id}/diff`"
                     class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
                 >
                     View Diff

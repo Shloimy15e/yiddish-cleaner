@@ -4,7 +4,7 @@ import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 
-interface Document {
+interface AudioSample {
     id: number;
     name: string;
     clean_rate: number | null;
@@ -18,16 +18,9 @@ interface Document {
     } | null;
 }
 
-interface Pagination {
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-}
-
 const props = defineProps<{
-    documents: {
-        data: Document[];
+    audioSamples: {
+        data: AudioSample[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -42,7 +35,7 @@ const props = defineProps<{
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: route('dashboard') },
-    { title: 'Documents', href: route('documents.index') },
+    { title: 'Audio Samples', href: route('audio-samples.index') },
 ];
 
 const search = ref(props.filters.search || '');
@@ -79,7 +72,7 @@ const getCategoryColor = (cat: string | null) => {
 };
 
 const applyFilters = () => {
-    router.get(route('documents.index'), {
+    router.get(route('audio-samples.index'), {
         search: search.value || undefined,
         validated: validated.value || undefined,
         category: category.value || undefined,
@@ -100,7 +93,7 @@ const setCategory = (option: { value: string }) => {
 };
 
 const goToPage = (page: number) => {
-    router.get(route('documents.index'), {
+    router.get(route('audio-samples.index'), {
         ...props.filters,
         page,
     }, {
@@ -117,14 +110,14 @@ watch(search, () => {
 </script>
 
 <template>
-    <Head title="Documents" />
+    <Head title="Audio Samples" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-6 p-6">
             <div class="flex items-center justify-between">
-                <h1 class="text-2xl font-bold">Documents</h1>
-                <Link :href="route('process.index')" class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90">
-                    Process New
+                <h1 class="text-2xl font-bold">Audio Samples</h1>
+                <Link :href="route('audio-samples.create')" class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90">
+                    Import New
                 </Link>
             </div>
 
@@ -133,7 +126,7 @@ watch(search, () => {
                 <input 
                     v-model="search"
                     type="text" 
-                    placeholder="Search documents..."
+                    placeholder="Search audio samples..."
                     class="rounded-lg border bg-background px-4 py-2 w-64"
                 />
                 
@@ -210,7 +203,7 @@ watch(search, () => {
                 </Listbox>
             </div>
 
-            <!-- Documents Table -->
+            <!-- Audio Samples Table -->
             <div class="rounded-xl border bg-card overflow-hidden">
                 <table class="w-full">
                     <thead class="border-b bg-muted/50">
@@ -224,54 +217,49 @@ watch(search, () => {
                         </tr>
                     </thead>
                     <tbody class="divide-y">
-                        <tr v-for="doc in documents.data" :key="doc.id" class="hover:bg-muted/30">
+                        <tr v-for="sample in audioSamples.data" :key="sample.id" class="hover:bg-muted/30">
                             <td class="px-4 py-3">
-                                <Link :href="route('documents.show', { document: doc.id })" class="font-medium hover:underline">
-                                    {{ doc.name }}
+                                <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="font-medium hover:underline">
+                                    {{ sample.name }}
                                 </Link>
                             </td>
                             <td class="px-4 py-3">
-                                <span v-if="doc.clean_rate !== null" :class="['rounded-full px-2 py-1 text-xs font-medium', getCategoryColor(doc.clean_rate_category)]">
-                                    {{ doc.clean_rate }}%
+                                <span v-if="sample.clean_rate !== null" :class="['rounded-full px-2 py-1 text-xs font-medium', getCategoryColor(sample.clean_rate_category)]">
+                                    {{ sample.clean_rate }}%
                                 </span>
                                 <span v-else class="text-muted-foreground">-</span>
                             </td>
                             <td class="px-4 py-3 text-sm text-muted-foreground">
-                                {{ doc.processing_run?.preset?.replace(/_/g, ' ') || '-' }}
+                                {{ sample.processing_run?.preset?.replace(/_/g, ' ') || '-' }}
                             </td>
                             <td class="px-4 py-3">
-                                <span v-if="doc.status === 'failed'" class="inline-flex items-center gap-1 text-red-600 font-medium">
+                                <span v-if="sample.status === 'failed'" class="inline-flex items-center gap-1 text-red-600 font-medium">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
                                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
                                     </svg>
                                     Failed
                                 </span>
-                                <span v-else-if="doc.validated_at" class="inline-flex items-center gap-1 text-green-600">
+                                <span v-else-if="sample.validated_at" class="inline-flex items-center gap-1 text-green-600">
                                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                         <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                                     </svg>
                                     Validated
                                 </span>
-                                <span v-else-if="doc.status === 'processing'" class="text-blue-600">Processing</span>
+                                <span v-else-if="sample.status === 'processing'" class="text-blue-600">Processing</span>
                                 <span v-else class="text-muted-foreground">Pending Validation</span>
                             </td>
                             <td class="px-4 py-3 text-sm text-muted-foreground">
-                                {{ doc.created_at }}
+                                {{ sample.created_at }}
                             </td>
                             <td class="px-4 py-3">
-                                <div class="flex gap-2">
-                                    <Link :href="route('documents.show', { document: doc.id })" class="text-sm text-primary hover:underline">
-                                        View
-                                    </Link>
-                                    <Link :href="route('documents.diff', { document: doc.id })" class="text-sm text-primary hover:underline">
-                                        Diff
-                                    </Link>
-                                </div>
+                                <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="text-sm text-primary hover:underline">
+                                    View
+                                </Link>
                             </td>
                         </tr>
-                        <tr v-if="documents.data.length === 0">
+                        <tr v-if="audioSamples.data.length === 0">
                             <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
-                                No documents found
+                                No audio samples found
                             </td>
                         </tr>
                     </tbody>
@@ -279,31 +267,31 @@ watch(search, () => {
             </div>
 
             <!-- Pagination -->
-            <div v-if="documents.last_page > 1" class="flex items-center justify-between">
+            <div v-if="audioSamples.last_page > 1" class="flex items-center justify-between">
                 <span class="text-sm text-muted-foreground">
-                    Showing {{ (documents.current_page - 1) * documents.per_page + 1 }} to 
-                    {{ Math.min(documents.current_page * documents.per_page, documents.total) }} of 
-                    {{ documents.total }} documents
+                    Showing {{ (audioSamples.current_page - 1) * audioSamples.per_page + 1 }} to 
+                    {{ Math.min(audioSamples.current_page * audioSamples.per_page, audioSamples.total) }} of 
+                    {{ audioSamples.total }} audio samples
                 </span>
                 <div class="flex gap-2">
                     <button 
-                        @click="goToPage(documents.current_page - 1)"
-                        :disabled="documents.current_page === 1"
+                        @click="goToPage(audioSamples.current_page - 1)"
+                        :disabled="audioSamples.current_page === 1"
                         class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50"
                     >
                         Previous
                     </button>
                     <button 
-                        v-for="page in documents.last_page" 
+                        v-for="page in audioSamples.last_page" 
                         :key="page"
                         @click="goToPage(page)"
-                        :class="['rounded-lg px-3 py-1 text-sm', page === documents.current_page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted']"
+                        :class="['rounded-lg px-3 py-1 text-sm', page === audioSamples.current_page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted']"
                     >
                         {{ page }}
                     </button>
                     <button 
-                        @click="goToPage(documents.current_page + 1)"
-                        :disabled="documents.current_page === documents.last_page"
+                        @click="goToPage(audioSamples.current_page + 1)"
+                        :disabled="audioSamples.current_page === audioSamples.last_page"
                         class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50"
                     >
                         Next

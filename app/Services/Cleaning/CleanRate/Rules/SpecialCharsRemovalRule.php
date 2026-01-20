@@ -12,7 +12,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class SpecialCharsRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'special_chars_removal';
+
     protected string $description = 'No penalty for invisible character removal';
+
     protected int $maxPenalty = 0;
 
     public function appliesTo(array $removedItem): bool

@@ -17,13 +17,13 @@ class LlmManager
     {
         $config = config("cleaning.llm_providers.{$provider}");
 
-        if (!$config) {
+        if (! $config) {
             throw new InvalidArgumentException("Unknown LLM provider: {$provider}");
         }
 
-        $key = $provider . ($credential?->id ?? 'default') . ($model ?? '');
+        $key = $provider.($credential?->id ?? 'default').($model ?? '');
 
-        if (!isset($this->drivers[$key])) {
+        if (! isset($this->drivers[$key])) {
             $driverClass = $config['driver'];
             $this->drivers[$key] = new $driverClass(
                 apiKey: $credential?->api_key,

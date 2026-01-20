@@ -22,11 +22,12 @@ class SheetsService
     {
         $client = $this->authService->getClientForUser($user);
 
-        if (!$client) {
+        if (! $client) {
             throw new RuntimeException('User does not have valid Google credentials');
         }
 
         $this->service = new Sheets($client);
+
         return $this;
     }
 
@@ -38,6 +39,7 @@ class SheetsService
         $this->ensureService();
 
         $response = $this->service->spreadsheets_values->get($spreadsheetId, $range);
+
         return $response->getValues() ?? [];
     }
 
@@ -130,6 +132,7 @@ class SheetsService
     {
         $headers = $this->getValues($spreadsheetId, "{$sheetName}!1:1")[0] ?? [];
         $index = array_search($headerName, $headers);
+
         return $index !== false ? $index : null;
     }
 
@@ -141,6 +144,7 @@ class SheetsService
         if (preg_match('/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/', $url, $matches)) {
             return $matches[1];
         }
+
         return null;
     }
 
@@ -154,7 +158,7 @@ class SheetsService
 
         while ($index > 0) {
             $index--;
-            $letter = chr(65 + ($index % 26)) . $letter;
+            $letter = chr(65 + ($index % 26)).$letter;
             $index = intdiv($index, 26);
         }
 
@@ -163,7 +167,7 @@ class SheetsService
 
     protected function ensureService(): void
     {
-        if (!$this->service) {
+        if (! $this->service) {
             throw new RuntimeException('Sheets service not initialized. Call forUser() first.');
         }
     }

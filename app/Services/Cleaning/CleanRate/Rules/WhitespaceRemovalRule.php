@@ -12,7 +12,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class WhitespaceRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'whitespace_removal';
+
     protected string $description = 'No penalty for whitespace normalization';
+
     protected int $maxPenalty = 0;
 
     public function appliesTo(array $removedItem): bool

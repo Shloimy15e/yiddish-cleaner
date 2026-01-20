@@ -41,15 +41,15 @@ class TrainingVersion extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function documents(): BelongsToMany
+    public function audioSamples(): BelongsToMany
     {
-        return $this->belongsToMany(Document::class, 'training_document')
+        return $this->belongsToMany(AudioSample::class, 'audio_sample_training_version')
             ->withTimestamps();
     }
 
-    public function benchmarkResults(): HasMany
+    public function transcriptions(): HasMany
     {
-        return $this->hasMany(BenchmarkResult::class);
+        return $this->hasMany(Transcription::class);
     }
 
     public function activate(): void
@@ -65,9 +65,9 @@ class TrainingVersion extends Model
     public function updateCounts(): void
     {
         $this->update([
-            'document_count' => $this->documents()->count(),
-            'word_count' => $this->documents()->sum('metrics->word_count'),
-            'total_audio_hours' => $this->documents()->sum('audio_length') / 3600,
+            'document_count' => $this->audioSamples()->count(),
+            'word_count' => $this->audioSamples()->sum('metrics->word_count'),
+            'total_audio_hours' => $this->audioSamples()->sum('audio_duration_seconds') / 3600,
         ]);
     }
 

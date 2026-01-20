@@ -4,16 +4,21 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class BenchmarkResult extends Model
+class Transcription extends Model implements HasMedia
 {
+    use InteractsWithMedia;
+
     protected $fillable = [
-        'document_id',
+        'audio_sample_id',
         'training_version_id',
         'model_name',
         'model_version',
-        'transcribed_text',
-        'transcribed_hash',
+        'source',
+        'hypothesis_text',
+        'hypothesis_hash',
         'wer',
         'cer',
         'substitutions',
@@ -37,9 +42,9 @@ class BenchmarkResult extends Model
         ];
     }
 
-    public function document(): BelongsTo
+    public function audioSample(): BelongsTo
     {
-        return $this->belongsTo(Document::class);
+        return $this->belongsTo(AudioSample::class);
     }
 
     public function trainingVersion(): BelongsTo
@@ -47,9 +52,16 @@ class BenchmarkResult extends Model
         return $this->belongsTo(TrainingVersion::class);
     }
 
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('hypothesis_transcript')
+            ->singleFile()
+            ->acceptsMimeTypes(['text/plain']);
+    }
+
     public function getTotalErrorsAttribute(): int
     {
-        return $this->substitutions + $this->insertions + $this->deletions;
+        return ($this->substitutions ?? 0) + ($this->insertions ?? 0) + ($this->deletions ?? 0);
     }
 
     public function scopeForModel($query, string $modelName)

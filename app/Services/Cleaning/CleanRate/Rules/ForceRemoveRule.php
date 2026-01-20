@@ -13,7 +13,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class ForceRemoveRule extends AbstractCleanRateRule
 {
     protected string $name = 'force_remove';
+
     protected string $description = 'No penalty for explicitly configured removal patterns';
+
     protected int $maxPenalty = 0;
 
     public function appliesTo(array $removedItem): bool

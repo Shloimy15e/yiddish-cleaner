@@ -15,7 +15,7 @@ class AnthropicDriver implements LlmDriverInterface
 
     public function complete(string $prompt, array $options = []): string
     {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             throw new RuntimeException('Anthropic API key not configured');
         }
 
@@ -31,13 +31,14 @@ class AnthropicDriver implements LlmDriverInterface
             ],
         ]);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new RuntimeException(
-                "Anthropic API error: " . $response->body()
+                'Anthropic API error: '.$response->body()
             );
         }
 
         $content = $response->json('content', []);
+
         return $content[0]['text'] ?? '';
     }
 

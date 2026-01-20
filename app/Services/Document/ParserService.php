@@ -13,7 +13,7 @@ class ParserService
     {
         $this->tempDir = config('cleaning.temp_dir');
 
-        if (!is_dir($this->tempDir)) {
+        if (! is_dir($this->tempDir)) {
             mkdir($this->tempDir, 0755, true);
         }
     }
@@ -50,7 +50,7 @@ class ParserService
 
             return implode("\n", array_filter($text));
         } catch (\Exception $e) {
-            throw new RuntimeException("Failed to parse DOCX: " . $e->getMessage());
+            throw new RuntimeException('Failed to parse DOCX: '.$e->getMessage());
         }
     }
 
@@ -105,6 +105,7 @@ class ParserService
             // Extract visible text (rough extraction)
             $text = preg_replace('/[\x00-\x1F\x7F-\xFF]/', ' ', $content);
             $text = preg_replace('/\s+/', ' ', $text);
+
             return trim($text);
         }
     }
@@ -114,9 +115,10 @@ class ParserService
      */
     public function saveUploadedFile($uploadedFile): string
     {
-        $filename = uniqid() . '_' . $uploadedFile->getClientOriginalName();
-        $path = $this->tempDir . '/' . $filename;
+        $filename = uniqid().'_'.$uploadedFile->getClientOriginalName();
+        $path = $this->tempDir.'/'.$filename;
         $uploadedFile->move($this->tempDir, $filename);
+
         return $path;
     }
 

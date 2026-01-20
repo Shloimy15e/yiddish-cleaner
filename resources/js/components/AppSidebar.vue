@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { BookOpen, FileText, LayoutGrid, Play, Settings, Sparkles, Github } from 'lucide-vue-next';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { BookOpen, FileText, LayoutGrid, Upload, Settings, Sparkles, Github } from 'lucide-vue-next';
 
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
@@ -17,33 +18,44 @@ import {
 } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: 'dashboard',
-        icon: LayoutGrid,
-    },
-    {
-        title: 'Process',
-        href: 'process.index',
-        icon: Play,
-    },
-    {
-        title: 'Documents',
-        href: 'documents.index',
-        icon: FileText,
-    },
-    {
-        title: 'Training',
-        href: 'training.index',
-        icon: Sparkles,
-    },
-    {
+const page = usePage();
+
+const mainNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [
+        {
+            title: 'Dashboard',
+            href: 'dashboard',
+            icon: LayoutGrid,
+        },
+        {
+            title: 'Import',
+            href: 'audio-samples.create',
+            icon: Upload,
+        },
+        {
+            title: 'Audio Samples',
+            href: 'audio-samples.index',
+            icon: FileText,
+        },
+    ];
+
+    // Only show Training nav item when feature is enabled
+    if ((page.props as any).features?.training) {
+        items.push({
+            title: 'Training',
+            href: 'training.index',
+            icon: Sparkles,
+        });
+    }
+
+    items.push({
         title: 'Settings',
         href: 'settings.profile.edit',
         icon: Settings,
-    },
-];
+    });
+
+    return items;
+});
 
 const footerNavItems: NavItem[] = [
     {

@@ -13,7 +13,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class EditorialHebrewRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'editorial_hebrew_removal';
+
     protected string $description = 'Scores based on editorial Hebrew detection confidence';
+
     protected int $maxPenalty = 25;
 
     public function appliesTo(array $removedItem): bool
@@ -23,7 +25,7 @@ class EditorialHebrewRemovalRule extends AbstractCleanRateRule
 
     public function calculatePenalty(array $removedItem, ?array $context = null): int
     {
-        if (!$this->appliesTo($removedItem)) {
+        if (! $this->appliesTo($removedItem)) {
             return 0;
         }
 

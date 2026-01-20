@@ -4,13 +4,15 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 
 interface Stats {
-    total_documents: number;
-    documents_this_week: number;
-    pending_validation: number;
+    total_audio_samples: number;
+    audio_samples_this_week: number;
+    awaiting_cleaning: number;
+    awaiting_review: number;
+    benchmark_ready: number;
     average_clean_rate: number;
 }
 
-interface Document {
+interface AudioSample {
     id: number;
     name: string;
     clean_rate: number | null;
@@ -31,9 +33,11 @@ interface Run {
 
 const props = defineProps<{
     stats: Stats;
-    recentDocuments: Document[];
+    recentAudioSamples: AudioSample[];
     activeRuns: Run[];
-    validationQueue: Document[];
+    needsCleaningQueue: AudioSample[];
+    needsReviewQueue: AudioSample[];
+    benchmarkReadyQueue: AudioSample[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -50,6 +54,30 @@ const getCategoryColor = (category: string | null) => {
     };
     return colors[category ?? ''] ?? 'bg-muted text-muted-foreground';
 };
+
+const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+        'pending_transcript': 'bg-gray-500/20 text-gray-400',
+        'imported': 'bg-blue-500/20 text-blue-400',
+        'cleaning': 'bg-yellow-500/20 text-yellow-400',
+        'cleaned': 'bg-purple-500/20 text-purple-400',
+        'validated': 'bg-green-500/20 text-green-400',
+        'failed': 'bg-red-500/20 text-red-400',
+    };
+    return colors[status] ?? 'bg-muted text-muted-foreground';
+};
+
+const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+        'pending_transcript': 'Pending Transcript',
+        'imported': 'Imported',
+        'cleaning': 'Cleaning...',
+        'cleaned': 'Cleaned',
+        'validated': 'Benchmark Ready',
+        'failed': 'Failed',
+    };
+    return labels[status] ?? status;
+};
 </script>
 
 <template>
@@ -57,93 +85,160 @@ const getCategoryColor = (category: string | null) => {
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-6 p-6">
-            <!-- Stats Cards -->
-            <div class="grid gap-4 md:grid-cols-4">
+            <!-- Workflow Progress Stats -->
+            <div class="grid gap-4 md:grid-cols-5">
                 <div class="rounded-xl border bg-card p-6 hover:border-primary/50 transition-colors">
-                    <div class="text-sm font-medium text-muted-foreground">Total Documents</div>
-                    <div class="text-3xl font-bold gradient-text">{{ stats.total_documents }}</div>
+                    <div class="text-sm font-medium text-muted-foreground">Total Samples</div>
+                    <div class="text-3xl font-bold gradient-text">{{ stats.total_audio_samples }}</div>
                 </div>
                 <div class="rounded-xl border bg-card p-6 hover:border-primary/50 transition-colors">
                     <div class="text-sm font-medium text-muted-foreground">This Week</div>
-                    <div class="text-3xl font-bold text-primary">{{ stats.documents_this_week }}</div>
+                    <div class="text-3xl font-bold text-primary">{{ stats.audio_samples_this_week }}</div>
                 </div>
-                <div class="rounded-xl border bg-card p-6 hover:border-primary/50 transition-colors">
-                    <div class="text-sm font-medium text-muted-foreground">Pending Validation</div>
-                    <div class="text-3xl font-bold text-secondary">{{ stats.pending_validation }}</div>
+                <div class="rounded-xl border bg-card p-6 hover:border-blue-500/50 transition-colors">
+                    <div class="text-sm font-medium text-muted-foreground">Awaiting Cleaning</div>
+                    <div class="text-3xl font-bold text-blue-400">{{ stats.awaiting_cleaning }}</div>
                 </div>
-                <div class="rounded-xl border bg-card p-6 hover:border-primary/50 transition-colors">
-                    <div class="text-sm font-medium text-muted-foreground">Avg Clean Rate</div>
-                    <div class="text-3xl font-bold text-teal-400">{{ Math.round(stats.average_clean_rate) }}%</div>
+                <div class="rounded-xl border bg-card p-6 hover:border-purple-500/50 transition-colors">
+                    <div class="text-sm font-medium text-muted-foreground">Awaiting Review</div>
+                    <div class="text-3xl font-bold text-purple-400">{{ stats.awaiting_review }}</div>
+                </div>
+                <div class="rounded-xl border bg-card p-6 hover:border-green-500/50 transition-colors">
+                    <div class="text-sm font-medium text-muted-foreground">Benchmark Ready</div>
+                    <div class="text-3xl font-bold text-green-400">{{ stats.benchmark_ready }}</div>
+                </div>
+            </div>
+
+            <!-- Workflow Queues -->
+            <div class="grid gap-6 lg:grid-cols-3">
+                <!-- Needs Cleaning Queue -->
+                <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
+                    <div class="flex items-center justify-between border-b p-4">
+                        <div class="flex items-center gap-2">
+                            <div class="h-2 w-2 rounded-full bg-blue-400"></div>
+                            <h2 class="font-semibold">Needs Cleaning</h2>
+                        </div>
+                        <Link href="/audio-samples?status=imported" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                    </div>
+                    <div class="divide-y divide-border">
+                        <div v-for="sample in needsCleaningQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                            <div class="min-w-0 flex-1">
+                                <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
+                                    {{ sample.name }}
+                                </Link>
+                                <div class="text-sm text-muted-foreground">{{ sample.created_at }}</div>
+                            </div>
+                            <span :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getStatusColor(sample.status)]">
+                                {{ getStatusLabel(sample.status) }}
+                            </span>
+                        </div>
+                        <div v-if="needsCleaningQueue.length === 0" class="p-4 text-center text-muted-foreground">
+                            No samples awaiting cleaning
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Needs Review Queue -->
+                <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
+                    <div class="flex items-center justify-between border-b p-4">
+                        <div class="flex items-center gap-2">
+                            <div class="h-2 w-2 rounded-full bg-purple-400"></div>
+                            <h2 class="font-semibold">Needs Review</h2>
+                        </div>
+                        <Link href="/audio-samples?status=cleaned" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                    </div>
+                    <div class="divide-y divide-border">
+                        <div v-for="sample in needsReviewQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                            <div class="min-w-0 flex-1">
+                                <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
+                                    {{ sample.name }}
+                                </Link>
+                            </div>
+                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCategoryColor(sample.clean_rate_category)]">
+                                {{ sample.clean_rate }}%
+                            </span>
+                        </div>
+                        <div v-if="needsReviewQueue.length === 0" class="p-4 text-center text-muted-foreground">
+                            No samples awaiting review
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Benchmark Ready Queue -->
+                <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
+                    <div class="flex items-center justify-between border-b p-4">
+                        <div class="flex items-center gap-2">
+                            <div class="h-2 w-2 rounded-full bg-green-400"></div>
+                            <h2 class="font-semibold">Benchmark Ready</h2>
+                        </div>
+                        <Link href="/audio-samples?status=validated" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                    </div>
+                    <div class="divide-y divide-border">
+                        <div v-for="sample in benchmarkReadyQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                            <div class="min-w-0 flex-1">
+                                <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
+                                    {{ sample.name }}
+                                </Link>
+                            </div>
+                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCategoryColor(sample.clean_rate_category)]">
+                                {{ sample.clean_rate }}%
+                            </span>
+                        </div>
+                        <div v-if="benchmarkReadyQueue.length === 0" class="p-4 text-center text-muted-foreground">
+                            No benchmark-ready samples
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="grid gap-6 lg:grid-cols-2">
-                <!-- Recent Documents -->
+                <!-- Recent Audio Samples -->
                 <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
                     <div class="flex items-center justify-between border-b p-4">
-                        <h2 class="font-semibold">Recent Documents</h2>
-                        <Link href="/documents" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <h2 class="font-semibold">Recent Imports</h2>
+                        <Link href="/audio-samples" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
                     </div>
                     <div class="divide-y divide-border">
-                        <div v-for="doc in recentDocuments" :key="doc.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
-                            <div>
-                                <Link :href="`/documents/${doc.id}`" class="font-medium hover:text-primary transition-colors">
-                                    {{ doc.name }}
+                        <div v-for="sample in recentAudioSamples" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                            <div class="min-w-0 flex-1">
+                                <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
+                                    {{ sample.name }}
                                 </Link>
-                                <div class="text-sm text-muted-foreground">{{ doc.created_at }}</div>
+                                <div class="text-sm text-muted-foreground">{{ sample.created_at }}</div>
                             </div>
-                            <span v-if="doc.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium', getCategoryColor(doc.clean_rate_category)]">
-                                {{ doc.clean_rate }}%
+                            <span :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getStatusColor(sample.status)]">
+                                {{ getStatusLabel(sample.status) }}
                             </span>
                         </div>
-                        <div v-if="recentDocuments.length === 0" class="p-4 text-center text-muted-foreground">
-                            No documents yet
+                        <div v-if="recentAudioSamples.length === 0" class="p-4 text-center text-muted-foreground">
+                            No audio samples yet
                         </div>
                     </div>
                 </div>
 
-                <!-- Validation Queue -->
+                <!-- Active Import Runs -->
                 <div class="rounded-xl border bg-card">
                     <div class="flex items-center justify-between border-b p-4">
-                        <h2 class="font-semibold">Validation Queue</h2>
-                        <Link href="/documents?validated=no" class="text-sm text-primary hover:underline">View all</Link>
+                        <h2 class="font-semibold">Active Import Runs</h2>
+                        <Link href="/audio-samples/create" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
                     </div>
                     <div class="divide-y">
-                        <div v-for="doc in validationQueue" :key="doc.id" class="flex items-center justify-between p-4">
-                            <div>
-                                <Link :href="`/documents/${doc.id}`" class="font-medium hover:underline">
-                                    {{ doc.name }}
-                                </Link>
+                        <div v-for="run in activeRuns" :key="run.id" class="p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium">{{ run.preset }}</span>
+                                <span class="text-sm text-muted-foreground">
+                                    {{ run.completed + run.failed }} / {{ run.total }}
+                                </span>
                             </div>
-                            <span :class="['rounded-full px-2 py-1 text-xs font-medium', getCategoryColor(doc.clean_rate_category)]">
-                                {{ doc.clean_rate }}%
-                            </span>
+                            <div class="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+                                <div 
+                                    class="h-2 rounded-full bg-primary transition-all" 
+                                    :style="{ width: `${((run.completed + run.failed) / run.total) * 100}%` }"
+                                ></div>
+                            </div>
                         </div>
-                        <div v-if="validationQueue.length === 0" class="p-4 text-center text-muted-foreground">
-                            No pending validations
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Active Runs -->
-            <div v-if="activeRuns.length > 0" class="rounded-xl border bg-card">
-                <div class="border-b p-4">
-                    <h2 class="font-semibold">Active Processing Runs</h2>
-                </div>
-                <div class="divide-y">
-                    <div v-for="run in activeRuns" :key="run.id" class="p-4">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="font-medium">{{ run.preset }}</span>
-                            <span class="text-sm text-muted-foreground">
-                                {{ run.completed + run.failed }} / {{ run.total }}
-                            </span>
-                        </div>
-                        <div class="h-2 w-full rounded-full bg-gray-200">
-                            <div 
-                                class="h-2 rounded-full bg-primary transition-all" 
-                                :style="{ width: `${((run.completed + run.failed) / run.total) * 100}%` }"
-                            ></div>
+                        <div v-if="activeRuns.length === 0" class="p-4 text-center text-muted-foreground">
+                            No active imports
                         </div>
                     </div>
                 </div>
@@ -151,10 +246,10 @@ const getCategoryColor = (category: string | null) => {
 
             <!-- Quick Actions -->
             <div class="flex gap-4">
-                <Link href="/process" class="rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:bg-primary/90">
-                    Process New Documents
+                <Link href="/audio-samples/create" class="rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                    Import Audio Samples
                 </Link>
-                <Link href="/training/create" class="rounded-lg border px-6 py-3 font-medium hover:bg-accent">
+                <Link href="/training/create" class="rounded-lg border px-6 py-3 font-medium hover:bg-accent transition-colors">
                     Create Training Version
                 </Link>
             </div>

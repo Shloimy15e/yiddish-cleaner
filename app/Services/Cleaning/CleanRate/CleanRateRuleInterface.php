@@ -30,11 +30,11 @@ interface CleanRateRuleInterface
     /**
      * Calculate penalty points for a removed item.
      *
-     * @param array $removedItem Dict with info about what was removed, including:
-     *                           - 'text': The removed text
-     *                           - 'reason': Why it was removed (processor name + details)
-     *                           - 'processor': Which processor removed it
-     * @param array|null $context Optional processing context (paragraph styles, etc.)
+     * @param  array  $removedItem  Dict with info about what was removed, including:
+     *                              - 'text': The removed text
+     *                              - 'reason': Why it was removed (processor name + details)
+     *                              - 'processor': Which processor removed it
+     * @param  array|null  $context  Optional processing context (paragraph styles, etc.)
      * @return int Penalty points to subtract (0 = no penalty, higher = more uncertain)
      */
     public function calculatePenalty(array $removedItem, ?array $context = null): int;

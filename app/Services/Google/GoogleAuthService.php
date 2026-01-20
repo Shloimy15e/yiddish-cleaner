@@ -14,7 +14,7 @@ class GoogleAuthService
 
     public function __construct()
     {
-        $this->client = new GoogleClient();
+        $this->client = new GoogleClient;
         $this->client->setApplicationName(config('app.name'));
         $this->client->setScopes([
             Drive::DRIVE,
@@ -28,7 +28,7 @@ class GoogleAuthService
         $this->client->setClientSecret(config('services.google.client_secret'));
 
         // Use GOOGLE_REDIRECT_URI env var for local dev with ngrok, otherwise use route
-        $redirectUri = config('services.google.redirect_uri') 
+        $redirectUri = config('services.google.redirect_uri')
             ?? route('settings.google.callback');
         $this->client->setRedirectUri($redirectUri);
     }
@@ -72,7 +72,7 @@ class GoogleAuthService
     {
         $credential = $user->googleCredential;
 
-        if (!$credential) {
+        if (! $credential) {
             return null;
         }
 
@@ -84,7 +84,7 @@ class GoogleAuthService
                 $newToken = $this->client->fetchAccessTokenWithRefreshToken($refreshToken);
 
                 // Preserve refresh token if not returned
-                if (!isset($newToken['refresh_token'])) {
+                if (! isset($newToken['refresh_token'])) {
                     $newToken['refresh_token'] = $refreshToken;
                 }
 

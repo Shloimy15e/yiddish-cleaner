@@ -8,7 +8,9 @@ namespace App\Services\Cleaning\CleanRate;
 abstract class AbstractCleanRateRule implements CleanRateRuleInterface
 {
     protected string $name = 'base_rule';
+
     protected string $description = 'Base rule';
+
     protected int $maxPenalty = 100;
 
     public function getName(): string

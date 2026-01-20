@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Document;
+use App\Models\AudioSample;
 use App\Models\TrainingVersion;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -27,14 +27,14 @@ class TrainingController extends Controller
     {
         $user = $request->user();
 
-        // Get available documents for training
-        $documents = Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))
+        // Get available audio samples for training
+        $audioSamples = AudioSample::whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id))
             ->where('status', 'completed')
             ->select('id', 'name', 'clean_rate', 'clean_rate_category', 'validated_at', 'metrics')
             ->get();
 
         return Inertia::render('Training/Create', [
-            'availableDocuments' => $documents,
+            'availableAudioSamples' => $audioSamples,
         ]);
     }
 
@@ -45,8 +45,8 @@ class TrainingController extends Controller
             'name' => 'required|string|max:200',
             'description' => 'nullable|string|max:1000',
             'criteria' => 'nullable|array',
-            'document_ids' => 'required|array|min:1',
-            'document_ids.*' => 'exists:documents,id',
+            'audio_sample_ids' => 'required|array|min:1',
+            'audio_sample_ids.*' => 'exists:audio_samples,id',
         ]);
 
         $user = $request->user();
@@ -59,8 +59,8 @@ class TrainingController extends Controller
             'criteria' => $request->criteria,
         ]);
 
-        // Attach documents
-        $version->documents()->attach($request->document_ids);
+        // Attach audio samples
+        $version->audioSamples()->attach($request->audio_sample_ids);
         $version->updateCounts();
 
         return redirect()->route('training.show', $version)
@@ -72,7 +72,7 @@ class TrainingController extends Controller
         $this->authorize('view', $version);
 
         return Inertia::render('Training/Show', [
-            'version' => $version->load('documents'),
+            'version' => $version->load('audioSamples'),
         ]);
     }
 
@@ -93,14 +93,13 @@ class TrainingController extends Controller
             'format' => 'required|in:json,csv,kaldi',
         ]);
 
-        $documents = $version->documents()->get();
+        $audioSamples = $version->audioSamples()->get();
 
-        $data = $documents->map(fn($doc) => [
-            'id' => $doc->id,
-            'name' => $doc->name,
-            'text' => $doc->cleaned_text,
-            'audio_link' => $doc->audio_link,
-            'clean_rate' => $doc->clean_rate,
+        $data = $audioSamples->map(fn ($sample) => [
+            'id' => $sample->id,
+            'name' => $sample->name,
+            'text' => $sample->reference_text_clean,
+            'clean_rate' => $sample->clean_rate,
         ]);
 
         $filename = "training_{$version->version}_{$request->format}";
@@ -111,8 +110,7 @@ class TrainingController extends Controller
         }
 
         if ($request->format === 'csv') {
-            $csv = implode("\n", $data->map(fn($d) =>
-                implode("\t", [$d['id'], $d['name'], str_replace(["\n", "\t"], ' ', $d['text'])])
+            $csv = implode("\n", $data->map(fn ($d) => implode("\t", [$d['id'], $d['name'], str_replace(["\n", "\t"], ' ', $d['text'])])
             )->toArray());
 
             return response($csv, 200, [
@@ -122,7 +120,7 @@ class TrainingController extends Controller
         }
 
         // Kaldi format: utterance_id text
-        $kaldi = $data->map(fn($d) => "{$d['id']}\t{$d['text']}")->implode("\n");
+        $kaldi = $data->map(fn ($d) => "{$d['id']}\t{$d['text']}")->implode("\n");
 
         return response($kaldi, 200, [
             'Content-Type' => 'text/plain',

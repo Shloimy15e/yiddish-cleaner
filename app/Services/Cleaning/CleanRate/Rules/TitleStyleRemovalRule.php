@@ -19,7 +19,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class TitleStyleRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'title_style_removal';
+
     protected string $description = 'Scores based on confidence of title detection';
+
     protected int $maxPenalty = 15;
 
     public function appliesTo(array $removedItem): bool
@@ -29,7 +31,7 @@ class TitleStyleRemovalRule extends AbstractCleanRateRule
 
     public function calculatePenalty(array $removedItem, ?array $context = null): int
     {
-        if (!$this->appliesTo($removedItem)) {
+        if (! $this->appliesTo($removedItem)) {
             return 0;
         }
 

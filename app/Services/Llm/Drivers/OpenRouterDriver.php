@@ -9,6 +9,7 @@ use RuntimeException;
  * OpenRouter LLM Driver
  *
  * OpenRouter provides access to many models through a unified OpenAI-compatible API.
+ *
  * @see https://openrouter.ai/docs
  */
 class OpenRouterDriver implements LlmDriverInterface
@@ -21,7 +22,7 @@ class OpenRouterDriver implements LlmDriverInterface
 
     public function complete(string $prompt, array $options = []): string
     {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             throw new RuntimeException('OpenRouter API key not configured');
         }
 
@@ -39,9 +40,9 @@ class OpenRouterDriver implements LlmDriverInterface
             'max_tokens' => $options['max_tokens'] ?? 4096,
         ]);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new RuntimeException(
-                "OpenRouter API error: " . $response->body()
+                'OpenRouter API error: '.$response->body()
             );
         }
 

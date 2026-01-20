@@ -12,8 +12,11 @@ namespace App\Services\Cleaning\Processors;
 class TitleStyleProcessor implements ProcessorInterface
 {
     protected int $minWords = 5;
+
     protected float $sizeThreshold = 1.2;
+
     protected array $exceptionPatterns = [];
+
     protected array $forceRemovePatterns = [];
 
     public function __construct()
@@ -25,7 +28,7 @@ class TitleStyleProcessor implements ProcessorInterface
     public function process(string $text, ?array $context = null): ProcessorResult
     {
         // If we have paragraph metadata, use context-aware processing
-        if ($context && isset($context['paragraphs']) && !empty($context['paragraphs'])) {
+        if ($context && isset($context['paragraphs']) && ! empty($context['paragraphs'])) {
             return $this->processWithContext($text, $context);
         }
 
@@ -55,12 +58,14 @@ class TitleStyleProcessor implements ProcessorInterface
             if ($this->matchesForceRemove($trimmed)) {
                 $removals[] = $this->formatRemoval($trimmed, 'Force removed (blocked pattern)');
                 $changesCount++;
+
                 continue;
             }
 
             // Check exception patterns - if matches, always keep
             if ($this->matchesException($trimmed)) {
                 $keptParagraphs[] = $paraText;
+
                 continue;
             }
 
@@ -70,7 +75,7 @@ class TitleStyleProcessor implements ProcessorInterface
             // 1. Check Word heading styles
             if ($meta['is_heading_style'] ?? false) {
                 $shouldRemove = true;
-                $reason = 'Word heading style: ' . ($meta['style_name'] ?? 'unknown');
+                $reason = 'Word heading style: '.($meta['style_name'] ?? 'unknown');
             }
             // 2. Check if larger than normal text
             elseif ($meta['is_larger_than_normal'] ?? false) {
@@ -90,7 +95,7 @@ class TitleStyleProcessor implements ProcessorInterface
                 }
             }
             // 4. Check if bold paragraph without ending punctuation
-            elseif (($meta['is_bold'] ?? false) && !$this->hasSentenceEnding($trimmed)) {
+            elseif (($meta['is_bold'] ?? false) && ! $this->hasSentenceEnding($trimmed)) {
                 $wordCount = $meta['word_count'] ?? count(preg_split('/\s+/', $trimmed));
                 if ($wordCount <= 10) {
                     $shouldRemove = true;
@@ -126,6 +131,7 @@ class TitleStyleProcessor implements ProcessorInterface
 
             if ($trimmed === '') {
                 $result[] = $line;
+
                 continue;
             }
 
@@ -133,18 +139,21 @@ class TitleStyleProcessor implements ProcessorInterface
             if ($this->matchesForceRemove($trimmed)) {
                 $removals[] = $this->formatRemoval($trimmed, 'Force removed');
                 $changesCount++;
+
                 continue;
             }
 
             // Check exception patterns
             if ($this->matchesException($trimmed)) {
                 $result[] = $line;
+
                 continue;
             }
 
             if ($this->isTitleHeuristic($trimmed)) {
                 $removals[] = $this->formatRemoval($trimmed, 'Title pattern');
                 $changesCount++;
+
                 continue;
             }
 
@@ -165,7 +174,7 @@ class TitleStyleProcessor implements ProcessorInterface
         }
 
         // No sentence-ending punctuation
-        if (!$this->hasSentenceEnding($text)) {
+        if (! $this->hasSentenceEnding($text)) {
             return true;
         }
 
@@ -210,7 +219,7 @@ class TitleStyleProcessor implements ProcessorInterface
         }
 
         // Short line without sentence-ending punctuation
-        if ($length < 50 && !$this->hasSentenceEnding($line)) {
+        if ($length < 50 && ! $this->hasSentenceEnding($line)) {
             $wordCount = count(preg_split('/\s+/', $line));
             if ($wordCount <= 5) {
                 return true;
@@ -238,6 +247,7 @@ class TitleStyleProcessor implements ProcessorInterface
                 return true;
             }
         }
+
         return false;
     }
 
@@ -251,6 +261,7 @@ class TitleStyleProcessor implements ProcessorInterface
                 return true;
             }
         }
+
         return false;
     }
 
@@ -260,7 +271,7 @@ class TitleStyleProcessor implements ProcessorInterface
     protected function formatRemoval(string $text, string $reason): array
     {
         return [
-            'text' => mb_strlen($text) > 60 ? mb_substr($text, 0, 60) . '...' : $text,
+            'text' => mb_strlen($text) > 60 ? mb_substr($text, 0, 60).'...' : $text,
             'full_text' => $text,
             'reason' => $reason,
             'processor' => $this->getName(),

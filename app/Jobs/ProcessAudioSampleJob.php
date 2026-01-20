@@ -2,9 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Events\DocumentProcessed;
-use App\Models\Document;
-use App\Models\ProcessingRun;
+use App\Events\AudioSampleProcessed;
+use App\Models\AudioSample;
 use App\Services\Cleaning\CleanerService;
 use App\Services\Cleaning\CleanRateCalculator;
 use App\Services\Document\ParserService;
@@ -16,15 +15,16 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Throwable;
 
-class ProcessDocumentJob implements ShouldQueue
+class ProcessAudioSampleJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $timeout = 300;
 
     public function __construct(
-        public Document $document,
+        public AudioSample $audioSample,
         public ?string $filePath = null,
     ) {}
 
@@ -34,37 +34,40 @@ class ProcessDocumentJob implements ShouldQueue
         CleanRateCalculator $calculator,
         LlmManager $llm,
     ): void {
-        $run = $this->document->processingRun;
+        $run = $this->audioSample->processingRun;
 
         try {
-            $this->document->update(['status' => 'processing']);
+            $this->audioSample->update(['status' => 'processing']);
 
-            // Extract text from file if provided
+            // Save the reference transcript file to media collection if provided
+            if ($this->filePath && file_exists($this->filePath)) {
+                $this->audioSample->addMedia($this->filePath)
+                    ->preservingOriginal() // Keep file for text extraction
+                    ->toMediaCollection('reference_transcript');
+            }
+
             $text = $this->filePath
                 ? $parser->extractText($this->filePath)
-                : $this->document->original_text;
+                : $this->audioSample->reference_text_raw;
 
-            if (!$text) {
+            if (! $text) {
                 throw new \RuntimeException('No text to process');
             }
 
-            // Store original text
-            $this->document->update(['original_text' => $text]);
+            $this->audioSample->update(['reference_text_raw' => $text]);
 
-            // Clean based on mode
             if ($run->mode === 'llm') {
                 $user = $run->user;
                 $provider = $run->llm_provider ?? 'openrouter';
                 $model = $run->llm_model ?? 'anthropic/claude-sonnet-4';
                 $credential = $user->getApiCredential($provider, 'llm');
-                
-                if (!$credential) {
+
+                if (! $credential) {
                     throw new \RuntimeException("No API key configured for {$provider}");
                 }
-                
+
                 $cleanedText = $llm->clean($text, $provider, $credential, $model);
 
-                // Still calculate metrics
                 $result = new \App\Services\Cleaning\CleaningResult(
                     originalText: $text,
                     cleanedText: $cleanedText,
@@ -75,15 +78,13 @@ class ProcessDocumentJob implements ShouldQueue
                 $result = $cleaner->cleanWithPreset($text, $run->preset);
             }
 
-            // Calculate clean rate
             $cleanRate = $calculator->calculate($result);
 
-            // Update document
-            $this->document->update([
-                'original_text' => $result->originalText,
-                'cleaned_text' => $result->cleanedText,
-                'original_hash' => $result->getOriginalHash(),
-                'cleaned_hash' => $result->getCleanedHash(),
+            $this->audioSample->update([
+                'reference_text_raw' => $result->originalText,
+                'reference_text_clean' => $result->cleanedText,
+                'reference_hash_raw' => $result->getOriginalHash(),
+                'reference_hash_clean' => $result->getCleanedHash(),
                 'clean_rate' => $cleanRate->score,
                 'clean_rate_category' => $cleanRate->category,
                 'metrics' => $result->getMetrics(),
@@ -91,15 +92,21 @@ class ProcessDocumentJob implements ShouldQueue
                 'status' => 'completed',
             ]);
 
+            // Save cleaned transcript as a text file
+            $cleanedFilePath = storage_path('app/temp/cleaned_' . $this->audioSample->id . '.txt');
+            file_put_contents($cleanedFilePath, $result->cleanedText);
+            $this->audioSample->addMedia($cleanedFilePath)
+                ->usingFileName('cleaned_transcript.txt')
+                ->toMediaCollection('cleaned_transcript');
+
             $run->incrementCompleted();
 
-            // Cleanup temp file
             if ($this->filePath) {
                 $parser->cleanup($this->filePath);
             }
 
         } catch (Throwable $e) {
-            $this->document->update([
+            $this->audioSample->update([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
             ]);
@@ -107,17 +114,16 @@ class ProcessDocumentJob implements ShouldQueue
             $run->incrementFailed();
         }
 
-        // Broadcast progress
-        event(new DocumentProcessed($run->fresh(), $this->document->fresh()));
+        event(new AudioSampleProcessed($run->fresh(), $this->audioSample->fresh()));
     }
 
     public function failed(Throwable $exception): void
     {
-        $this->document->update([
+        $this->audioSample->update([
             'status' => 'failed',
             'error_message' => $exception->getMessage(),
         ]);
 
-        $this->document->processingRun->incrementFailed();
+        $this->audioSample->processingRun->incrementFailed();
     }
 }

@@ -45,7 +45,7 @@ class LlmController extends Controller
         $user = $request->user();
         $config = config("cleaning.llm_providers.{$provider}");
 
-        if (!$config) {
+        if (! $config) {
             return response()->json(['error' => 'Unknown provider'], 404);
         }
 
@@ -54,7 +54,7 @@ class LlmController extends Controller
             ->where('type', 'llm')
             ->first();
 
-        if (!$credential) {
+        if (! $credential) {
             // Return static list if no credential
             return response()->json([
                 'models' => $this->getStaticModels($provider),
@@ -101,7 +101,8 @@ class LlmController extends Controller
                     return null;
             }
         } catch (\Exception $e) {
-            \Log::warning("Failed to fetch models from {$provider}: " . $e->getMessage());
+            \Log::warning("Failed to fetch models from {$provider}: ".$e->getMessage());
+
             return null;
         }
     }
@@ -115,14 +116,14 @@ class LlmController extends Controller
             'Authorization' => "Bearer {$apiKey}",
         ])->get('https://openrouter.ai/api/v1/models');
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return [];
         }
 
         $data = $response->json('data', []);
 
         return collect($data)
-            ->filter(fn ($model) => !str_contains($model['id'] ?? '', ':free'))
+            ->filter(fn ($model) => ! str_contains($model['id'] ?? '', ':free'))
             ->map(fn ($model) => [
                 'id' => $model['id'],
                 'name' => $model['name'] ?? $model['id'],
@@ -146,7 +147,7 @@ class LlmController extends Controller
             'Authorization' => "Bearer {$apiKey}",
         ])->get("{$baseUrl}/models");
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return [];
         }
 
@@ -172,7 +173,7 @@ class LlmController extends Controller
             'Authorization' => "Bearer {$apiKey}",
         ])->get('https://api.groq.com/openai/v1/models');
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return [];
         }
 

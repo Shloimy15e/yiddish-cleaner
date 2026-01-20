@@ -10,7 +10,7 @@ import { type BreadcrumbItem } from '@/types';
 const breadcrumbItems: BreadcrumbItem[] = [
     {
         title: 'Appearance settings',
-        href: edit().url,
+        href: route('settings.appearance.edit'),
     },
 ];
 </script>

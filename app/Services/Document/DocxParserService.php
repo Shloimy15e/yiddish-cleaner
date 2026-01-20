@@ -2,15 +2,15 @@
 
 namespace App\Services\Document;
 
-use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\Element\Text;
-use PhpOffice\PhpWord\Element\TextRun;
 use PhpOffice\PhpWord\Element\TextBreak;
+use PhpOffice\PhpWord\Element\TextRun;
+use PhpOffice\PhpWord\IOFactory;
 use RuntimeException;
 
 /**
  * Service for parsing Word documents with full metadata extraction.
- * 
+ *
  * Extracts paragraph-level metadata including:
  * - Word heading styles (Heading 1, Title, etc.)
  * - Font sizes
@@ -25,7 +25,7 @@ class DocxParserService
     {
         $this->tempDir = config('cleaning.temp_dir', storage_path('app/temp'));
 
-        if (!is_dir($this->tempDir)) {
+        if (! is_dir($this->tempDir)) {
             mkdir($this->tempDir, 0755, true);
         }
     }
@@ -33,7 +33,7 @@ class DocxParserService
     /**
      * Extract paragraphs with full metadata from a Word document.
      *
-     * @param string $filePath Path to the document file
+     * @param  string  $filePath  Path to the document file
      * @return array{text: string, paragraphs: array} Full text and paragraph metadata
      */
     public function extractWithMetadata(string $filePath): array
@@ -72,7 +72,7 @@ class DocxParserService
         foreach ($phpWord->getSections() as $section) {
             foreach ($section->getElements() as $element) {
                 $paragraphData = $this->extractParagraphData($element, $defaultFontSize);
-                
+
                 if ($paragraphData === null) {
                     continue;
                 }
@@ -108,8 +108,8 @@ class DocxParserService
         }
 
         // Calculate average font size and mark larger paragraphs
-        $avgFontSize = count($allFontSizes) > 0 
-            ? array_sum($allFontSizes) / count($allFontSizes) 
+        $avgFontSize = count($allFontSizes) > 0
+            ? array_sum($allFontSizes) / count($allFontSizes)
             : $defaultFontSize;
 
         foreach ($paragraphsMeta as &$meta) {
@@ -142,7 +142,7 @@ class DocxParserService
         if ($element instanceof Text) {
             $text = $element->getText();
             $fontStyle = $element->getFontStyle();
-            
+
             return [
                 'text' => $text,
                 'style_name' => null,
@@ -204,7 +204,7 @@ class DocxParserService
 
         if ($styleName) {
             $styleNameLower = strtolower($styleName);
-            $isHeadingStyle = str_contains($styleNameLower, 'heading') 
+            $isHeadingStyle = str_contains($styleNameLower, 'heading')
                 || str_contains($styleNameLower, 'title')
                 || str_contains($styleNameLower, 'כותרת'); // Hebrew "title"
         }
@@ -228,7 +228,7 @@ class DocxParserService
                     $fontSizes[] = $fontSize;
                 }
 
-                if (!empty(trim($text)) && !$isBold) {
+                if (! empty(trim($text)) && ! $isBold) {
                     $allBold = false;
                 }
 
@@ -246,8 +246,8 @@ class DocxParserService
         }
 
         $fullText = implode('', $texts);
-        $avgFontSize = count($fontSizes) > 0 
-            ? array_sum($fontSizes) / count($fontSizes) 
+        $avgFontSize = count($fontSizes) > 0
+            ? array_sum($fontSizes) / count($fontSizes)
             : $defaultFontSize;
 
         return [
@@ -267,7 +267,7 @@ class DocxParserService
     {
         $texts = [];
         $runs = [];
-        
+
         foreach ($container->getElements() as $element) {
             $data = $this->extractParagraphData($element, $defaultFontSize);
             if ($data) {
@@ -375,11 +375,11 @@ class DocxParserService
 
         $process = \Illuminate\Support\Facades\Process::timeout(60)->run($command);
 
-        if (!$process->successful()) {
-            throw new RuntimeException("Failed to convert .doc to .docx: " . $process->errorOutput());
+        if (! $process->successful()) {
+            throw new RuntimeException('Failed to convert .doc to .docx: '.$process->errorOutput());
         }
 
-        if (!file_exists($outputPath)) {
+        if (! file_exists($outputPath)) {
             throw new RuntimeException("Converted file not found: {$outputPath}");
         }
 
@@ -391,9 +391,10 @@ class DocxParserService
      */
     public function saveUploadedFile($uploadedFile): string
     {
-        $filename = uniqid() . '_' . $uploadedFile->getClientOriginalName();
-        $path = $this->tempDir . '/' . $filename;
+        $filename = uniqid().'_'.$uploadedFile->getClientOriginalName();
+        $path = $this->tempDir.'/'.$filename;
         $uploadedFile->move($this->tempDir, $filename);
+
         return $path;
     }
 

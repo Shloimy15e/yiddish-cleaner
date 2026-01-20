@@ -3,7 +3,6 @@
 namespace App\Services\Cleaning;
 
 use App\Services\Cleaning\Processors\ProcessorInterface;
-use App\Services\Cleaning\Processors\ProcessorResult;
 use InvalidArgumentException;
 
 class CleanerService
@@ -17,7 +16,7 @@ class CleanerService
     {
         $preset = config("cleaning.presets.{$presetName}");
 
-        if (!$preset) {
+        if (! $preset) {
             throw new InvalidArgumentException("Unknown preset: {$presetName}");
         }
 
@@ -58,10 +57,10 @@ class CleanerService
      */
     protected function getProcessor(string $name): ProcessorInterface
     {
-        if (!isset($this->processorInstances[$name])) {
+        if (! isset($this->processorInstances[$name])) {
             $class = config("cleaning.processors.{$name}");
 
-            if (!$class) {
+            if (! $class) {
                 throw new InvalidArgumentException("Unknown processor: {$name}");
             }
 
@@ -92,6 +91,7 @@ class CleanerService
                 'description' => $instance->getDescription(),
             ];
         }
+
         return $processors;
     }
 }

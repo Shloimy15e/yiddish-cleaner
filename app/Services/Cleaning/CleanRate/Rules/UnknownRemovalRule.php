@@ -13,7 +13,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class UnknownRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'unknown_removal';
+
     protected string $description = 'Default penalty for unrecognized removal types';
+
     protected int $maxPenalty = 30;
 
     public function appliesTo(array $removedItem): bool

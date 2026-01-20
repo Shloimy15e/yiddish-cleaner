@@ -22,9 +22,10 @@ class ParenthesesProcessor implements ProcessorInterface
                     if (mb_strlen($content) < 50) {
                         $removals[] = "({$content})";
                     } else {
-                        $removals[] = '(' . mb_substr($content, 0, 47) . '...)';
+                        $removals[] = '('.mb_substr($content, 0, 47).'...)';
                     }
                     $changesCount++;
+
                     return '';
                 }
 

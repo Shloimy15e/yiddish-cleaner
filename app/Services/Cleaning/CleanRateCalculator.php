@@ -37,15 +37,15 @@ class CleanRateCalculator
     protected function getDefaultRules(): array
     {
         return [
-            new SpecialCharsRemovalRule(),
-            new WhitespaceRemovalRule(),
-            new SeifMarkerRemovalRule(),
-            new ForceRemoveRule(),
-            new TitleStyleRemovalRule(),
-            new BracketRemovalRule(),
-            new ParenthesesRemovalRule(),
-            new EditorialHebrewRemovalRule(),
-            new UnknownRemovalRule(), // Fallback - must be last
+            new SpecialCharsRemovalRule,
+            new WhitespaceRemovalRule,
+            new SeifMarkerRemovalRule,
+            new ForceRemoveRule,
+            new TitleStyleRemovalRule,
+            new BracketRemovalRule,
+            new ParenthesesRemovalRule,
+            new EditorialHebrewRemovalRule,
+            new UnknownRemovalRule, // Fallback - must be last
         ];
     }
 
@@ -72,7 +72,7 @@ class CleanRateCalculator
                             'amount' => ($penalties[$rule->getName()]['amount'] ?? 0) + $penalty,
                             'count' => ($penalties[$rule->getName()]['count'] ?? 0) + 1,
                             'reason' => $rule->getDescription(),
-                            'preview' => mb_strlen($text) > 50 ? mb_substr($text, 0, 50) . '...' : $text,
+                            'preview' => mb_strlen($text) > 50 ? mb_substr($text, 0, 50).'...' : $text,
                         ];
                     }
                     break; // First matching rule wins
@@ -150,9 +150,9 @@ class CleanRateCalculator
     /**
      * Add a rule to the calculator.
      *
-     * @param CleanRateRuleInterface $rule The rule to add
-     * @param int|null $priority Position in the rule list (lower = higher priority).
-     *                           If null, adds before the fallback rule.
+     * @param  CleanRateRuleInterface  $rule  The rule to add
+     * @param  int|null  $priority  Position in the rule list (lower = higher priority).
+     *                              If null, adds before the fallback rule.
      */
     public function addRule(CleanRateRuleInterface $rule, ?int $priority = null): void
     {
@@ -174,9 +174,11 @@ class CleanRateCalculator
         foreach ($this->rules as $i => $rule) {
             if ($rule->getName() === $ruleName) {
                 array_splice($this->rules, $i, 1);
+
                 return true;
             }
         }
+
         return false;
     }
 
@@ -211,6 +213,7 @@ class CleanRateCalculator
         if ($score >= $thresholds['low']) {
             return 'low';
         }
+
         return 'poor';
     }
 }

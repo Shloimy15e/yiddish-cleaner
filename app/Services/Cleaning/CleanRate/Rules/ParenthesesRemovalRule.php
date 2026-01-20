@@ -13,11 +13,15 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class ParenthesesRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'parentheses_removal';
+
     protected string $description = 'Penalizes removal of parenthetical content (often spoken in Yiddish transcripts)';
+
     protected int $maxPenalty = 40;
 
     private const CITATION_PENALTY = 1;
+
     private const STAGE_DIRECTION_PENALTY = 2;
+
     private const UNKNOWN_PARENS_PENALTY = 6;
 
     public function appliesTo(array $removedItem): bool
@@ -27,7 +31,7 @@ class ParenthesesRemovalRule extends AbstractCleanRateRule
 
     public function calculatePenalty(array $removedItem, ?array $context = null): int
     {
-        if (!$this->appliesTo($removedItem)) {
+        if (! $this->appliesTo($removedItem)) {
             return 0;
         }
 

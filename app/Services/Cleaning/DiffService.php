@@ -4,7 +4,7 @@ namespace App\Services\Cleaning;
 
 /**
  * Service for generating diffs between original and cleaned text.
- * 
+ *
  * Provides line-by-line and word-by-word diff generation with
  * statistics about changes.
  */
@@ -13,8 +13,8 @@ class DiffService
     /**
      * Generate a line-by-line diff between original and cleaned text.
      *
-     * @param string $original The original text
-     * @param string $cleaned The cleaned/modified text
+     * @param  string  $original  The original text
+     * @param  string  $cleaned  The cleaned/modified text
      * @return array Diff information with line-by-line changes
      */
     public function generateLineDiff(string $original, string $cleaned): array
@@ -201,10 +201,10 @@ class DiffService
     {
         $originalLines = count(explode("\n", $original));
         $cleanedLines = count(explode("\n", $cleaned));
-        
+
         $originalChars = mb_strlen($original);
         $cleanedChars = mb_strlen($cleaned);
-        
+
         $originalWords = count(preg_split('/\s+/', $original, -1, PREG_SPLIT_NO_EMPTY));
         $cleanedWords = count(preg_split('/\s+/', $cleaned, -1, PREG_SPLIT_NO_EMPTY));
 
@@ -221,8 +221,8 @@ class DiffService
             'cleaned_words' => $cleanedWords,
             'words_diff' => $cleanedWords - $originalWords,
             'similarity_percent' => $similarity,
-            'reduction_percent' => $originalChars > 0 
-                ? round((1 - $cleanedChars / $originalChars) * 100, 2) 
+            'reduction_percent' => $originalChars > 0
+                ? round((1 - $cleanedChars / $originalChars) * 100, 2)
                 : 0,
         ];
     }

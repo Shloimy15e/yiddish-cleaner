@@ -10,5 +10,6 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 // Processing run channel - user can only listen to their own runs
 Broadcast::channel('runs.{runId}', function ($user, $runId) {
     $run = ProcessingRun::find($runId);
+
     return $run && $run->user_id === $user->id;
 });

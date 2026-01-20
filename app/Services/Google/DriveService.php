@@ -22,11 +22,12 @@ class DriveService
     {
         $client = $this->authService->getClientForUser($user);
 
-        if (!$client) {
+        if (! $client) {
             throw new RuntimeException('User does not have valid Google credentials');
         }
 
         $this->service = new Drive($client);
+
         return $this;
     }
 
@@ -142,7 +143,7 @@ class DriveService
 
     protected function ensureService(): void
     {
-        if (!$this->service) {
+        if (! $this->service) {
             throw new RuntimeException('Drive service not initialized. Call forUser() first.');
         }
     }

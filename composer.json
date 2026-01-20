@@ -18,6 +18,7 @@
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.9",
         "phpoffice/phpword": "^1.4",
+        "spatie/laravel-medialibrary": "^11.17",
         "tightenco/ziggy": "^2.6"
     },
     "require-dev": {

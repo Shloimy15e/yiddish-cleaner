@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Document;
+use App\Models\AudioSample;
 use App\Models\ProcessingRun;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,43 +14,63 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
-        // Get stats
+        // Base query for user's audio samples
+        $userSamplesQuery = fn () => AudioSample::whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id));
+
+        // Get stats with new workflow-oriented metrics
         $stats = [
-            'total_documents' => Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))->count(),
-            'documents_this_week' => Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))
+            'total_audio_samples' => $userSamplesQuery()->count(),
+            'audio_samples_this_week' => $userSamplesQuery()
                 ->where('created_at', '>=', now()->subWeek())->count(),
-            'pending_validation' => Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))
-                ->pendingValidation()->count(),
-            'average_clean_rate' => Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))
+            'awaiting_cleaning' => $userSamplesQuery()->needsCleaning()->count(),
+            'awaiting_review' => $userSamplesQuery()->pendingValidation()->count(),
+            'benchmark_ready' => $userSamplesQuery()->benchmarkReady()->count(),
+            'average_clean_rate' => $userSamplesQuery()
                 ->whereNotNull('clean_rate')->avg('clean_rate') ?? 0,
         ];
 
-        // Recent documents
-        $recentDocuments = Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))
+        // Recent audio samples
+        $recentAudioSamples = $userSamplesQuery()
             ->with('processingRun:id,preset,mode')
             ->latest()
-            ->take(10)
+            ->take(5)
             ->get(['id', 'name', 'processing_run_id', 'clean_rate', 'clean_rate_category', 'status', 'created_at']);
 
-        // Active runs
+        // Active import runs
         $activeRuns = ProcessingRun::where('user_id', $user->id)
             ->whereIn('status', ['pending', 'processing'])
             ->latest()
             ->take(5)
             ->get();
 
-        // Validation queue
-        $validationQueue = Document::whereHas('processingRun', fn($q) => $q->where('user_id', $user->id))
+        // Needs Cleaning queue (imported but not yet cleaned)
+        $needsCleaningQueue = $userSamplesQuery()
+            ->needsCleaning()
+            ->latest()
+            ->take(5)
+            ->get(['id', 'name', 'status', 'created_at']);
+
+        // Needs Review queue (cleaned but not validated)
+        $needsReviewQueue = $userSamplesQuery()
             ->pendingValidation()
             ->latest()
-            ->take(10)
+            ->take(5)
+            ->get(['id', 'name', 'clean_rate', 'clean_rate_category', 'created_at']);
+
+        // Benchmark Ready (validated samples)
+        $benchmarkReadyQueue = $userSamplesQuery()
+            ->benchmarkReady()
+            ->latest()
+            ->take(5)
             ->get(['id', 'name', 'clean_rate', 'clean_rate_category', 'created_at']);
 
         return Inertia::render('Dashboard', [
             'stats' => $stats,
-            'recentDocuments' => $recentDocuments,
+            'recentAudioSamples' => $recentAudioSamples,
             'activeRuns' => $activeRuns,
-            'validationQueue' => $validationQueue,
+            'needsCleaningQueue' => $needsCleaningQueue,
+            'needsReviewQueue' => $needsReviewQueue,
+            'benchmarkReadyQueue' => $benchmarkReadyQueue,
         ]);
     }
 }

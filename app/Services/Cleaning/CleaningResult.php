@@ -30,6 +30,7 @@ class CleaningResult
         if ($text === '') {
             return 0;
         }
+
         return count(preg_split('/\s+/u', $text));
     }
 
@@ -40,6 +41,7 @@ class CleaningResult
             return 0;
         }
         $cleaned = mb_strlen($this->cleanedText);
+
         return round((($original - $cleaned) / $original) * 100, 2);
     }
 

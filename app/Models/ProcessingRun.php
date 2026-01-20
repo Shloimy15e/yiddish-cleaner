@@ -40,9 +40,9 @@ class ProcessingRun extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function documents(): HasMany
+    public function audioSamples(): HasMany
     {
-        return $this->hasMany(Document::class);
+        return $this->hasMany(AudioSample::class);
     }
 
     public function incrementCompleted(): void
@@ -61,7 +61,7 @@ class ProcessingRun extends Model
     {
         if (($this->completed + $this->failed) >= $this->total) {
             $updates = [
-                'status' => $this->failed > 0 ? 'completed_with_errors' : 'completed'
+                'status' => $this->failed > 0 ? 'completed_with_errors' : 'completed',
             ];
 
             if ($this->failed > 0) {
@@ -74,7 +74,10 @@ class ProcessingRun extends Model
 
     public function getProgressAttribute(): float
     {
-        if ($this->total === 0) return 0;
+        if ($this->total === 0) {
+            return 0;
+        }
+
         return round(($this->completed + $this->failed) / $this->total * 100, 1);
     }
 

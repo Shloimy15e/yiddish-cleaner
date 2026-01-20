@@ -13,7 +13,9 @@ use App\Services\Cleaning\CleanRate\AbstractCleanRateRule;
 class SeifMarkerRemovalRule extends AbstractCleanRateRule
 {
     protected string $name = 'seif_marker_removal';
+
     protected string $description = 'Minimal penalty for seif/gematria markers (clearly structural)';
+
     protected int $maxPenalty = 5;
 
     public function appliesTo(array $removedItem): bool

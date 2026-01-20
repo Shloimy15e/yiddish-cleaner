@@ -20,6 +20,7 @@ class BracketsProcessor implements ProcessorInterface
             // If the entire line is a bracketed note, keep it (don't remove full bracketed paragraphs)
             if (preg_match('/^\[.+\]$/', $trimmed)) {
                 $result[] = $line;
+
                 continue;
             }
 
@@ -31,9 +32,10 @@ class BracketsProcessor implements ProcessorInterface
                     if (mb_strlen($content) < 100) {
                         $removals[] = $content;
                     } else {
-                        $removals[] = mb_substr($content, 0, 50) . '...]';
+                        $removals[] = mb_substr($content, 0, 50).'...]';
                     }
                     $changesCount++;
+
                     return '';
                 },
                 $line
