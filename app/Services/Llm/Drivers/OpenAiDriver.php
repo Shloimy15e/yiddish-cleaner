@@ -19,17 +19,23 @@ class OpenAiDriver implements LlmDriverInterface
             throw new RuntimeException('OpenAI API key not configured');
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => "Bearer {$this->apiKey}",
-            'Content-Type' => 'application/json',
-        ])->timeout(120)->post("{$this->baseUrl}/chat/completions", [
+        $requestData = [
             'model' => $options['model'] ?? $this->model,
             'messages' => [
                 ['role' => 'user', 'content' => $prompt],
             ],
             'temperature' => $options['temperature'] ?? 0.3,
-            'max_tokens' => $options['max_tokens'] ?? 4096,
-        ]);
+        ];
+
+        // Only set max_tokens if explicitly provided
+        if (isset($options['max_tokens'])) {
+            $requestData['max_tokens'] = $options['max_tokens'];
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => "Bearer {$this->apiKey}",
+            'Content-Type' => 'application/json',
+        ])->timeout(600)->post("{$this->baseUrl}/chat/completions", $requestData);
 
         if (! $response->successful()) {
             throw new RuntimeException(

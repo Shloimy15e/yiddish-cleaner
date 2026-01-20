@@ -99,6 +99,7 @@ const getProviderLabel = (provider: string) => {
         anthropic: 'Anthropic',
         google: 'Google AI',
         groq: 'Groq',
+        yiddishlabs: 'YiddishLabs',
         whisper: 'OpenAI Whisper',
         google_asr: 'Google Speech-to-Text',
     };

@@ -20,10 +20,13 @@ class ParserService
 
     /**
      * Extract text from a document file (docx, doc, txt).
+     *
+     * @param  string  $filePath  Path to the file
+     * @param  string|null  $extension  Optional extension override (useful for temp files without extensions)
      */
-    public function extractText(string $filePath): string
+    public function extractText(string $filePath, ?string $extension = null): string
     {
-        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $extension = strtolower($extension ?? pathinfo($filePath, PATHINFO_EXTENSION));
 
         return match ($extension) {
             'txt' => file_get_contents($filePath),

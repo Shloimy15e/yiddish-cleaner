@@ -68,7 +68,7 @@
 - [x] "Clean Transcript" button triggers cleaning
 - [x] Show loading state during cleaning
 - [x] After clean: show diff view (existing)
-- [x] Add "Re-clean with different settings" option
+- [x] Add "Re-clean with different settings" option (collapsible form)
 
 ### 4. Update Import Page (Create.vue) ✅
 
@@ -95,11 +95,11 @@
 - [x] "Process" → "Import"
 - [x] Updated sidebar href to `audio-samples.create`
 
-### 7. Add Edit Capability
+### 7. Add Edit Capability ✅
 
-- [ ] Edit `reference_text_clean` inline
-- [ ] `PATCH /audio-samples/{id}` endpoint
-- [ ] Save updates status history
+- [x] Edit `reference_text_clean` inline
+- [x] `PATCH /audio-samples/{id}` endpoint
+- [x] Save updates status history
 
 ### 8. Create AudioSample Without Transcript ✅
 
@@ -113,27 +113,82 @@
 - [x] `AudioSampleController@uploadTranscript` endpoint
   - `POST /audio-samples/{id}/transcript`
 - [x] Route defined in `web.php`
-- [ ] UI: "Replace Transcript" option on detail page (resets cleaned text)
+- [x] UI: "Replace Transcript" option on detail page (resets cleaned text)
+
+### 10. UI/UX Improvements ✅
+
+- [x] **Index.vue**: Update status column to match new workflow statuses
+  - Show proper status badges (Needs Transcript, Needs Cleaning, Ready for Review, Benchmark Ready, Failed)
+  - Remove old "processing" status references
+- [x] **Index.vue**: Update "Preset" column to "Method"
+  - Show preset name for rule-based cleaning (with chip icon)
+  - Show model name for LLM cleaning (with sparkle icon)
+- [x] **Index.vue**: Add row selection for bulk operations
+  - Checkbox column with select all
+  - Bulk action bar when items selected
+  - Bulk clean action for samples in "imported" status
+- [x] **Index.vue**: Improved pagination
+  - Smart pagination with ellipsis for many pages
+  - Category filter added
+- [x] **Show.vue**: Improve cleaning form UX
+  - Make re-clean more prominent for already-cleaned samples (collapsible card instead of hidden details)
+  - Clearer visual hierarchy for workflow steps
 
 ---
 
-## Part 2: ASR Benchmarking (Future)
+## Part 2: ASR Benchmarking ✅
 
-### Transcribe (Step 5)
-- [ ] ASR service integration
-- [ ] "Transcribe" button on validated AudioSamples
-- [ ] Calculate WER/CER vs reference
-- [ ] Save as `Transcription` model
+### ASR Service Layer ✅
+- [x] `AsrDriverInterface` - Common interface for ASR providers
+- [x] `AsrManager` - Factory for creating driver instances
+- [x] `YiddishLabsDriver` - YiddishLabs API integration with async polling
+- [x] `WhisperDriver` - OpenAI Whisper API integration
+- [x] `AsrResult` - Data transfer object for transcription results
+- [x] Configuration in `config/asr.php`
 
-### Import Transcriptions
-- [ ] Import .txt with model name/version
-- [ ] Bulk import
+### WER/CER Calculation ✅
+- [x] `WerCalculator` - Custom Levenshtein-based implementation
+- [x] `WerResult` - Data object with WER, CER, and error breakdown
+- [x] Calculates substitutions, insertions, deletions at word and character level
 
-### Benchmark Views
-- [ ] Model leaderboard
-- [ ] Per-sample comparison
-- [ ] Per-model results
-- [ ] Charts & export
+### Transcription Job ✅
+- [x] `TranscribeAudioSampleJob` - Queue job for ASR transcription
+- [x] Dispatches ASR request, calculates WER/CER, saves Transcription
+- [x] Handles async polling for YiddishLabs provider
+
+### Controllers ✅
+- [x] `TranscriptionController` - Manual entry, import, delete, recalculate
+- [x] `BenchmarkController` - Public leaderboard, model detail, comparison views
+- [x] `AsrController` - API endpoint for listing ASR providers
+- [x] `AudioSampleController` - Added `transcribe()` and `bulkTranscribe()` methods
+
+### UI: AudioSample Detail (Show.vue) ✅
+- [x] ASR transcription form (provider/model selection, notes)
+- [x] Manual benchmark entry form (model name, version, hypothesis text, notes)
+- [x] Transcriptions list with WER/CER display
+- [x] Error breakdown (S/I/D counts)
+- [x] Delete transcription button
+- [x] Only visible for "Benchmark Ready" samples
+
+### UI: Benchmark Views ✅
+- [x] `Benchmark/Index.vue` - Public leaderboard with sortable columns
+- [x] `Benchmark/Model.vue` - Per-model detail with error breakdown chart
+- [x] `Benchmark/Compare.vue` - Multi-model comparison view
+- [x] `AppSidebar.vue` - Added top-level "Benchmarks" navigation
+
+### Routes ✅
+- [x] `POST /audio-samples/{id}/transcribe` - Run ASR transcription
+- [x] `POST /audio-samples/{id}/transcriptions` - Manual entry
+- [x] `DELETE /audio-samples/{id}/transcriptions/{transcription}` - Delete
+- [x] `POST /transcriptions/{id}/recalculate` - Recalculate WER/CER
+- [x] `GET /benchmarks` - Public leaderboard
+- [x] `GET /benchmarks/{model}` - Model detail
+- [x] `GET /benchmarks/compare` - Comparison view
+- [x] `GET /api/asr/providers` - List ASR providers
+
+### Settings Integration ✅
+- [x] `SettingsController` - Added yiddishlabs to ASR providers list
+- [x] `Credentials.vue` - Added YiddishLabs to provider labels
 
 ---
 
@@ -143,11 +198,17 @@
 |------|-------|
 | Import/Create | `AudioSampleController.php` (`create`, `store`, `importSheet`, `showRun`) |
 | Clean | `AudioSampleController.php` (`clean`) |
+| Transcribe | `AudioSampleController.php` (`transcribe`, `bulkTranscribe`) |
+| ASR Service | `app/Services/Asr/*` |
+| ASR Job | `TranscribeAudioSampleJob.php` |
+| Transcription CRUD | `TranscriptionController.php` |
+| Benchmarks | `BenchmarkController.php`, `Benchmark/*.vue` |
 | Detail page | `AudioSamples/Show.vue` |
 | Import page | `AudioSamples/Create.vue` |
 | Dashboard | `Dashboard.vue`, `DashboardController.php` |
 | Sidebar | `AppSidebar.vue` |
 | Routes | `routes/web.php` |
+| ASR Config | `config/asr.php` |
 
 ---
 
@@ -155,6 +216,12 @@
 
 ```
 pending_transcript → imported → cleaning → cleaned → validated
-        ↓               ↑                     │
-  (upload transcript)   └─── (re-clean) ──────┘
+        ↓               ↑                     │          │
+  (upload transcript)   └─── (re-clean) ──────┘          │
+                                                         ↓
+                                                  [ASR Transcription]
+                                                         │
+                                                         ↓
+                                                   Transcription
+                                                  (WER/CER stored)
 ```

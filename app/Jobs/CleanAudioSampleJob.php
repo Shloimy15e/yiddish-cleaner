@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\AudioSample;
+use App\Models\AudioSampleStatusHistory;
 use App\Services\Cleaning\CleanerService;
 use App\Services\Cleaning\CleaningResult;
 use App\Services\Cleaning\CleanRateCalculator;
@@ -15,9 +16,7 @@ use Illuminate\Queue\SerializesModels;
 use Throwable;
 
 /**
- * Clean an audio sample's transcript (async job for batch operations).
- *
- * For single sample cleaning, use CleaningService::cleanSample() directly.
+ * Clean an audio sample's transcript (async job).
  */
 class CleanAudioSampleJob implements ShouldQueue
 {
@@ -82,6 +81,21 @@ class CleanAudioSampleJob implements ShouldQueue
                 'validated_by' => null,
                 'review_notes' => null,
             ]);
+
+            // Log status history
+            AudioSampleStatusHistory::log(
+                audioSample: $this->audioSample,
+                action: AudioSampleStatusHistory::ACTION_CLEANED,
+                fromStatus: AudioSample::STATUS_CLEANING,
+                toStatus: AudioSample::STATUS_CLEANED,
+                metadata: [
+                    'preset' => $this->preset,
+                    'mode' => $this->mode,
+                    'clean_rate' => $cleanRate->score,
+                    'llm_provider' => $this->llmProvider,
+                    'llm_model' => $this->llmModel,
+                ],
+            );
 
         } catch (Throwable $e) {
             $this->audioSample->update([

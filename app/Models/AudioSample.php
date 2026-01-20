@@ -82,11 +82,27 @@ class AudioSample extends Model implements HasMedia
         return $this->hasMany(Transcription::class);
     }
 
+    public function statusHistory(): HasMany
+    {
+        return $this->hasMany(AudioSampleStatusHistory::class)->orderByDesc('created_at');
+    }
+
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('audio')
             ->singleFile()
-            ->acceptsMimeTypes(['audio/*']);
+            ->acceptsMimeTypes([
+                'audio/mpeg',      // .mp3
+                'audio/mp3',       // .mp3 (alternative)
+                'audio/wav',       // .wav
+                'audio/x-wav',     // .wav (alternative)
+                'audio/ogg',       // .ogg
+                'audio/flac',      // .flac
+                'audio/x-flac',    // .flac (alternative)
+                'audio/mp4',       // .m4a
+                'audio/x-m4a',     // .m4a (alternative)
+                'audio/aac',       // .aac
+            ]);
 
         // Original reference transcript (docx, txt, pdf, etc.)
         $this->addMediaCollection('reference_transcript')
@@ -150,12 +166,26 @@ class AudioSample extends Model implements HasMedia
      */
     public function validate(?string $validatedBy = null, ?string $notes = null): void
     {
+        $previousStatus = $this->status;
+
         $this->update([
             'status' => self::STATUS_VALIDATED,
             'validated_at' => now(),
             'validated_by' => $validatedBy,
             'review_notes' => $notes,
         ]);
+
+        // Log status history
+        AudioSampleStatusHistory::log(
+            audioSample: $this,
+            action: AudioSampleStatusHistory::ACTION_VALIDATED,
+            fromStatus: $previousStatus,
+            toStatus: self::STATUS_VALIDATED,
+            notes: $notes,
+            metadata: [
+                'validated_by' => $validatedBy,
+            ],
+        );
     }
 
     /**
@@ -163,12 +193,22 @@ class AudioSample extends Model implements HasMedia
      */
     public function unvalidate(): void
     {
+        $previousStatus = $this->status;
+
         $this->update([
             'status' => self::STATUS_CLEANED,
             'validated_at' => null,
             'validated_by' => null,
             'review_notes' => null,
         ]);
+
+        // Log status history
+        AudioSampleStatusHistory::log(
+            audioSample: $this,
+            action: AudioSampleStatusHistory::ACTION_UNVALIDATED,
+            fromStatus: $previousStatus,
+            toStatus: self::STATUS_CLEANED,
+        );
     }
 
     /**

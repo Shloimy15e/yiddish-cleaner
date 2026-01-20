@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\AsrController;
 use App\Http\Controllers\Api\LlmController;
 use App\Http\Controllers\AudioSampleController;
+use App\Http\Controllers\BenchmarkController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TrainingController;
+use App\Http\Controllers\TranscriptionController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -32,12 +35,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/audio-samples/{audioSample}', [AudioSampleController::class, 'update'])->name('audio-samples.update');
     Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');
     Route::post('/audio-samples/{audioSample}/clean', [AudioSampleController::class, 'clean'])->name('audio-samples.clean');
+    Route::post('/audio-samples/bulk-clean', [AudioSampleController::class, 'bulkClean'])->name('audio-samples.bulk-clean');
     Route::post('/audio-samples/{audioSample}/transcript', [AudioSampleController::class, 'uploadTranscript'])->name('audio-samples.upload-transcript');
+    Route::post('/audio-samples/{audioSample}/audio', [AudioSampleController::class, 'uploadAudio'])->name('audio-samples.upload-audio');
     Route::get('/audio-samples/{audioSample}/download', [AudioSampleController::class, 'download'])->name('audio-samples.download');
     Route::get('/audio-samples/{audioSample}/download/original', [AudioSampleController::class, 'downloadOriginal'])->name('audio-samples.download.original');
     Route::get('/audio-samples/{audioSample}/download/text', [AudioSampleController::class, 'downloadText'])->name('audio-samples.download.text');
     Route::post('/audio-samples/{audioSample}/validate', [AudioSampleController::class, 'validate'])->name('audio-samples.validate');
     Route::delete('/audio-samples/{audioSample}/validate', [AudioSampleController::class, 'unvalidate'])->name('audio-samples.unvalidate');
+
+    // ASR Transcription
+    Route::post('/audio-samples/{audioSample}/transcribe', [AudioSampleController::class, 'transcribe'])->name('audio-samples.transcribe');
+    Route::post('/audio-samples/bulk-transcribe', [AudioSampleController::class, 'bulkTranscribe'])->name('audio-samples.bulk-transcribe');
+
+    // Transcriptions (nested under audio samples)
+    Route::post('/audio-samples/{audioSample}/transcriptions', [TranscriptionController::class, 'store'])->name('transcriptions.store');
+    Route::post('/audio-samples/{audioSample}/transcriptions/import', [TranscriptionController::class, 'import'])->name('transcriptions.import');
+    Route::get('/audio-samples/{audioSample}/transcriptions/{transcription}', [TranscriptionController::class, 'show'])->name('transcriptions.show');
+    Route::delete('/audio-samples/{audioSample}/transcriptions/{transcription}', [TranscriptionController::class, 'destroy'])->name('transcriptions.destroy');
+    Route::post('/audio-samples/{audioSample}/transcriptions/{transcription}/recalculate', [TranscriptionController::class, 'recalculate'])->name('transcriptions.recalculate');
 
     // Legacy redirects
     Route::get('/process', fn () => redirect()->route('audio-samples.create'))->name('process.legacy');
@@ -46,6 +62,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // API - LLM Providers
     Route::get('/api/llm/providers', [LlmController::class, 'providers'])->name('api.llm.providers');
     Route::get('/api/llm/providers/{provider}/models', [LlmController::class, 'models'])->name('api.llm.models');
+
+    // API - ASR Providers
+    Route::get('/api/asr/providers', [AsrController::class, 'providers'])->name('api.asr.providers');
 
     // Training
     if (config('features.training')) {
@@ -58,5 +77,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/training/{training}', [TrainingController::class, 'destroy'])->name('training.destroy');
     }
 });
+
+// Public Benchmark Routes (no auth required)
+Route::get('/benchmark', [BenchmarkController::class, 'index'])->name('benchmark.index');
+Route::get('/benchmark/compare', [BenchmarkController::class, 'compare'])->name('benchmark.compare');
+Route::get('/benchmark/models/{modelName}', [BenchmarkController::class, 'model'])->name('benchmark.model')->where('modelName', '.*');
 
 require __DIR__.'/settings.php';

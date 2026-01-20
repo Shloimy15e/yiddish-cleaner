@@ -238,12 +238,34 @@ class TitleStyleProcessor implements ProcessorInterface
     }
 
     /**
+     * Check if a pattern appears to be a literal string (not a regex).
+     * Literal patterns don't contain regex metacharacters.
+     */
+    protected function isLiteralPattern(string $pattern): bool
+    {
+        // If it contains regex metacharacters that are likely intentional, treat as regex
+        $regexIndicators = ['.*', '.+', '^', '$', '\\d', '\\w', '\\s', '[', '(', '|', '\\b'];
+
+        foreach ($regexIndicators as $indicator) {
+            if (str_contains($pattern, $indicator)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Check if text matches any exception pattern.
      */
     protected function matchesException(string $text): bool
     {
         foreach ($this->exceptionPatterns as $pattern) {
-            if (@preg_match("/{$pattern}/u", $text)) {
+            $regexPattern = $this->isLiteralPattern($pattern)
+                ? '/'.preg_quote($pattern, '/').'/u'
+                : "/{$pattern}/u";
+
+            if (@preg_match($regexPattern, $text)) {
                 return true;
             }
         }
@@ -257,7 +279,11 @@ class TitleStyleProcessor implements ProcessorInterface
     protected function matchesForceRemove(string $text): bool
     {
         foreach ($this->forceRemovePatterns as $pattern) {
-            if (@preg_match("/{$pattern}/u", $text)) {
+            $regexPattern = $this->isLiteralPattern($pattern)
+                ? '/'.preg_quote($pattern, '/').'/u'
+                : "/{$pattern}/u";
+
+            if (@preg_match($regexPattern, $text)) {
                 return true;
             }
         }

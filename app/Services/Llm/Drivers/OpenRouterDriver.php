@@ -26,19 +26,30 @@ class OpenRouterDriver implements LlmDriverInterface
             throw new RuntimeException('OpenRouter API key not configured');
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => "Bearer {$this->apiKey}",
-            'Content-Type' => 'application/json',
-            'HTTP-Referer' => config('app.url', 'http://localhost'),
-            'X-Title' => config('app.name', 'Yiddish Cleaner'),
-        ])->timeout(120)->post("{$this->baseUrl}/chat/completions", [
+        $requestData = [
             'model' => $options['model'] ?? $this->model,
             'messages' => [
                 ['role' => 'user', 'content' => $prompt],
             ],
             'temperature' => $options['temperature'] ?? 0.3,
-            'max_tokens' => $options['max_tokens'] ?? 4096,
-        ]);
+        ];
+
+        // Only set max_tokens if explicitly provided, otherwise let model use its full capacity
+        if (isset($options['max_tokens'])) {
+            $requestData['max_tokens'] = $options['max_tokens'];
+        }
+
+        // Use streaming to avoid timeout issues on long responses
+        $requestData['stream'] = true;
+
+        $response = Http::withHeaders([
+            'Authorization' => "Bearer {$this->apiKey}",
+            'Content-Type' => 'application/json',
+            'HTTP-Referer' => config('app.url', 'http://localhost'),
+            'X-Title' => config('app.name', 'Yiddish Cleaner'),
+        ])->connectTimeout(30)->timeout(900)->withOptions([
+            'stream' => true,
+        ])->post("{$this->baseUrl}/chat/completions", $requestData);
 
         if (! $response->successful()) {
             throw new RuntimeException(
@@ -46,7 +57,25 @@ class OpenRouterDriver implements LlmDriverInterface
             );
         }
 
-        return $response->json('choices.0.message.content', '');
+        // Parse Server-Sent Events (SSE) stream and concatenate content
+        $content = '';
+        $body = $response->body();
+        
+        foreach (explode("\n", $body) as $line) {
+            $line = trim($line);
+            if (str_starts_with($line, 'data: ')) {
+                $data = substr($line, 6);
+                if ($data === '[DONE]') {
+                    break;
+                }
+                $json = json_decode($data, true);
+                if (isset($json['choices'][0]['delta']['content'])) {
+                    $content .= $json['choices'][0]['delta']['content'];
+                }
+            }
+        }
+
+        return $content;
     }
 
     public function getModel(): string

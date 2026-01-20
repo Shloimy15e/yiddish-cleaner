@@ -22,9 +22,18 @@ class GoogleDriver implements LlmDriverInterface
         $model = $options['model'] ?? $this->model;
         $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
 
+        $generationConfig = [
+            'temperature' => $options['temperature'] ?? 0.3,
+        ];
+
+        // Only set maxOutputTokens if explicitly provided
+        if (isset($options['max_tokens'])) {
+            $generationConfig['maxOutputTokens'] = $options['max_tokens'];
+        }
+
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->timeout(120)->post("{$url}?key={$this->apiKey}", [
+        ])->timeout(600)->post("{$url}?key={$this->apiKey}", [
             'contents' => [
                 [
                     'parts' => [
@@ -32,10 +41,7 @@ class GoogleDriver implements LlmDriverInterface
                     ],
                 ],
             ],
-            'generationConfig' => [
-                'temperature' => $options['temperature'] ?? 0.3,
-                'maxOutputTokens' => $options['max_tokens'] ?? 4096,
-            ],
+            'generationConfig' => $generationConfig,
         ]);
 
         if (! $response->successful()) {

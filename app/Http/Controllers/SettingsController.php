@@ -22,7 +22,7 @@ class SettingsController extends Controller
             'apiCredentials' => $apiCredentials,
             'googleCredential' => $user->googleCredential,
             'llmProviders' => $llm->getProviders(),
-            'asrProviders' => ['whisper', 'google_asr'],
+            'asrProviders' => ['yiddishlabs', 'whisper', 'google_asr'],
         ]);
     }
 

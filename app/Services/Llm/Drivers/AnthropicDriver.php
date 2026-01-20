@@ -23,9 +23,9 @@ class AnthropicDriver implements LlmDriverInterface
             'x-api-key' => $this->apiKey,
             'Content-Type' => 'application/json',
             'anthropic-version' => '2023-06-01',
-        ])->timeout(120)->post("{$this->baseUrl}/messages", [
+        ])->timeout(600)->post("{$this->baseUrl}/messages", [
             'model' => $options['model'] ?? $this->model,
-            'max_tokens' => $options['max_tokens'] ?? 4096,
+            'max_tokens' => $options['max_tokens'] ?? 64000, // Anthropic requires max_tokens, use high default
             'messages' => [
                 ['role' => 'user', 'content' => $prompt],
             ],

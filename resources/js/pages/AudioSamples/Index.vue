@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
+import { SparklesIcon, CpuChipIcon } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
+
+interface ProcessingRun {
+    preset: string;
+    mode: 'rule' | 'llm';
+    llm_provider: string | null;
+    llm_model: string | null;
+}
 
 interface AudioSample {
     id: number;
@@ -12,10 +20,7 @@ interface AudioSample {
     status: string;
     validated_at: string | null;
     created_at: string;
-    processing_run: {
-        preset: string;
-        mode: string;
-    } | null;
+    processing_run: ProcessingRun | null;
 }
 
 const props = defineProps<{
@@ -28,7 +33,7 @@ const props = defineProps<{
     };
     filters: {
         search?: string;
-        validated?: string;
+        status?: string;
         category?: string;
     };
 }>();
@@ -39,13 +44,20 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 const search = ref(props.filters.search || '');
-const validated = ref(props.filters.validated || '');
+const statusFilter = ref(props.filters.status || '');
 const category = ref(props.filters.category || '');
+
+// Selection state
+const selectedIds = ref<Set<number>>(new Set());
+const selectAll = ref(false);
 
 const statusOptions = [
     { value: '', label: 'All Status' },
-    { value: 'yes', label: 'Validated' },
-    { value: 'no', label: 'Not Validated' },
+    { value: 'pending_transcript', label: 'Needs Transcript' },
+    { value: 'imported', label: 'Needs Cleaning' },
+    { value: 'cleaned', label: 'Ready for Review' },
+    { value: 'validated', label: 'Benchmark Ready' },
+    { value: 'failed', label: 'Failed' },
 ];
 
 const categoryOptions = [
@@ -57,8 +69,60 @@ const categoryOptions = [
     { value: 'poor', label: 'Poor (<25%)' },
 ];
 
-const selectedStatus = computed(() => statusOptions.find(o => o.value === validated.value) || statusOptions[0]);
+const selectedStatus = computed(() => statusOptions.find(o => o.value === statusFilter.value) || statusOptions[0]);
 const selectedCategory = computed(() => categoryOptions.find(o => o.value === category.value) || categoryOptions[0]);
+
+// Selection helpers
+const isSelected = (id: number) => selectedIds.value.has(id);
+const toggleSelection = (id: number) => {
+    if (selectedIds.value.has(id)) {
+        selectedIds.value.delete(id);
+    } else {
+        selectedIds.value.add(id);
+    }
+    selectedIds.value = new Set(selectedIds.value); // Trigger reactivity
+    updateSelectAll();
+};
+const toggleSelectAll = () => {
+    if (selectAll.value) {
+        selectedIds.value = new Set();
+    } else {
+        selectedIds.value = new Set(props.audioSamples.data.map(s => s.id));
+    }
+    selectAll.value = !selectAll.value;
+};
+const updateSelectAll = () => {
+    selectAll.value = props.audioSamples.data.length > 0 && 
+        props.audioSamples.data.every(s => selectedIds.value.has(s.id));
+};
+const selectedCount = computed(() => selectedIds.value.size);
+
+// Get samples that can be bulk cleaned (status = imported)
+const selectedForCleaning = computed(() => {
+    return props.audioSamples.data.filter(s => 
+        selectedIds.value.has(s.id)
+    );
+});
+
+// Bulk actions
+const bulkCleanForm = useForm({
+    ids: [] as number[],
+    preset: 'titles_only',
+    mode: 'rule' as 'rule' | 'llm',
+    llm_provider: 'openrouter',
+    llm_model: 'anthropic/claude-sonnet-4',
+});
+
+const submitBulkClean = () => {
+    bulkCleanForm.ids = Array.from(selectedIds.value);
+    bulkCleanForm.post(route('audio-samples.bulk-clean'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            selectedIds.value = new Set();
+            selectAll.value = false;
+        },
+    });
+};
 
 const getCategoryColor = (cat: string | null) => {
     const colors: Record<string, string> = {
@@ -71,10 +135,48 @@ const getCategoryColor = (cat: string | null) => {
     return colors[cat ?? ''] ?? 'bg-muted text-muted-foreground';
 };
 
+const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+        pending_transcript: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+        imported: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+        cleaning: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+        cleaned: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+        validated: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    };
+    return colors[status] ?? 'bg-muted text-muted-foreground';
+};
+
+const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+        pending_transcript: 'Needs Transcript',
+        imported: 'Needs Cleaning',
+        cleaning: 'Cleaning...',
+        cleaned: 'Ready for Review',
+        validated: 'Benchmark Ready',
+        failed: 'Failed',
+    };
+    return labels[status] ?? status;
+};
+
+// Get display text for cleaning method
+const getMethodDisplay = (run: ProcessingRun | null) => {
+    if (!run) return null;
+    if (run.mode === 'llm' && run.llm_model) {
+        // Extract model name from full path (e.g., "anthropic/claude-sonnet-4" -> "claude-sonnet-4")
+        const modelName = run.llm_model.split('/').pop() || run.llm_model;
+        return { mode: 'llm', text: modelName, provider: run.llm_provider };
+    }
+    if (run.preset) {
+        return { mode: 'rule', text: run.preset.replace(/_/g, ' ') };
+    }
+    return null;
+};
+
 const applyFilters = () => {
     router.get(route('audio-samples.index'), {
         search: search.value || undefined,
-        validated: validated.value || undefined,
+        status: statusFilter.value || undefined,
         category: category.value || undefined,
     }, {
         preserveState: true,
@@ -82,8 +184,8 @@ const applyFilters = () => {
     });
 };
 
-const setValidated = (option: { value: string }) => {
-    validated.value = option.value;
+const setStatus = (option: { value: string }) => {
+    statusFilter.value = option.value;
     applyFilters();
 };
 
@@ -100,6 +202,43 @@ const goToPage = (page: number) => {
         preserveState: true,
     });
 };
+
+// Smart pagination - show limited page numbers with ellipsis
+const visiblePages = computed(() => {
+    const current = props.audioSamples.current_page;
+    const last = props.audioSamples.last_page;
+    const delta = 2; // pages to show on each side of current
+    const pages: (number | 'ellipsis')[] = [];
+    
+    // Always show first page
+    pages.push(1);
+    
+    // Calculate range around current page
+    const rangeStart = Math.max(2, current - delta);
+    const rangeEnd = Math.min(last - 1, current + delta);
+    
+    // Add ellipsis if needed before range
+    if (rangeStart > 2) {
+        pages.push('ellipsis');
+    }
+    
+    // Add pages in range
+    for (let i = rangeStart; i <= rangeEnd; i++) {
+        pages.push(i);
+    }
+    
+    // Add ellipsis if needed after range
+    if (rangeEnd < last - 1) {
+        pages.push('ellipsis');
+    }
+    
+    // Always show last page (if more than 1 page)
+    if (last > 1) {
+        pages.push(last);
+    }
+    
+    return pages;
+});
 
 // Debounced search
 let searchTimeout: ReturnType<typeof setTimeout>;
@@ -131,8 +270,8 @@ watch(search, () => {
                 />
                 
                 <!-- Status Filter -->
-                <Listbox :model-value="selectedStatus" @update:model-value="setValidated">
-                    <div class="relative w-44">
+                <Listbox :model-value="selectedStatus" @update:model-value="setStatus">
+                    <div class="relative w-48">
                         <ListboxButton class="relative w-full cursor-pointer rounded-lg border bg-background py-2 pl-4 pr-10 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                             <span class="block truncate">{{ selectedStatus.label }}</span>
                             <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
@@ -203,21 +342,68 @@ watch(search, () => {
                 </Listbox>
             </div>
 
+            <!-- Bulk Action Bar (when items selected) -->
+            <div v-if="selectedCount > 0" class="rounded-xl border-2 border-primary bg-primary/5 p-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <span class="font-medium">{{ selectedCount }} selected</span>
+                    <button 
+                        @click="selectedIds = new Set(); selectAll = false"
+                        class="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                        Clear selection
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span v-if="selectedForCleaning.length > 0" class="text-sm text-muted-foreground">
+                        {{ selectedForCleaning.length }} can be cleaned
+                    </span>
+                    <button 
+                        v-if="selectedForCleaning.length > 0"
+                        @click="submitBulkClean"
+                        :disabled="bulkCleanForm.processing"
+                        class="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        <SparklesIcon class="w-4 h-4" />
+                        {{ bulkCleanForm.processing ? 'Cleaning...' : 'Bulk Clean' }}
+                    </button>
+                </div>
+            </div>
+
             <!-- Audio Samples Table -->
             <div class="rounded-xl border bg-card overflow-hidden">
                 <table class="w-full">
                     <thead class="border-b bg-muted/50">
                         <tr>
+                            <th class="px-4 py-3 text-left text-sm font-medium w-10">
+                                <input 
+                                    type="checkbox" 
+                                    :checked="selectAll"
+                                    @change="toggleSelectAll"
+                                    class="rounded border-gray-300"
+                                />
+                            </th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Name</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Clean Rate</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Preset</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Method</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Date</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">
-                        <tr v-for="sample in audioSamples.data" :key="sample.id" class="hover:bg-muted/30">
+                        <tr 
+                            v-for="sample in audioSamples.data" 
+                            :key="sample.id" 
+                            :class="['hover:bg-muted/30', isSelected(sample.id) ? 'bg-primary/5' : '']"
+                        >
+                            <td class="px-4 py-3">
+                                <input 
+                                    type="checkbox" 
+                                    :checked="isSelected(sample.id)"
+                                    @change="toggleSelection(sample.id)"
+                                    class="rounded border-gray-300"
+                                />
+                            </td>
                             <td class="px-4 py-3">
                                 <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="font-medium hover:underline">
                                     {{ sample.name }}
@@ -229,24 +415,29 @@ watch(search, () => {
                                 </span>
                                 <span v-else class="text-muted-foreground">-</span>
                             </td>
-                            <td class="px-4 py-3 text-sm text-muted-foreground">
-                                {{ sample.processing_run?.preset?.replace(/_/g, ' ') || '-' }}
+                            <td class="px-4 py-3">
+                                <template v-if="getMethodDisplay(sample.processing_run)">
+                                    <span 
+                                        v-if="getMethodDisplay(sample.processing_run)?.mode === 'llm'" 
+                                        class="inline-flex items-center gap-1.5 text-sm"
+                                    >
+                                        <SparklesIcon class="w-3.5 h-3.5 text-purple-500" />
+                                        <span class="text-muted-foreground capitalize">{{ getMethodDisplay(sample.processing_run)?.text }}</span>
+                                    </span>
+                                    <span 
+                                        v-else 
+                                        class="inline-flex items-center gap-1.5 text-sm"
+                                    >
+                                        <CpuChipIcon class="w-3.5 h-3.5 text-blue-500" />
+                                        <span class="text-muted-foreground capitalize">{{ getMethodDisplay(sample.processing_run)?.text }}</span>
+                                    </span>
+                                </template>
+                                <span v-else class="text-muted-foreground">-</span>
                             </td>
                             <td class="px-4 py-3">
-                                <span v-if="sample.status === 'failed'" class="inline-flex items-center gap-1 text-red-600 font-medium">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
-                                    </svg>
-                                    Failed
+                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium', getStatusColor(sample.status)]">
+                                    {{ getStatusLabel(sample.status) }}
                                 </span>
-                                <span v-else-if="sample.validated_at" class="inline-flex items-center gap-1 text-green-600">
-                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-                                    </svg>
-                                    Validated
-                                </span>
-                                <span v-else-if="sample.status === 'processing'" class="text-blue-600">Processing</span>
-                                <span v-else class="text-muted-foreground">Pending Validation</span>
                             </td>
                             <td class="px-4 py-3 text-sm text-muted-foreground">
                                 {{ sample.created_at }}
@@ -258,7 +449,7 @@ watch(search, () => {
                             </td>
                         </tr>
                         <tr v-if="audioSamples.data.length === 0">
-                            <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
+                            <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">
                                 No audio samples found
                             </td>
                         </tr>
@@ -273,26 +464,28 @@ watch(search, () => {
                     {{ Math.min(audioSamples.current_page * audioSamples.per_page, audioSamples.total) }} of 
                     {{ audioSamples.total }} audio samples
                 </span>
-                <div class="flex gap-2">
+                <div class="flex gap-1">
                     <button 
                         @click="goToPage(audioSamples.current_page - 1)"
                         :disabled="audioSamples.current_page === 1"
-                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50"
+                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
                     >
                         Previous
                     </button>
-                    <button 
-                        v-for="page in audioSamples.last_page" 
-                        :key="page"
-                        @click="goToPage(page)"
-                        :class="['rounded-lg px-3 py-1 text-sm', page === audioSamples.current_page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted']"
-                    >
-                        {{ page }}
-                    </button>
+                    <template v-for="(page, idx) in visiblePages" :key="idx">
+                        <span v-if="page === 'ellipsis'" class="px-2 py-1 text-muted-foreground">...</span>
+                        <button 
+                            v-else
+                            @click="goToPage(page)"
+                            :class="['rounded-lg px-3 py-1 text-sm', page === audioSamples.current_page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted']"
+                        >
+                            {{ page }}
+                        </button>
+                    </template>
                     <button 
                         @click="goToPage(audioSamples.current_page + 1)"
                         :disabled="audioSamples.current_page === audioSamples.last_page"
-                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50"
+                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
                     >
                         Next
                     </button>
