@@ -26,6 +26,7 @@ import {
     InformationCircleIcon,
     ArrowPathIcon,
     Cog6ToothIcon,
+    ArrowUpTrayIcon,
 } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import ProcessorSelector from '@/components/ProcessorSelector.vue';
@@ -102,9 +103,13 @@ const modeOptions = [
     { id: 'rule', name: 'Rule-based', description: 'Uses regex patterns', icon: CpuChipIcon },
 ];
 
+// Toggle state for sheet input type (URL vs file upload)
+const sheetInputType = ref<'url' | 'file'>('url');
+
 // Sheet form (default tab)
 const sheetForm = useForm({
     url: '',
+    file: null as File | null,
     preset: 'titles_only',
     mode: 'llm',
     processors: [] as string[],
@@ -210,10 +215,19 @@ const submitManual = () => {
     });
 };
 
+// Check if sheet form is valid
+const isSheetFormValid = computed(() => {
+    if (sheetInputType.value === 'url') {
+        return !!sheetForm.url;
+    }
+    return !!sheetForm.file;
+});
+
 const submitSheet = () => {
     sheetForm.post('/audio-samples/import', {
+        forceFormData: true,
         onSuccess: () => {
-            sheetForm.reset('url', 'sheet_name');
+            sheetForm.reset('url', 'file', 'sheet_name');
         },
     });
 };
@@ -239,6 +253,12 @@ const getSelectedMode = (modeId: string) =>
 const getSelectedModelName = computed(() => {
     const model = providerModels.value.find(m => m.id === selectedModel.value);
     return model?.name || selectedModel.value;
+});
+
+// Get selected model display name (for consistency with Show.vue)
+const selectedModelDisplay = computed(() => {
+    const model = providerModels.value.find(m => m.id === sheetForm.llm_model);
+    return model?.name || sheetForm.llm_model;
 });
 
 // Echo listener for real-time updates
@@ -325,22 +345,55 @@ onUnmounted(() => {
                                 </a>
                             </div>
                             <form v-else @submit.prevent="submitSheet" class="space-y-6">
-                                <!-- Sheet URL -->
+                                <!-- Sheet Source -->
                                 <div>
-                                    <label class="block text-sm font-medium mb-2">
-                                        Google Sheet URL
-                                        <InformationCircleIcon 
-                                            class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
-                                            v-tippy="'Paste the full URL of your Google Sheet'"
+                                    <div class="flex items-center justify-between mb-2">
+                                        <label class="text-sm font-medium">
+                                            Sheet Source
+                                            <InformationCircleIcon 
+                                                class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
+                                                v-tippy="sheetInputType === 'url' ? 'Paste the full URL of your Google Sheet' : 'Upload a CSV or Excel file'"
+                                            />
+                                        </label>
+                                        <div class="flex rounded-lg border border-border p-0.5">
+                                            <button 
+                                                type="button"
+                                                @click="sheetInputType = 'url'"
+                                                :class="[
+                                                    'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                                                    sheetInputType === 'url' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                                                ]"
+                                            >URL</button>
+                                            <button 
+                                                type="button"
+                                                @click="sheetInputType = 'file'"
+                                                :class="[
+                                                    'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                                                    sheetInputType === 'file' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                                                ]"
+                                            >Upload</button>
+                                        </div>
+                                    </div>
+                                    <div v-if="sheetInputType === 'url'">
+                                        <input 
+                                            v-model="sheetForm.url"
+                                            type="url" 
+                                            placeholder="https://docs.google.com/spreadsheets/d/..."
+                                            class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                                         />
-                                    </label>
-                                    <input 
-                                        v-model="sheetForm.url"
-                                        type="url" 
-                                        placeholder="https://docs.google.com/spreadsheets/d/..."
-                                        class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                    />
+                                        <p class="mt-1 text-xs text-muted-foreground">Paste a Google Sheets URL</p>
+                                    </div>
+                                    <div v-else>
+                                        <input 
+                                            type="file"
+                                            accept=".csv,.xlsx,.xls"
+                                            @change="(e: Event) => sheetForm.file = (e.target as HTMLInputElement).files?.[0] || null"
+                                            class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                                        />
+                                        <p class="mt-1 text-xs text-muted-foreground">Upload a CSV or Excel file (.csv, .xlsx, .xls)</p>
+                                    </div>
                                     <p v-if="sheetForm.errors.url" class="mt-1 text-sm text-destructive">{{ sheetForm.errors.url }}</p>
+                                    <p v-if="sheetForm.errors.file" class="mt-1 text-sm text-destructive">{{ sheetForm.errors.file }}</p>
                                 </div>
 
                                 <!-- Sheet Options -->
@@ -527,13 +580,12 @@ onUnmounted(() => {
                                 <!-- LLM Options (shown when mode is 'llm') -->
                                 <div v-if="sheetForm.mode === 'llm'" class="grid gap-4 md:grid-cols-2 p-4 rounded-lg bg-muted/30 border border-border">
                                     <div>
-                                        <label class="block text-sm font-medium mb-2">
-                                            LLM Provider
-                                            <SparklesIcon class="w-4 h-4 inline-block ml-1 text-primary" />
+                                        <label class="mb-1 block text-sm font-medium">
+                                            Provider
                                         </label>
                                         <Listbox v-model="selectedProvider">
                                             <div class="relative">
-                                                <ListboxButton class="relative w-full rounded-lg border border-border bg-background py-2.5 pl-4 pr-10 text-left focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all">
+                                                <ListboxButton class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20">
                                                     <span class="block truncate">{{ llmProviders[selectedProvider]?.name || selectedProvider }}</span>
                                                     <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                                                         <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
@@ -547,7 +599,7 @@ onUnmounted(() => {
                                                         v-slot="{ active, selected }"
                                                     >
                                                         <li :class="[
-                                                            'relative cursor-pointer select-none py-2 pl-10 pr-4',
+                                                            'relative cursor-pointer py-2 pr-4 pl-10 select-none',
                                                             active ? 'bg-primary/10 text-foreground' : 'text-foreground'
                                                         ]">
                                                             <span class="flex items-center gap-2">
@@ -565,14 +617,14 @@ onUnmounted(() => {
                                     </div>
 
                                     <div>
-                                        <label class="block text-sm font-medium mb-2">
+                                        <label class="mb-1 block text-sm font-medium">
                                             Model
-                                            <ArrowPathIcon v-if="loadingModels" class="w-4 h-4 inline-block ml-1 animate-spin" />
+                                            <ArrowPathIcon v-if="loadingModels" class="ml-1 inline-block h-4 w-4 animate-spin" />
                                         </label>
                                         <Listbox v-model="selectedModel" :disabled="loadingModels">
                                             <div class="relative">
-                                                <ListboxButton class="relative w-full rounded-lg border border-border bg-background py-2.5 pl-4 pr-10 text-left focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50">
-                                                    <span class="block truncate">{{ getSelectedModelName }}</span>
+                                                <ListboxButton class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50">
+                                                    <span class="block truncate">{{ selectedModelDisplay }}</span>
                                                     <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                                                         <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
                                                     </span>
@@ -585,10 +637,11 @@ onUnmounted(() => {
                                                         v-slot="{ active, selected }"
                                                     >
                                                         <li :class="[
-                                                            'relative cursor-pointer select-none py-2 pl-10 pr-4',
+                                                            'relative cursor-pointer py-2 pr-4 pl-10 select-none',
                                                             active ? 'bg-primary/10 text-foreground' : 'text-foreground'
                                                         ]">
                                                             <span :class="['block truncate', selected && 'font-medium']">{{ model.name }}</span>
+                                                            <span v-if="model.context_length" class="block text-xs text-muted-foreground">{{ (model.context_length / 1000).toFixed(0) }}k context</span>
                                                             <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
                                                                 <CheckIcon class="h-5 w-5" />
                                                             </span>
@@ -602,12 +655,13 @@ onUnmounted(() => {
 
                                 <button 
                                     type="submit" 
-                                    :disabled="sheetForm.processing || !sheetForm.url"
+                                    :disabled="sheetForm.processing || !isSheetFormValid"
                                     class="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
                                 >
                                     <ArrowPathIcon v-if="sheetForm.processing" class="w-4 h-4 animate-spin" />
+                                    <ArrowUpTrayIcon v-else-if="sheetInputType === 'file'" class="w-4 h-4" />
                                     <TableCellsIcon v-else class="w-4 h-4" />
-                                    {{ sheetForm.processing ? 'Importing...' : 'Import from Sheet' }}
+                                    {{ sheetForm.processing ? 'Importing...' : (sheetInputType === 'file' ? 'Upload & Import' : 'Import from Sheet') }}
                                 </button>
                             </form>
                         </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\CleanAudioSampleJob;
 use App\Jobs\ProcessSheetBatchJob;
+use App\Jobs\ProcessSpreadsheetFileJob;
 use App\Jobs\TranscribeAudioSampleJob;
 use App\Models\AudioSample;
 use App\Models\AudioSampleStatusHistory;
@@ -575,12 +576,13 @@ class AudioSampleController extends Controller
     }
 
     /**
-     * Batch import audio samples from a Google Sheet.
+     * Batch import audio samples from a Google Sheet or uploaded spreadsheet file.
      */
     public function importSheet(Request $request): RedirectResponse
     {
         $request->validate([
-            'url' => 'required|url',
+            'url' => 'required_without:file|nullable|url',
+            'file' => 'required_without:url|nullable|file|mimes:csv,xlsx,xls|max:10240',
             'preset' => 'required|string',
             'mode' => 'required|in:rule,llm',
             'llm_provider' => 'nullable|string',
@@ -596,6 +598,46 @@ class AudioSampleController extends Controller
         ]);
 
         $user = $request->user();
+        $isFileUpload = $request->hasFile('file');
+
+        // Handle file upload
+        if ($isFileUpload) {
+            $file = $request->file('file');
+            $filePath = $file->store('spreadsheet-imports', 'local');
+
+            // Create run for file upload
+            $run = ProcessingRun::create([
+                'user_id' => $user->id,
+                'batch_id' => Str::uuid(),
+                'preset' => $request->preset,
+                'mode' => $request->mode,
+                'llm_provider' => $request->llm_provider ?? 'openrouter',
+                'llm_model' => $request->llm_model ?? 'anthropic/claude-sonnet-4',
+                'source_type' => 'file',
+                'source_url' => $file->getClientOriginalName(),
+                'status' => 'pending',
+                'options' => [
+                    'processors' => $request->processors,
+                    'row_limit' => $request->row_limit ?? 100,
+                    'skip_completed' => $request->skip_completed ?? true,
+                    'output_folder_url' => $request->output_folder_url,
+                ],
+            ]);
+
+            // Dispatch file processing job
+            ProcessSpreadsheetFileJob::dispatch(
+                $run,
+                $filePath,
+                $request->doc_link_column ?? 'Doc Link',
+                $request->audio_url_column ?? '',
+            );
+
+            return redirect()->route('audio-samples.create')
+                ->with('success', 'File import started.')
+                ->with('runId', $run->id);
+        }
+
+        // Handle Google Sheets URL
         $url = $request->url;
 
         $spreadsheetId = SheetsService::extractSpreadsheetId($url);
