@@ -248,6 +248,13 @@ class TitleStyleProcessor implements ProcessorInterface
 
         foreach ($regexIndicators as $indicator) {
             if (str_contains($pattern, $indicator)) {
+                // But if it contains PCRE2-unsupported escapes, treat as literal to avoid errors
+                $unsupportedEscapes = ['\\F', '\\L', '\\l', '\\N', '\\U', '\\u'];
+                foreach ($unsupportedEscapes as $escape) {
+                    if (str_contains($pattern, $escape)) {
+                        return true; // Force literal treatment
+                    }
+                }
                 return false;
             }
         }
@@ -261,12 +268,17 @@ class TitleStyleProcessor implements ProcessorInterface
     protected function matchesException(string $text): bool
     {
         foreach ($this->exceptionPatterns as $pattern) {
-            $regexPattern = $this->isLiteralPattern($pattern)
-                ? '/'.preg_quote($pattern, '/').'/u'
-                : "/{$pattern}/u";
+            try {
+                $regexPattern = $this->isLiteralPattern($pattern)
+                    ? '/'.preg_quote($pattern, '/').'/u'
+                    : "/{$pattern}/u";
 
-            if (@preg_match($regexPattern, $text)) {
-                return true;
+                if (@preg_match($regexPattern, $text)) {
+                    return true;
+                }
+            } catch (\Throwable $e) {
+                // Log the error but continue processing
+                report($e);
             }
         }
 
@@ -279,12 +291,17 @@ class TitleStyleProcessor implements ProcessorInterface
     protected function matchesForceRemove(string $text): bool
     {
         foreach ($this->forceRemovePatterns as $pattern) {
-            $regexPattern = $this->isLiteralPattern($pattern)
-                ? '/'.preg_quote($pattern, '/').'/u'
-                : "/{$pattern}/u";
+            try {
+                $regexPattern = $this->isLiteralPattern($pattern)
+                    ? '/'.preg_quote($pattern, '/').'/u'
+                    : "/{$pattern}/u";
 
-            if (@preg_match($regexPattern, $text)) {
-                return true;
+                if (@preg_match($regexPattern, $text)) {
+                    return true;
+                }
+            } catch (\Throwable $e) {
+                // Log the error but continue processing
+                report($e);
             }
         }
 
