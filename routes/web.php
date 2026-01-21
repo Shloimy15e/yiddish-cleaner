@@ -27,6 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Audio Samples - CRUD
     Route::get('/audio-samples', [AudioSampleController::class, 'index'])->name('audio-samples.index');
+    Route::get('/audio-samples/runs', [AudioSampleController::class, 'runsIndex'])->name('audio-samples.runs');
     Route::get('/audio-samples/create', [AudioSampleController::class, 'create'])->name('audio-samples.create');
     Route::post('/audio-samples', [AudioSampleController::class, 'store'])->name('audio-samples.store');
     Route::post('/audio-samples/import', [AudioSampleController::class, 'importSheet'])->name('audio-samples.import');

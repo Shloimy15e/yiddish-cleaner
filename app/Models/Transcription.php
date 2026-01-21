@@ -11,12 +11,18 @@ class Transcription extends Model implements HasMedia
 {
     use InteractsWithMedia;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_PROCESSING = 'processing';
+    public const STATUS_COMPLETED = 'completed';
+    public const STATUS_FAILED = 'failed';
+
     protected $fillable = [
         'audio_sample_id',
         'training_version_id',
         'model_name',
         'model_version',
         'source',
+        'status',
         'hypothesis_text',
         'hypothesis_hash',
         'wer',

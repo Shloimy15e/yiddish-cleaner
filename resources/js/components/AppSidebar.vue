@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { BookOpen, FileText, LayoutGrid, Upload, Settings, Sparkles, Github, ChartBar } from 'lucide-vue-next';
+import { BookOpen, Gauge, Headphones, Home, Layers, Settings, Sparkles, Github, UploadCloud } from 'lucide-vue-next';
 
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
@@ -25,22 +25,27 @@ const mainNavItems = computed<NavItem[]>(() => {
         {
             title: 'Dashboard',
             href: 'dashboard',
-            icon: LayoutGrid,
+            icon: Home,
         },
         {
             title: 'Import',
             href: 'audio-samples.create',
-            icon: Upload,
+            icon: UploadCloud,
         },
         {
             title: 'Audio Samples',
             href: 'audio-samples.index',
-            icon: FileText,
+            icon: Headphones,
+        },
+        {
+            title: 'Import Runs',
+            href: 'audio-samples.runs',
+            icon: Layers,
         },
         {
             title: 'Benchmarks',
             href: 'benchmark.index',
-            icon: ChartBar,
+            icon: Gauge,
         },
     ];
 

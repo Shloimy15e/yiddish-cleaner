@@ -32,6 +32,7 @@ class TranscribeAudioSampleJob implements ShouldQueue
         public ?string $model = null,
         public ?string $notes = null,
         public ?int $userId = null,
+        public ?int $transcriptionId = null,
     ) {}
 
     public function handle(AsrManager $asrManager, WerCalculator $werCalculator): void
@@ -41,6 +42,16 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 'provider' => $this->provider,
                 'model' => $this->model,
             ]);
+
+            $transcription = $this->transcriptionId
+                ? Transcription::find($this->transcriptionId)
+                : null;
+
+            if ($transcription) {
+                $transcription->update([
+                    'status' => Transcription::STATUS_PROCESSING,
+                ]);
+            }
 
             // Get audio file path
             $audioMedia = $this->audioSample->getFirstMedia('audio');
@@ -77,12 +88,22 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 $werResult = $werCalculator->calculate($referenceText, $result->text);
             }
 
-            // Create Transcription record
-            $transcription = Transcription::create([
-                'audio_sample_id' => $this->audioSample->id,
+            // Update Transcription record
+            if (! $transcription) {
+                $transcription = Transcription::create([
+                    'audio_sample_id' => $this->audioSample->id,
+                    'model_name' => $result->provider.'/'.$result->model,
+                    'model_version' => $result->model,
+                    'source' => 'generated',
+                    'status' => Transcription::STATUS_PROCESSING,
+                    'notes' => $this->notes,
+                ]);
+            }
+
+            $transcription->update([
                 'model_name' => $result->provider.'/'.$result->model,
                 'model_version' => $result->model,
-                'source' => 'generated',
+                'source' => $transcription->source ?? 'generated',
                 'hypothesis_text' => $result->text,
                 'hypothesis_hash' => $result->getTextHash(),
                 'wer' => $werResult?->wer,
@@ -92,7 +113,7 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 'deletions' => $werResult?->deletions ?? 0,
                 'reference_words' => $werResult?->referenceWords ?? 0,
                 'errors' => $werResult?->errors ?? [],
-                'notes' => $this->notes,
+                'status' => Transcription::STATUS_COMPLETED,
             ]);
 
             // Save transcript as media file
@@ -120,6 +141,12 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 'provider' => $this->provider,
             ]);
 
+            if ($this->transcriptionId) {
+                Transcription::whereKey($this->transcriptionId)->update([
+                    'status' => Transcription::STATUS_FAILED,
+                ]);
+            }
+
             throw $e;
         }
     }
@@ -129,5 +156,11 @@ class TranscribeAudioSampleJob implements ShouldQueue
         Log::error("TranscribeAudioSampleJob failed for AudioSample #{$this->audioSample->id}", [
             'error' => $exception->getMessage(),
         ]);
+
+        if ($this->transcriptionId) {
+            Transcription::whereKey($this->transcriptionId)->update([
+                'status' => Transcription::STATUS_FAILED,
+            ]);
+        }
     }
 }

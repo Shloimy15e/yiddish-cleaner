@@ -5,8 +5,8 @@ namespace App\Services\Asr;
 class WerResult
 {
     public function __construct(
-        public readonly float $wer,
-        public readonly float $cer,
+        public readonly ?float $wer,
+        public readonly ?float $cer,
         public readonly int $substitutions,
         public readonly int $insertions,
         public readonly int $deletions,
@@ -26,8 +26,12 @@ class WerResult
     /**
      * Get accuracy percentage (100 - WER, capped at 0).
      */
-    public function getAccuracy(): float
+    public function getAccuracy(): ?float
     {
+        if ($this->wer === null) {
+            return null;
+        }
+
         return max(0, 100 - $this->wer);
     }
 
@@ -54,8 +58,8 @@ class WerResult
     public static function fromArray(array $data): self
     {
         return new self(
-            wer: $data['wer'] ?? 0,
-            cer: $data['cer'] ?? 0,
+            wer: array_key_exists('wer', $data) ? $data['wer'] : null,
+            cer: array_key_exists('cer', $data) ? $data['cer'] : null,
             substitutions: $data['substitutions'] ?? 0,
             insertions: $data['insertions'] ?? 0,
             deletions: $data['deletions'] ?? 0,

@@ -84,9 +84,9 @@ const getStatusLabel = (status: string) => {
     <Head title="Dashboard" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 p-6">
+        <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <!-- Workflow Progress Stats -->
-            <div class="grid gap-4 md:grid-cols-5">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 <div class="rounded-xl border bg-card p-6 hover:border-primary/50 transition-colors">
                     <div class="text-sm font-medium text-muted-foreground">Total Samples</div>
                     <div class="text-3xl font-bold gradient-text">{{ stats.total_audio_samples }}</div>
@@ -220,7 +220,7 @@ const getStatusLabel = (status: string) => {
                 <div class="rounded-xl border bg-card">
                     <div class="flex items-center justify-between border-b p-4">
                         <h2 class="font-semibold">Active Import Runs</h2>
-                        <Link href="/audio-samples/create" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <Link :href="route('audio-samples.runs')" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
                     </div>
                     <div class="divide-y">
                         <div v-for="run in activeRuns" :key="run.id" class="p-4">
@@ -245,11 +245,11 @@ const getStatusLabel = (status: string) => {
             </div>
 
             <!-- Quick Actions -->
-            <div class="flex gap-4">
-                <Link href="/audio-samples/create" class="rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Link href="/audio-samples/create" class="w-full rounded-lg bg-primary px-6 py-3 text-center font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:w-auto">
                     Import Audio Samples
                 </Link>
-                <Link href="/training/create" class="rounded-lg border px-6 py-3 font-medium hover:bg-accent transition-colors">
+                <Link href="/training/create" class="w-full rounded-lg border px-6 py-3 text-center font-medium hover:bg-accent transition-colors sm:w-auto">
                     Create Training Version
                 </Link>
             </div>

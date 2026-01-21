@@ -42,7 +42,7 @@ const deleteVersion = (id: number) => {
     <Head title="Training Versions" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 p-6">
+        <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <div class="flex items-center justify-between">
                 <h1 class="text-2xl font-bold">Training Versions</h1>
                 <Link href="/training/create" class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90">

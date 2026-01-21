@@ -10,6 +10,9 @@ namespace App\Services\Asr;
  */
 class WerCalculator
 {
+    protected const MAX_MATRIX_CELLS = 20000;
+    protected const MAX_WORD_CELLS = 250000;
+
     /**
      * Calculate WER and CER metrics between reference and hypothesis texts.
      */
@@ -22,18 +25,24 @@ class WerCalculator
         // Calculate word-level metrics (WER)
         $refWords = $this->tokenizeWords($reference);
         $hypWords = $this->tokenizeWords($hypothesis);
-        $wordMetrics = $this->levenshteinDetails($refWords, $hypWords);
+        $wordCells = count($refWords) * count($hypWords);
 
-        // Calculate character-level metrics (CER)
-        $refChars = $this->tokenizeChars($reference);
-        $hypChars = $this->tokenizeChars($hypothesis);
-        $charMetrics = $this->levenshteinDetails($refChars, $hypChars);
+        if ($wordCells > self::MAX_WORD_CELLS) {
+            $wordMetrics = $this->levenshteinCountsLinear($refWords, $hypWords);
+        } else {
+            $wordMetrics = $this->shouldUseLinear($refWords, $hypWords)
+                ? $this->levenshteinCountsLinear($refWords, $hypWords)
+                : $this->levenshteinDetails($refWords, $hypWords);
+        }
 
-        // Calculate error rates
         $wer = count($refWords) > 0
             ? ($wordMetrics['substitutions'] + $wordMetrics['insertions'] + $wordMetrics['deletions']) / count($refWords) * 100
             : 0.0;
 
+        // Calculate character-level metrics (CER)
+        $refChars = $this->tokenizeChars($reference);
+        $hypChars = $this->tokenizeChars($hypothesis);
+        $charMetrics = $this->levenshteinCountsLinear($refChars, $hypChars);
         $cer = count($refChars) > 0
             ? ($charMetrics['substitutions'] + $charMetrics['insertions'] + $charMetrics['deletions']) / count($refChars) * 100
             : 0.0;
@@ -48,6 +57,14 @@ class WerCalculator
             hypothesisWords: count($hypWords),
             errors: $wordMetrics['errors'] ?? [],
         );
+    }
+
+    protected function shouldUseLinear(array $ref, array $hyp): bool
+    {
+        $m = count($ref);
+        $n = count($hyp);
+
+        return $m === 0 || $n === 0 || ($m * $n) > self::MAX_MATRIX_CELLS;
     }
 
     /**
@@ -91,7 +108,12 @@ class WerCalculator
         // Remove spaces for character-level comparison
         $text = preg_replace('/\s+/', '', $text);
 
-        return mb_str_split($text, 1, 'UTF-8');
+        $utf32 = mb_convert_encoding($text, 'UTF-32LE', 'UTF-8');
+        if ($utf32 === '' || $utf32 === false) {
+            return [];
+        }
+
+        return array_values(unpack('V*', $utf32));
     }
 
     /**
@@ -187,6 +209,92 @@ class WerCalculator
             'insertions' => $insertions,
             'deletions' => $deletions,
             'errors' => array_reverse($errors),
+        ];
+    }
+
+    /**
+     * Linear-memory Levenshtein with counts (no error list).
+     */
+    protected function levenshteinCountsLinear(array $ref, array $hyp): array
+    {
+        $m = count($ref);
+        $n = count($hyp);
+
+        if ($m === 0) {
+            return [
+                'substitutions' => 0,
+                'insertions' => $n,
+                'deletions' => 0,
+                'errors' => [],
+                'distance' => $n,
+            ];
+        }
+
+        if ($n === 0) {
+            return [
+                'substitutions' => 0,
+                'insertions' => 0,
+                'deletions' => $m,
+                'errors' => [],
+                'distance' => $m,
+            ];
+        }
+
+        $prevDist = range(0, $n);
+        $prevIns = array_fill(0, $n + 1, 0);
+        $prevDel = array_fill(0, $n + 1, 0);
+        $prevSub = array_fill(0, $n + 1, 0);
+
+        for ($j = 1; $j <= $n; $j++) {
+            $prevIns[$j] = $j;
+        }
+
+        for ($i = 1; $i <= $m; $i++) {
+            $currDist = array_fill(0, $n + 1, 0);
+            $currIns = array_fill(0, $n + 1, 0);
+            $currDel = array_fill(0, $n + 1, 0);
+            $currSub = array_fill(0, $n + 1, 0);
+
+            $currDist[0] = $i;
+            $currDel[0] = $i;
+
+            for ($j = 1; $j <= $n; $j++) {
+                $cost = ($ref[$i - 1] === $hyp[$j - 1]) ? 0 : 1;
+
+                $delDist = $prevDist[$j] + 1;
+                $insDist = $currDist[$j - 1] + 1;
+                $subDist = $prevDist[$j - 1] + $cost;
+
+                if ($subDist <= $delDist && $subDist <= $insDist) {
+                    $currDist[$j] = $subDist;
+                    $currIns[$j] = $prevIns[$j - 1];
+                    $currDel[$j] = $prevDel[$j - 1];
+                    $currSub[$j] = $prevSub[$j - 1] + ($cost ? 1 : 0);
+                } elseif ($delDist <= $insDist) {
+                    $currDist[$j] = $delDist;
+                    $currIns[$j] = $prevIns[$j];
+                    $currDel[$j] = $prevDel[$j] + 1;
+                    $currSub[$j] = $prevSub[$j];
+                } else {
+                    $currDist[$j] = $insDist;
+                    $currIns[$j] = $currIns[$j - 1] + 1;
+                    $currDel[$j] = $currDel[$j - 1];
+                    $currSub[$j] = $currSub[$j - 1];
+                }
+            }
+
+            $prevDist = $currDist;
+            $prevIns = $currIns;
+            $prevDel = $currDel;
+            $prevSub = $currSub;
+        }
+
+        return [
+            'substitutions' => $prevSub[$n],
+            'insertions' => $prevIns[$n],
+            'deletions' => $prevDel[$n],
+            'errors' => [],
+            'distance' => $prevDist[$n],
         ];
     }
 }

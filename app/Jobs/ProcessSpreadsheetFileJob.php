@@ -62,14 +62,20 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 $columnIndex++;
             }
 
-            // Find column indexes
-            $docLinkColumnIndex = array_search($this->docLinkColumn, $headers);
-            $audioUrlColumnIndex = ! empty($this->audioUrlColumn) ? array_search($this->audioUrlColumn, $headers) : false;
-            $nameColumnIndex = array_search('Name', $headers);
+            // Find column indexes (case-insensitive, trimmed)
+            $docLinkColumnIndex = $this->findHeaderIndex($headers, $this->docLinkColumn);
+            $audioUrlColumnIndex = ! empty($this->audioUrlColumn)
+                ? $this->findHeaderIndex($headers, $this->audioUrlColumn)
+                : null;
+            $nameColumnIndex = $this->findHeaderIndex($headers, 'Name');
 
-            if ($docLinkColumnIndex === false) {
+            if ($docLinkColumnIndex === null) {
                 throw new \RuntimeException("Column '{$this->docLinkColumn}' not found in spreadsheet. Available columns: ".implode(', ', $headers));
             }
+
+            $docLinkHeader = $headers[$docLinkColumnIndex];
+            $audioUrlHeader = $audioUrlColumnIndex !== null ? $headers[$audioUrlColumnIndex] : null;
+            $nameHeader = $nameColumnIndex !== null ? $headers[$nameColumnIndex] : null;
 
             // Collect rows to process
             $rowsToProcess = [];
@@ -89,7 +95,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 }
 
                 // Only include rows with doc links
-                if (! empty($rowData[$this->docLinkColumn] ?? '')) {
+                if (! empty($rowData[$docLinkHeader] ?? '')) {
                     $rowData['_row_index'] = $row->getRowIndex();
                     $rowsToProcess[] = $rowData;
                 }
@@ -102,20 +108,20 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
             $drive->forUser($user);
 
             foreach ($rowsToProcess as $row) {
-                $docUrl = $row[$this->docLinkColumn];
+                $docUrl = $row[$docLinkHeader];
                 $rowIndex = $row['_row_index'];
-                $audioUrl = ! empty($this->audioUrlColumn) ? ($row[$this->audioUrlColumn] ?? '') : '';
-                $name = $row['Name'] ?? "Row {$rowIndex}";
-
-                // Create audio sample record with pending status
-                $audioSample = AudioSample::create([
-                    'processing_run_id' => $this->run->id,
-                    'name' => $name,
-                    'source_url' => $docUrl,
-                    'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
-                ]);
+                $audioUrl = $audioUrlHeader ? ($row[$audioUrlHeader] ?? '') : '';
+                $name = $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}";
 
                 try {
+                    // Create audio sample record with pending status
+                    $audioSample = AudioSample::create([
+                        'processing_run_id' => $this->run->id,
+                        'name' => $name,
+                        'source_url' => $docUrl,
+                        'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
+                    ]);
+
                     $fileId = DriveService::extractFileId($docUrl);
                     if (! $fileId) {
                         throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
@@ -140,10 +146,12 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                     ImportAudioSampleJob::dispatch($audioSample, $tempPath);
 
                 } catch (Throwable $e) {
-                    $audioSample->update([
-                        'status' => AudioSample::STATUS_FAILED,
-                        'error_message' => $e->getMessage(),
-                    ]);
+                    if (isset($audioSample)) {
+                        $audioSample->update([
+                            'status' => AudioSample::STATUS_FAILED,
+                            'error_message' => $e->getMessage(),
+                        ]);
+                    }
                     $this->run->incrementFailed();
                 }
             }
@@ -202,4 +210,21 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 ->toMediaCollection('audio');
         }
     }
+
+    private function findHeaderIndex(array $headers, string $columnName): ?int
+    {
+        $needle = trim($columnName);
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($headers as $index => $header) {
+            if (strcasecmp(trim((string) $header), $needle) === 0) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
 }

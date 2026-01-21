@@ -48,26 +48,33 @@ class AudioSampleController extends Controller
     }
 
     /**
-     * Show the form for creating audio samples (import page).
+     * List import runs.
      */
-    public function create(Request $request, CleanerService $cleaner): InertiaResponse
+    public function runsIndex(Request $request): InertiaResponse
     {
         $user = $request->user();
 
-        $presets = collect(config('cleaning.presets'))->map(fn ($preset, $key) => [
-            'name' => $preset['name'],
-            'description' => $preset['description'],
-            'processors' => $preset['processors'],
-        ])->toArray();
+        $runs = ProcessingRun::where('user_id', $user->id)
+            ->where('mode', 'import')
+            ->latest()
+            ->paginate(25)
+            ->withQueryString();
+
+        return Inertia::render('ProcessRuns/Index', [
+            'runs' => $runs,
+        ]);
+    }
+
+    /**
+     * Show the form for creating audio samples (import page).
+     * Import only - cleaning is done from the sample detail page.
+     */
+    public function create(Request $request): InertiaResponse
+    {
+        $user = $request->user();
 
         return Inertia::render('AudioSamples/Create', [
-            'presets' => $presets,
-            'processors' => $cleaner->getProcessors(),
             'hasGoogleCredentials' => $user->hasGoogleCredential(),
-            'recentRuns' => ProcessingRun::where('user_id', $user->id)
-                ->latest()
-                ->take(5)
-                ->get(),
         ]);
     }
 
@@ -101,7 +108,7 @@ class AudioSampleController extends Controller
             'name' => 'required|string|max:255',
             // Audio: either URL or file (both optional)
             'audio_url' => 'nullable|url|max:2048',
-            'audio_file' => 'nullable|file|mimes:mp3,wav,ogg,m4a,flac|max:102400', // 100MB
+            'audio_file' => 'nullable|file|mimes:mp3,wav,ogg,m4a,flac,mp4|max:102400', // 100MB (m4a may be detected as mp4)
             // Transcript: either URL or file (one required)
             'transcript_url' => 'nullable|url|max:2048',
             'transcript_file' => 'nullable|file|mimes:txt,docx,doc|max:10240', // 10MB
@@ -121,6 +128,7 @@ class AudioSampleController extends Controller
         ], [
             'preset' => 'titles_only',
             'mode' => 'rule',
+            'source_type' => 'manual',
             'status' => 'completed',
             'total' => 0,
             'completed' => 0,
@@ -428,7 +436,7 @@ class AudioSampleController extends Controller
         $this->authorize('update', $audioSample);
 
         $request->validate([
-            'audio' => 'required|file|mimes:mp3,wav,ogg,m4a,flac|max:102400', // 100MB
+            'audio' => 'required|file|mimes:mp3,wav,ogg,m4a,flac,mp4|max:102400', // 100MB (m4a may be detected as mp4)
         ]);
 
         // Capture file info BEFORE moving (temp file gets deleted after)
@@ -583,19 +591,16 @@ class AudioSampleController extends Controller
         $request->validate([
             'url' => 'required_without:file|nullable|url',
             'file' => 'required_without:url|nullable|file|mimes:csv,xlsx,xls|max:10240',
-            'preset' => 'required|string',
-            'mode' => 'required|in:rule,llm',
-            'llm_provider' => 'nullable|string',
-            'llm_model' => 'nullable|string',
             'sheet_name' => 'nullable|string',
-            'doc_link_column' => 'nullable|string',
+            'doc_link_column' => 'required|string',
             'audio_url_column' => 'nullable|string',
-            'processors' => 'nullable|array',
-            'processors.*' => 'string',
             'row_limit' => 'nullable|integer|min:1|max:1000',
             'skip_completed' => 'nullable|boolean',
-            'output_folder_url' => 'nullable|url',
         ]);
+
+        $docLinkColumn = trim((string) $request->input('doc_link_column', 'Doc Link'));
+        $audioUrlColumn = trim((string) $request->input('audio_url_column', ''));
+        $sheetName = trim((string) $request->input('sheet_name', 'Sheet1'));
 
         $user = $request->user();
         $isFileUpload = $request->hasFile('file');
@@ -605,22 +610,18 @@ class AudioSampleController extends Controller
             $file = $request->file('file');
             $filePath = $file->store('spreadsheet-imports', 'local');
 
-            // Create run for file upload
+            // Create run for file upload (import only, no cleaning)
             $run = ProcessingRun::create([
                 'user_id' => $user->id,
                 'batch_id' => Str::uuid(),
-                'preset' => $request->preset,
-                'mode' => $request->mode,
-                'llm_provider' => $request->llm_provider ?? 'openrouter',
-                'llm_model' => $request->llm_model ?? 'anthropic/claude-sonnet-4',
+                'preset' => 'import_only',
+                'mode' => 'import',
                 'source_type' => 'file',
                 'source_url' => $file->getClientOriginalName(),
                 'status' => 'pending',
                 'options' => [
-                    'processors' => $request->processors,
                     'row_limit' => $request->row_limit ?? 100,
                     'skip_completed' => $request->skip_completed ?? true,
-                    'output_folder_url' => $request->output_folder_url,
                 ],
             ]);
 
@@ -628,13 +629,12 @@ class AudioSampleController extends Controller
             ProcessSpreadsheetFileJob::dispatch(
                 $run,
                 $filePath,
-                $request->doc_link_column ?? 'Doc Link',
-                $request->audio_url_column ?? '',
+                $docLinkColumn,
+                $audioUrlColumn,
             );
 
-            return redirect()->route('audio-samples.create')
-                ->with('success', 'File import started.')
-                ->with('runId', $run->id);
+            return redirect()->route('audio-samples.run', $run)
+                ->with('success', 'File import started.');
         }
 
         // Handle Google Sheets URL
@@ -645,22 +645,18 @@ class AudioSampleController extends Controller
             return back()->withErrors(['url' => 'Invalid Google Sheets URL']);
         }
 
-        // Create run
+        // Create run (import only, no cleaning)
         $run = ProcessingRun::create([
             'user_id' => $user->id,
             'batch_id' => Str::uuid(),
-            'preset' => $request->preset,
-            'mode' => $request->mode,
-            'llm_provider' => $request->llm_provider ?? 'openrouter',
-            'llm_model' => $request->llm_model ?? 'anthropic/claude-sonnet-4',
+            'preset' => 'import_only',
+            'mode' => 'import',
             'source_type' => 'sheet',
             'source_url' => $url,
             'status' => 'pending',
             'options' => [
-                'processors' => $request->processors,
                 'row_limit' => $request->row_limit ?? 100,
                 'skip_completed' => $request->skip_completed ?? true,
-                'output_folder_url' => $request->output_folder_url,
             ],
         ]);
 
@@ -668,14 +664,13 @@ class AudioSampleController extends Controller
         ProcessSheetBatchJob::dispatch(
             $run,
             $spreadsheetId,
-            $request->sheet_name ?? 'Sheet1',
-            $request->doc_link_column ?? 'Doc Link',
-            $request->audio_url_column ?? '',
+            $sheetName ?: 'Sheet1',
+            $docLinkColumn,
+            $audioUrlColumn,
         );
 
-        return redirect()->route('audio-samples.create')
-            ->with('success', 'Batch import started.')
-            ->with('runId', $run->id);
+        return redirect()->route('audio-samples.run', $run)
+            ->with('success', 'Batch import started.');
     }
 
     /**
@@ -685,8 +680,18 @@ class AudioSampleController extends Controller
     {
         $this->authorize('view', $run);
 
-        return Inertia::render('ProcessRun', [
-            'run' => $run->load('documents'),
+        return Inertia::render('ProcessRuns/Show', [
+            'run' => $run->load(['audioSamples' => function ($query) {
+                $query->latest()->select([
+                    'id',
+                    'processing_run_id',
+                    'name',
+                    'status',
+                    'clean_rate',
+                    'error_message',
+                    'created_at',
+                ]);
+            }]),
         ]);
     }
 
@@ -720,6 +725,15 @@ class AudioSampleController extends Controller
             return back()->withErrors(['error' => "No API key configured for {$provider}. Add your API key in Settings."]);
         }
 
+        $modelName = $request->model ? $provider.'/'.$request->model : $provider;
+        $transcription = $audioSample->transcriptions()->create([
+            'model_name' => $modelName,
+            'model_version' => $request->model,
+            'source' => 'generated',
+            'status' => \App\Models\Transcription::STATUS_PENDING,
+            'notes' => $request->notes,
+        ]);
+
         // Dispatch the transcription job
         TranscribeAudioSampleJob::dispatch(
             audioSample: $audioSample,
@@ -727,6 +741,7 @@ class AudioSampleController extends Controller
             model: $request->model,
             notes: $request->notes,
             userId: $request->user()->id,
+            transcriptionId: $transcription->id,
         );
 
         return back()->with('success', 'Transcription started. Results will appear when complete.');
@@ -760,11 +775,19 @@ class AudioSampleController extends Controller
         $dispatched = 0;
         foreach ($samples as $sample) {
             if ($sample->getFirstMedia('audio')) {
+                $modelName = $request->model ? $provider.'/'.$request->model : $provider;
+                $transcription = $sample->transcriptions()->create([
+                    'model_name' => $modelName,
+                    'model_version' => $request->model,
+                    'source' => 'generated',
+                    'status' => \App\Models\Transcription::STATUS_PENDING,
+                ]);
                 TranscribeAudioSampleJob::dispatch(
                     audioSample: $sample,
                     provider: $provider,
                     model: $request->model,
                     userId: $user->id,
+                    transcriptionId: $transcription->id,
                 );
                 $dispatched++;
             }

@@ -49,8 +49,22 @@ class ProcessSheetBatchJob implements ShouldQueue
             $sheets->forUser($user);
             $rows = $sheets->getRowsWithHeaders($this->spreadsheetId, $this->sheetName);
 
+            // Resolve header names (case-insensitive, trimmed)
+            $availableHeaders = array_keys($rows[0] ?? []);
+            $availableHeaders = array_values(array_filter($availableHeaders, fn ($header) => $header !== '_row_index'));
+
+            $docLinkHeader = $this->resolveHeader($availableHeaders, $this->docLinkColumn);
+            if (! $docLinkHeader) {
+                throw new \RuntimeException("Column '{$this->docLinkColumn}' not found in spreadsheet.");
+            }
+
+            $audioUrlHeader = ! empty($this->audioUrlColumn)
+                ? $this->resolveHeader($availableHeaders, $this->audioUrlColumn)
+                : null;
+            $nameHeader = $this->resolveHeader($availableHeaders, 'Name');
+
             // Filter rows with doc links
-            $rowsToProcess = array_filter($rows, fn ($row) => ! empty($row[$this->docLinkColumn] ?? ''));
+            $rowsToProcess = array_filter($rows, fn ($row) => ! empty($row[$docLinkHeader] ?? ''));
 
             $this->run->update(['total' => count($rowsToProcess)]);
 
@@ -58,20 +72,19 @@ class ProcessSheetBatchJob implements ShouldQueue
             $drive->forUser($user);
 
             foreach ($rowsToProcess as $row) {
-                $docUrl = $row[$this->docLinkColumn];
+                $docUrl = $row[$docLinkHeader];
                 $rowIndex = $row['_row_index'];
-                $audioUrl = ! empty($this->audioUrlColumn) ? ($row[$this->audioUrlColumn] ?? '') : '';
+                $audioUrl = $audioUrlHeader ? ($row[$audioUrlHeader] ?? '') : '';
 
-                // Create audio sample record with pending status
-                $audioSample = AudioSample::create([
-                    'processing_run_id' => $this->run->id,
-                    'name' => $row['Name'] ?? "Row {$rowIndex}",
-                    'source_url' => $docUrl,
-                    'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
-                ]);
-
-                // Download and import (NO cleaning)
                 try {
+                    // Create audio sample record with pending status
+                    $audioSample = AudioSample::create([
+                        'processing_run_id' => $this->run->id,
+                        'name' => $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}",
+                        'source_url' => $docUrl,
+                        'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
+                    ]);
+
                     $fileId = DriveService::extractFileId($docUrl);
                     if (! $fileId) {
                         throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
@@ -95,21 +108,32 @@ class ProcessSheetBatchJob implements ShouldQueue
                     // Dispatch import job (no cleaning)
                     ImportAudioSampleJob::dispatch($audioSample, $tempPath);
 
-                    // Update sheet status
-                    $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
-                        'Status' => 'Imported',
-                    ]);
+                    // Update sheet status (best-effort)
+                    try {
+                        $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
+                            'Status' => 'Imported',
+                        ]);
+                    } catch (Throwable) {
+                        // Ignore status update failures to keep batch running
+                    }
 
                 } catch (Throwable $e) {
-                    $audioSample->update([
-                        'status' => AudioSample::STATUS_FAILED,
-                        'error_message' => $e->getMessage(),
-                    ]);
+                    if (isset($audioSample)) {
+                        $audioSample->update([
+                            'status' => AudioSample::STATUS_FAILED,
+                            'error_message' => $e->getMessage(),
+                        ]);
+                    }
+
                     $this->run->incrementFailed();
 
-                    $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
-                        'Status' => 'Failed: '.$e->getMessage(),
-                    ]);
+                    try {
+                        $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
+                            'Status' => 'Failed: '.$e->getMessage(),
+                        ]);
+                    } catch (Throwable) {
+                        // Ignore status update failures to keep batch running
+                    }
                 }
             }
 
@@ -158,4 +182,21 @@ class ProcessSheetBatchJob implements ShouldQueue
                 ->toMediaCollection('audio');
         }
     }
+
+    private function resolveHeader(array $headers, string $columnName): ?string
+    {
+        $needle = trim($columnName);
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($headers as $header) {
+            if (strcasecmp(trim((string) $header), $needle) === 0) {
+                return (string) $header;
+            }
+        }
+
+        return null;
+    }
+
 }

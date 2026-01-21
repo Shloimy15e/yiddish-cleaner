@@ -62,7 +62,7 @@ const getSourceBadge = (source: string) => {
     <Head :title="`${modelName} - Benchmark`" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 p-6">
+        <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <!-- Header -->
             <div class="flex items-start justify-between">
                 <div>

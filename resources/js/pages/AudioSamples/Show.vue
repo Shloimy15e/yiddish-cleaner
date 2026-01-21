@@ -1,32 +1,18 @@
 <script setup lang="ts">
 import AlertError from '@/components/AlertError.vue';
 import AudioPlayer from '@/components/AudioPlayer.vue';
+import AudioSampleBenchmarkSection from '@/components/audio-samples/AudioSampleBenchmarkSection.vue';
+import AudioSampleCleanSection from '@/components/audio-samples/AudioSampleCleanSection.vue';
+import AudioSampleContextPanel from '@/components/audio-samples/AudioSampleContextPanel.vue';
+import AudioSampleRecleanSection from '@/components/audio-samples/AudioSampleRecleanSection.vue';
+import AudioSampleStatsPanel from '@/components/audio-samples/AudioSampleStatsPanel.vue';
+import AudioSampleTextReview from '@/components/audio-samples/AudioSampleTextReview.vue';
+import AudioSampleWorkflowCard from '@/components/audio-samples/AudioSampleWorkflowCard.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import {
-    Listbox,
-    ListboxButton,
-    ListboxOption,
-    ListboxOptions,
-} from '@headlessui/vue';
-import {
-    ArrowDownTrayIcon,
-    ArrowPathIcon,
-    CheckIcon,
-    ChevronUpDownIcon,
-    ClipboardDocumentIcon,
     CloudArrowUpIcon,
-    CpuChipIcon,
-    DocumentArrowDownIcon,
-    DocumentTextIcon,
-    ExclamationTriangleIcon,
-    MicrophoneIcon,
     MusicalNoteIcon,
-    PencilIcon,
-    PlusIcon,
-    SparklesIcon,
-    TrashIcon,
-    XMarkIcon,
 } from '@heroicons/vue/24/outline';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import * as Diff from 'diff';
@@ -135,6 +121,7 @@ const isFailed = computed(() => props.audioSample.status === 'failed');
 // Content helpers
 const hasRawText = computed(() => !!props.audioSample.reference_text_raw);
 const hasCleanedText = computed(() => !!props.audioSample.reference_text_clean);
+const needsTranscript = computed(() => !hasRawText.value);
 
 // Action helpers - what can be done at this stage
 const canBeCleaned = computed(
@@ -145,24 +132,78 @@ const canBeValidated = computed(
 );
 const canBeTranscribed = computed(() => isValidated.value && hasAudio.value);
 
-// Workflow step (1-4)
-const workflowStep = computed(() => {
-    if (isPendingTranscript.value) return 1;
-    if (isImported.value) return 2;
-    if (isCleaning.value) return 2;
-    if (isCleaned.value) return 3;
-    if (isValidated.value) return 4;
-    if (isFailed.value) return 2; // Failed during cleaning
-    return 1;
+const workflowRequirements = computed(() => [
+    { label: 'Audio file', missing: !hasAudio.value },
+    { label: 'Reference transcript', missing: !hasRawText.value },
+    { label: 'Cleaned text', missing: !hasCleanedText.value },
+    { label: 'Validated', missing: !isValidated.value },
+]);
+
+const workflowCard = computed(() => {
+    if (needsTranscript.value) {
+        return {
+            title: 'Import transcript',
+            description: 'Upload a reference transcript to continue.',
+            actionLabel: 'Upload transcript',
+            actionHref: '#import-step',
+            actionDisabled: false,
+            actionReason: null,
+        };
+    }
+
+    if (isImported.value || isCleaning.value || isFailed.value) {
+        return {
+            title: 'Clean transcript',
+            description: isCleaning.value
+                ? 'Cleaning is in progress.'
+                : 'Run cleaning to generate a cleaned transcript.',
+            actionLabel: isCleaning.value ? 'Cleaning…' : 'Run clean',
+            actionHref: '#clean-step',
+            actionDisabled: isCleaning.value || !canBeCleaned.value,
+            actionReason: !hasRawText.value
+                ? 'Reference transcript required'
+                : isCleaning.value
+                  ? 'Cleaning in progress'
+                  : null,
+        };
+    }
+
+    if (isCleaned.value) {
+        return {
+            title: 'Validate cleaned text',
+            description: 'Review changes and confirm the cleaned text.',
+            actionLabel: 'Validate',
+            actionHref: '#validate-step',
+            actionDisabled: !canBeValidated.value || isEditing.value,
+            actionReason: isEditing.value
+                ? 'Save edits first'
+                : 'Cleaned text required',
+        };
+    }
+
+    if (isValidated.value) {
+        return {
+            title: 'Benchmark',
+            description: hasAudio.value
+                ? 'Run ASR benchmarks to compare accuracy.'
+                : 'Upload audio to benchmark this sample.',
+            actionLabel: 'Run ASR',
+            actionHref: '#benchmark-step',
+            actionDisabled: !canBeTranscribed.value,
+            actionReason: !hasAudio.value ? 'Audio file required' : null,
+        };
+    }
+
+    return {
+        title: 'Import transcript',
+        description: 'Upload a reference transcript to continue.',
+        actionLabel: 'Upload transcript',
+        actionHref: '#import-step',
+        actionDisabled: false,
+        actionReason: null,
+    };
 });
 
-// Workflow steps for progress indicator
-const workflowSteps = [
-    { step: 1, label: 'Import', description: 'Add transcript' },
-    { step: 2, label: 'Clean', description: 'Process text' },
-    { step: 3, label: 'Validate', description: 'Review & approve' },
-    { step: 4, label: 'Benchmark', description: 'Run ASR tests' },
-];
 
 // View state
 const activeView = ref<'cleaned' | 'original' | 'side-by-side' | 'diff'>(
@@ -173,6 +214,7 @@ const copiedOriginal = ref(false);
 const isEditing = ref(false);
 const editedText = ref('');
 const showRecleanForm = ref(false);
+const showLlmOptions = ref(false);
 
 // Set default view based on status
 watch(
@@ -336,12 +378,6 @@ const uploadAudio = () => {
     });
 };
 
-// Format file size for display
-const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-};
 
 // Validation
 const validateForm = useForm({});
@@ -372,34 +408,6 @@ const getCategoryColor = (cat: string | null) => {
     return colors[cat ?? ''] ?? 'bg-muted text-muted-foreground';
 };
 
-const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-        pending_transcript:
-            'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-        imported:
-            'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-        cleaning:
-            'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-        cleaned:
-            'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-        validated:
-            'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    };
-    return colors[status] ?? 'bg-muted text-muted-foreground';
-};
-
-const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-        pending_transcript: 'Needs Transcript',
-        imported: 'Needs Cleaning',
-        cleaning: 'Cleaning...',
-        cleaned: 'Ready for Review',
-        validated: 'Benchmark Ready',
-        failed: 'Failed',
-    };
-    return labels[status] ?? status;
-};
 
 // Model pricing per 1M tokens (input/output) - approximations based on typical prices
 const modelPricing: Record<string, { input: number; output: number }> = {
@@ -467,6 +475,11 @@ const estimatedCost = computed(() => {
         total: totalCost,
         formatted: totalCost < 0.01 ? `<$0.01` : `$${totalCost.toFixed(3)}`,
     };
+});
+
+const estimatedDurationSeconds = computed(() => {
+    const tokens = estimatedTokens.value.total;
+    return Math.max(5, Math.ceil(tokens / 1500));
 });
 
 // Computed statistics
@@ -591,11 +604,44 @@ const transcribeForm = useForm({
 
 // Manual benchmark entry form
 const manualTranscriptionForm = useForm({
-    model_name: '',
+    provider: '',
+    model: '',
     model_version: '',
     hypothesis_text: '',
     notes: '',
 });
+
+const manualProviderSelection = ref('');
+const manualProviderCustom = ref('');
+const manualModelSelection = ref('');
+const manualModelCustom = ref('');
+
+const isManualProviderCustom = computed(
+    () => manualProviderSelection.value === 'custom',
+);
+
+const manualProviderValue = computed(() =>
+    isManualProviderCustom.value
+        ? manualProviderCustom.value.trim()
+        : manualProviderSelection.value,
+);
+
+const manualModelOptions = computed(
+    () => asrProviders.value[manualProviderSelection.value]?.models ?? [],
+);
+
+const isManualModelCustom = computed(
+    () =>
+        isManualProviderCustom.value ||
+        manualModelSelection.value === 'custom' ||
+        manualModelOptions.value.length === 0,
+);
+
+const manualModelValue = computed(() =>
+    isManualModelCustom.value
+        ? manualModelCustom.value.trim()
+        : manualModelSelection.value,
+);
 
 // ASR provider options
 const asrProviderOptions = computed(() =>
@@ -648,6 +694,37 @@ watch(
     },
 );
 
+watch(
+    () => asrProviders.value,
+    (providers) => {
+        if (!manualProviderSelection.value) {
+            const firstProvider = Object.keys(providers)[0];
+            manualProviderSelection.value = firstProvider || 'custom';
+        }
+    },
+    { deep: true },
+);
+
+watch(
+    () => manualProviderSelection.value,
+    (provider) => {
+        if (provider === 'custom') {
+            manualModelSelection.value = 'custom';
+            return;
+        }
+
+        const models = asrProviders.value[provider]?.models ?? [];
+        if (models.length === 0) {
+            manualModelSelection.value = 'custom';
+            return;
+        }
+
+        if (!models.some((model) => model.id === manualModelSelection.value)) {
+            manualModelSelection.value = models[0].id;
+        }
+    },
+);
+
 // Fetch ASR providers on mount if validated
 onMounted(() => {
     if (isValidated.value) {
@@ -675,6 +752,8 @@ const submitTranscription = () => {
 
 // Submit manual benchmark entry
 const submitManualTranscription = () => {
+    manualTranscriptionForm.provider = manualProviderValue.value;
+    manualTranscriptionForm.model = manualModelValue.value;
     manualTranscriptionForm.post(
         `/audio-samples/${props.audioSample.id}/transcriptions`,
         {
@@ -682,6 +761,8 @@ const submitManualTranscription = () => {
             onSuccess: () => {
                 showManualEntryForm.value = false;
                 manualTranscriptionForm.reset();
+                manualProviderCustom.value = '';
+                manualModelCustom.value = '';
             },
         },
     );
@@ -699,19 +780,26 @@ const deleteTranscription = (transcriptionId: number) => {
     }
 };
 
+const normalizeErrorRate = (rate: number | null): number | null => {
+    if (rate === null) return null;
+    return rate > 1 ? rate / 100 : rate;
+};
+
 // Format WER/CER as percentage
 const formatErrorRate = (rate: number | null): string => {
     if (rate === null) return 'N/A';
-    return `${(rate * 100).toFixed(2)}%`;
+    const percent = rate > 1 ? rate : rate * 100;
+    return `${percent.toFixed(2)}%`;
 };
 
 // Get WER color class
 const getWerColor = (wer: number | null): string => {
-    if (wer === null) return 'text-muted-foreground';
-    if (wer <= 0.1) return 'text-emerald-600 dark:text-emerald-400';
-    if (wer <= 0.2) return 'text-green-600 dark:text-green-400';
-    if (wer <= 0.3) return 'text-yellow-600 dark:text-yellow-400';
-    if (wer <= 0.5) return 'text-orange-600 dark:text-orange-400';
+    const normalized = normalizeErrorRate(wer);
+    if (normalized === null) return 'text-muted-foreground';
+    if (normalized <= 0.1) return 'text-emerald-600 dark:text-emerald-400';
+    if (normalized <= 0.2) return 'text-green-600 dark:text-green-400';
+    if (normalized <= 0.3) return 'text-yellow-600 dark:text-yellow-400';
+    if (normalized <= 0.5) return 'text-orange-600 dark:text-orange-400';
     return 'text-red-600 dark:text-red-400';
 };
 
@@ -728,7 +816,9 @@ const getSourceColor = (source: string): string => {
     <Head :title="audioSample.name" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 p-6">
+        <div
+            class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+        >
             <!-- Error Alert -->
             <div v-if="isFailed && audioSample.error_message">
                 <AlertError
@@ -737,140 +827,266 @@ const getSourceColor = (source: string): string => {
                 />
             </div>
 
-            <!-- Header with Workflow Progress -->
-            <div class="space-y-4">
-                <!-- Title Row -->
-                <div
-                    class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
-                >
-                    <div>
-                        <div class="mb-1 flex items-center gap-3">
-                            <h1 class="text-2xl font-bold">
-                                {{ audioSample.name }}
-                            </h1>
-                            <span
-                                :class="[
-                                    'rounded-full px-3 py-1 text-xs font-medium',
-                                    getStatusColor(audioSample.status),
-                                ]"
-                            >
-                                {{ getStatusLabel(audioSample.status) }}
-                            </span>
-                        </div>
-                        <p class="text-muted-foreground">
-                            Created {{ audioSample.created_at }}
-                            <span v-if="audioSample.processing_run">
-                                ·
-                                {{
-                                    audioSample.processing_run.preset.replace(
-                                        /_/g,
-                                        ' ',
-                                    )
-                                }}
-                            </span>
-                        </p>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <!-- Download Dropdown (only if has cleaned text) -->
-                        <div v-if="hasCleanedText" class="group relative">
-                            <button
-                                class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
-                            >
-                                <ArrowDownTrayIcon class="h-4 w-4" />
-                                Download
-                            </button>
-                            <div
-                                class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg border bg-popover opacity-0 shadow-lg transition-all group-hover:visible group-hover:opacity-100"
-                            >
-                                <a
-                                    :href="`/audio-samples/${audioSample.id}/download`"
-                                    class="flex items-center gap-2 rounded-t-lg px-4 py-2 hover:bg-muted"
-                                >
-                                    <DocumentArrowDownIcon class="h-4 w-4" />
-                                    Cleaned (.docx)
-                                </a>
-                                <a
-                                    :href="`/audio-samples/${audioSample.id}/download/text`"
-                                    class="flex items-center gap-2 px-4 py-2 hover:bg-muted"
-                                >
-                                    <DocumentTextIcon class="h-4 w-4" />
-                                    Cleaned (.txt)
-                                </a>
-                                <a
-                                    v-if="hasRawText"
-                                    :href="`/audio-samples/${audioSample.id}/download/original`"
-                                    class="flex items-center gap-2 rounded-b-lg px-4 py-2 hover:bg-muted"
-                                >
-                                    <DocumentTextIcon class="h-4 w-4" />
-                                    Original (.txt)
-                                </a>
-                            </div>
-                        </div>
-
-                        <!-- Validate Button (only if cleaned) -->
-                        <button
-                            v-if="canBeValidated"
-                            @click="toggleValidation"
-                            :disabled="validateForm.processing"
-                            class="rounded-lg bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                        >
-                            Mark as Benchmark Ready
-                        </button>
-                        <button
-                            v-else-if="isValidated"
-                            @click="toggleValidation"
-                            :disabled="validateForm.processing"
-                            class="rounded-lg border px-4 py-2 font-medium hover:bg-muted"
-                        >
-                            Remove from Benchmark Ready
-                        </button>
-
-                        <button
-                            @click="deleteAudioSample"
-                            class="rounded-lg border border-red-200 px-4 py-2 font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                            Delete
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Audio Section -->
-                <AudioPlayer
-                    v-if="hasAudio && audioMedia?.url"
-                    :src="audioMedia.url"
-                    :name="audioMedia.name"
-                    :file-size="audioMedia.size"
+            <!-- Context Panel -->
+            <div class="space-y-6">
+                <AudioSampleContextPanel
+                    :audio-sample="audioSample"
+                    :audio-media="audioMedia"
+                    :has-audio="hasAudio"
+                    :has-raw-text="hasRawText"
+                    :has-cleaned-text="hasCleanedText"
+                    @delete="deleteAudioSample"
                 />
 
-                <!-- Missing Audio: Upload Required -->
-                <div
-                    v-else
-                    class="rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 dark:border-rose-700 dark:bg-rose-900/20"
-                >
-                    <div class="flex items-start gap-4">
-                        <MusicalNoteIcon
-                            class="h-8 w-8 shrink-0 text-rose-600 dark:text-rose-400"
-                        />
-                        <div class="flex-1">
-                            <h2
-                                class="text-lg font-semibold text-rose-800 dark:text-rose-300"
+                <AudioSampleWorkflowCard
+                    :title="workflowCard.title"
+                    :description="workflowCard.description"
+                    :action-label="workflowCard.actionLabel"
+                    :action-href="workflowCard.actionHref"
+                    :action-disabled="workflowCard.actionDisabled"
+                    :action-reason="workflowCard.actionReason"
+                    :requirements="workflowRequirements"
+                />
+
+                <div class="space-y-6">
+                    <!-- Audio Section -->
+                    <AudioPlayer
+                        v-if="hasAudio && audioMedia?.url"
+                        :src="audioMedia.url"
+                        :name="audioMedia.name"
+                        :file-size="audioMedia.size"
+                    />
+
+                    <!-- Missing Audio: Upload Required -->
+                    <div
+                        v-else
+                        class="rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 p-4 sm:p-6 dark:border-rose-700 dark:bg-rose-900/20"
+                    >
+                        <div class="flex items-start gap-4">
+                            <MusicalNoteIcon
+                                class="h-8 w-8 shrink-0 text-rose-600 dark:text-rose-400"
+                            />
+                            <div class="flex-1">
+                                <h2
+                                    class="text-lg font-semibold text-rose-800 dark:text-rose-300"
+                                >
+                                    Audio File Missing
+                                </h2>
+                                <p
+                                    class="mb-4 text-sm text-rose-700 dark:text-rose-400"
+                                >
+                                    This audio sample is missing its audio file.
+                                    Upload an audio file to complete the sample.
+                                </p>
+                                <form
+                                    @submit.prevent="uploadAudio"
+                                    class="flex flex-col gap-3 sm:flex-row sm:items-end"
+                                >
+                                    <div class="flex-1">
+                                        <label
+                                            class="mb-1 block text-sm font-medium"
+                                            >Audio File</label
+                                        >
+                                        <input
+                                            type="file"
+                                            accept=".mp3,.wav,.ogg,.m4a,.flac"
+                                            @change="
+                                                (e: any) =>
+                                                    (audioForm.audio =
+                                                        e.target.files[0])
+                                            "
+                                            class="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        :disabled="
+                                            !audioForm.audio ||
+                                            audioForm.processing
+                                        "
+                                        class="rounded-lg bg-rose-600 px-4 py-2 font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                                    >
+                                        {{
+                                            audioForm.processing
+                                                ? 'Uploading...'
+                                                : 'Upload Audio'
+                                        }}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pending Transcript: Upload Form -->
+                    <div
+                        v-if="needsTranscript"
+                        id="import-step"
+                        class="rounded-xl border-2 border-dashed border-yellow-300 bg-yellow-50 p-6 dark:border-yellow-700 dark:bg-yellow-900/20"
+                    >
+                        <div class="flex items-start gap-4">
+                            <CloudArrowUpIcon
+                                class="h-8 w-8 shrink-0 text-yellow-600 dark:text-yellow-400"
+                            />
+                            <div class="flex-1">
+                                <h2
+                                    class="text-lg font-semibold text-yellow-800 dark:text-yellow-300"
+                                >
+                                    Upload Reference Transcript
+                                </h2>
+                                <p
+                                    class="mb-4 text-sm text-yellow-700 dark:text-yellow-400"
+                                >
+                                    This audio sample needs a reference
+                                    transcript before it can be cleaned.
+                                </p>
+                                <form
+                                    @submit.prevent="uploadTranscript"
+                                    class="flex items-end gap-3"
+                                >
+                                    <div class="flex-1">
+                                        <label
+                                            class="mb-1 block text-sm font-medium"
+                                            >Transcript File</label
+                                        >
+                                        <input
+                                            type="file"
+                                            accept=".txt,.docx,.pdf"
+                                            @change="
+                                                (e: any) =>
+                                                    (transcriptForm.transcript =
+                                                        e.target.files[0])
+                                            "
+                                            class="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        :disabled="
+                                            !transcriptForm.transcript ||
+                                            transcriptForm.processing
+                                        "
+                                        class="rounded-lg bg-yellow-600 px-4 py-2 font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
+                                    >
+                                        Upload
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <AudioSampleCleanSection
+                        :is-visible="isImported && canBeCleaned"
+                        :clean-form="cleanForm"
+                        :preset-options="presetOptions"
+                        :provider-options="providerOptions"
+                        :provider-models="providerModels"
+                        :selected-model-display="selectedModelDisplay"
+                        :loading-models="loadingModels"
+                        :estimated-tokens="estimatedTokens"
+                        :estimated-cost="estimatedCost"
+                        :estimated-duration-seconds="estimatedDurationSeconds"
+                        :show-llm-options="showLlmOptions"
+                        @update:show-llm-options="(value) => (showLlmOptions = value)"
+                        @submit="submitClean"
+                    />
+
+                    <AudioSampleRecleanSection
+                        :is-visible="(isCleaned || isFailed) && canBeCleaned"
+                        :show-reclean-form="showRecleanForm"
+                        :clean-form="cleanForm"
+                        :preset-options="presetOptions"
+                        :provider-options="providerOptions"
+                        :provider-models="providerModels"
+                        :selected-model-display="selectedModelDisplay"
+                        :loading-models="loadingModels"
+                        :estimated-tokens="estimatedTokens"
+                        :estimated-cost="estimatedCost"
+                        @update:show-reclean-form="(value) => (showRecleanForm = value)"
+                        @submit="submitClean"
+                    />
+
+                    <!-- Replace Transcript option (if sample has a transcript already) -->
+                    <details
+                        v-if="hasRawText && !isPendingTranscript"
+                        class="rounded-xl border bg-card"
+                    >
+                        <summary
+                            class="flex cursor-pointer items-center gap-2 px-4 py-3 font-medium hover:bg-muted/50"
+                        >
+                            <CloudArrowUpIcon class="h-4 w-4" />
+                            Replace Reference Transcript
+                        </summary>
+                        <div class="px-4 pb-4">
+                            <p class="mb-4 text-sm text-muted-foreground">
+                                Upload a new reference transcript to replace the
+                                current one. This will reset any cleaned text
+                                and validation status.
+                            </p>
+                            <form
+                                @submit.prevent="uploadTranscript"
+                                class="space-y-4"
                             >
-                                Audio File Missing
-                            </h2>
-                            <p
-                                class="mb-4 text-sm text-rose-700 dark:text-rose-400"
-                            >
-                                This audio sample is missing its audio file.
-                                Upload an audio file to complete the sample.
+                                <div>
+                                    <label
+                                        class="mb-1 block text-sm font-medium"
+                                        >New Transcript File</label
+                                    >
+                                    <input
+                                        type="file"
+                                        accept=".txt,.docx,.pdf"
+                                        @change="
+                                            (e: any) =>
+                                                (transcriptForm.transcript =
+                                                    e.target.files[0])
+                                        "
+                                        class="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                                    />
+                                </div>
+                                <p
+                                    class="text-sm text-amber-600 dark:text-amber-400"
+                                >
+                                    ⚠️ Replacing the transcript will discard all
+                                    cleaned text and remove validation status.
+                                </p>
+                                <button
+                                    type="submit"
+                                    :disabled="
+                                        !transcriptForm.transcript ||
+                                        transcriptForm.processing
+                                    "
+                                    class="rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                    {{
+                                        transcriptForm.processing
+                                            ? 'Uploading...'
+                                            : 'Replace Transcript'
+                                    }}
+                                </button>
+                            </form>
+                        </div>
+                    </details>
+
+                    <!-- Replace Audio option (if sample has audio already) -->
+                    <details v-if="hasAudio" class="rounded-xl border bg-card">
+                        <summary
+                            class="flex cursor-pointer items-center gap-2 px-4 py-3 font-medium hover:bg-muted/50"
+                        >
+                            <MusicalNoteIcon class="h-4 w-4" />
+                            Replace Audio File
+                        </summary>
+                        <div class="px-4 pb-4">
+                            <p class="mb-4 text-sm text-muted-foreground">
+                                Upload a new audio file to replace the current
+                                one.
                             </p>
                             <form
                                 @submit.prevent="uploadAudio"
-                                class="flex items-end gap-3"
+                                class="space-y-4"
                             >
-                                <div class="flex-1">
+                                <div>
                                     <label
                                         class="mb-1 block text-sm font-medium"
-                                        >Audio File</label
+                                        >New Audio File</label
                                     >
                                     <input
                                         type="file"
@@ -888,1778 +1104,91 @@ const getSourceColor = (source: string): string => {
                                     :disabled="
                                         !audioForm.audio || audioForm.processing
                                     "
-                                    class="rounded-lg bg-rose-600 px-4 py-2 font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                                    class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                                 >
                                     {{
                                         audioForm.processing
                                             ? 'Uploading...'
-                                            : 'Upload Audio'
+                                            : 'Replace Audio'
                                     }}
                                 </button>
                             </form>
                         </div>
-                    </div>
-                </div>
+                    </details>
 
-                <!-- Pending Transcript: Upload Form -->
-                <div
-                    v-if="isPendingTranscript"
-                    class="rounded-xl border-2 border-dashed border-yellow-300 bg-yellow-50 p-6 dark:border-yellow-700 dark:bg-yellow-900/20"
-                >
-                    <div class="flex items-start gap-4">
-                        <CloudArrowUpIcon
-                            class="h-8 w-8 flex-shrink-0 text-yellow-600 dark:text-yellow-400"
+                    <AudioSampleStatsPanel
+                        :has-cleaned-text="hasCleanedText"
+                        :audio-sample="audioSample"
+                        :cleaned-words="cleanedWords"
+                        :original-words="originalWords"
+                        :removed-words="removedWords"
+                        :reduction-percentage="reductionPercentage"
+                        :formatted-metrics="formattedMetrics"
+                        :get-category-color="getCategoryColor"
+                        :can-be-validated="canBeValidated"
+                        :is-validated="isValidated"
+                        :is-editing="isEditing"
+                        :validate-processing="validateForm.processing"
+                        @validate="toggleValidation"
+                    />
+
+                    <AudioSampleTextReview
+                        :has-raw-text="hasRawText"
+                        :has-cleaned-text="hasCleanedText"
+                        :active-view="activeView"
+                        :copied-original="copiedOriginal"
+                        :copied-cleaned="copiedCleaned"
+                        :is-editing="isEditing"
+                        :edited-text="editedText"
+                        :update-processing="updateForm.processing"
+                        :original-text="audioSample.reference_text_raw"
+                        :cleaned-text="audioSample.reference_text_clean"
+                        :char-diff="charDiff"
+                        :diff-stats="diffStats"
+                        @update:active-view="(value) => (activeView = value)"
+                        @update:edited-text="(value) => (editedText = value)"
+                        @start-editing="startEditing"
+                        @cancel-editing="cancelEditing"
+                        @save-edit="saveEdit"
+                        @copy-original="copyOriginalText"
+                        @copy-cleaned="copyCleanedText"
+                    />
+
+                    <div id="benchmark-step">
+                        <AudioSampleBenchmarkSection
+                            :audio-sample-id="audioSample.id"
+                            :is-validated="isValidated"
+                            :show-transcription-form="showTranscriptionForm"
+                            :show-manual-entry-form="showManualEntryForm"
+                            :transcriptions="transcriptions"
+                            :asr-providers="asrProviders"
+                            :asr-provider-options="asrProviderOptions"
+                            :asr-provider-models="asrProviderModels"
+                            :loading-asr-models="loadingAsrModels"
+                            :transcribe-form="transcribeForm"
+                            :manual-transcription-form="manualTranscriptionForm"
+                            :manual-provider-selection="manualProviderSelection"
+                            :manual-provider-custom="manualProviderCustom"
+                            :manual-model-selection="manualModelSelection"
+                            :manual-model-custom="manualModelCustom"
+                            :manual-model-options="manualModelOptions"
+                            :is-manual-provider-custom="isManualProviderCustom"
+                            :is-manual-model-custom="isManualModelCustom"
+                            :manual-provider-value="manualProviderValue"
+                            :manual-model-value="manualModelValue"
+                            :format-error-rate="formatErrorRate"
+                            :get-wer-color="getWerColor"
+                            :get-source-color="getSourceColor"
+                            @update:show-transcription-form="(value) => (showTranscriptionForm = value)"
+                            @update:show-manual-entry-form="(value) => (showManualEntryForm = value)"
+                            @update:manual-provider-selection="(value) => (manualProviderSelection = value)"
+                            @update:manual-provider-custom="(value) => (manualProviderCustom = value)"
+                            @update:manual-model-selection="(value) => (manualModelSelection = value)"
+                            @update:manual-model-custom="(value) => (manualModelCustom = value)"
+                            @submit-transcription="submitTranscription"
+                            @submit-manual-transcription="submitManualTranscription"
+                            @delete-transcription="deleteTranscription"
                         />
-                        <div class="flex-1">
-                            <h2
-                                class="text-lg font-semibold text-yellow-800 dark:text-yellow-300"
-                            >
-                                Upload Reference Transcript
-                            </h2>
-                            <p
-                                class="mb-4 text-sm text-yellow-700 dark:text-yellow-400"
-                            >
-                                This audio sample needs a reference transcript
-                                before it can be cleaned.
-                            </p>
-                            <form
-                                @submit.prevent="uploadTranscript"
-                                class="flex items-end gap-3"
-                            >
-                                <div class="flex-1">
-                                    <label
-                                        class="mb-1 block text-sm font-medium"
-                                        >Transcript File</label
-                                    >
-                                    <input
-                                        type="file"
-                                        accept=".txt,.docx,.pdf"
-                                        @change="
-                                            (e: any) =>
-                                                (transcriptForm.transcript =
-                                                    e.target.files[0])
-                                        "
-                                        class="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    :disabled="
-                                        !transcriptForm.transcript ||
-                                        transcriptForm.processing
-                                    "
-                                    class="rounded-lg bg-yellow-600 px-4 py-2 font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
-                                >
-                                    Upload
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Imported: Cleaning Form -->
-                <div
-                    v-if="isImported && canBeCleaned"
-                    class="rounded-xl border-2 border-blue-200 bg-blue-50 p-6 dark:border-blue-800 dark:bg-blue-900/20"
-                >
-                    <h2
-                        class="mb-4 flex items-center gap-2 text-lg font-semibold"
-                    >
-                        <SparklesIcon class="h-5 w-5 text-blue-600" />
-                        Clean This Transcript
-                    </h2>
-                    <form @submit.prevent="submitClean" class="space-y-4">
-                        <!-- Mode Selection -->
-                        <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Cleaning Mode</label
-                            >
-                            <div class="flex gap-2">
-                                <button
-                                    type="button"
-                                    @click="cleanForm.mode = 'rule'"
-                                    :class="[
-                                        'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 font-medium transition-colors',
-                                        cleanForm.mode === 'rule'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'hover:bg-muted',
-                                    ]"
-                                >
-                                    <CpuChipIcon class="h-4 w-4" />
-                                    Rule-based
-                                </button>
-                                <button
-                                    type="button"
-                                    @click="cleanForm.mode = 'llm'"
-                                    :class="[
-                                        'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 font-medium transition-colors',
-                                        cleanForm.mode === 'llm'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'hover:bg-muted',
-                                    ]"
-                                >
-                                    <SparklesIcon class="h-4 w-4" />
-                                    AI (LLM)
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Preset Selection (only for rule-based mode) -->
-                        <div v-if="cleanForm.mode === 'rule'">
-                            <label class="mb-1 block text-sm font-medium"
-                                >Cleaning Preset</label
-                            >
-                            <Listbox v-model="cleanForm.preset">
-                                <div class="relative">
-                                    <ListboxButton
-                                        class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                    >
-                                        <span class="block truncate">{{
-                                            presetOptions.find(
-                                                (p) =>
-                                                    p.id === cleanForm.preset,
-                                            )?.name || cleanForm.preset
-                                        }}</span>
-                                        <span
-                                            class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                                        >
-                                            <ChevronUpDownIcon
-                                                class="h-5 w-5 text-muted-foreground"
-                                            />
-                                        </span>
-                                    </ListboxButton>
-                                    <ListboxOptions
-                                        class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
-                                    >
-                                        <ListboxOption
-                                            v-for="preset in presetOptions"
-                                            :key="preset.id"
-                                            :value="preset.id"
-                                            v-slot="{ active, selected }"
-                                        >
-                                            <li
-                                                :class="[
-                                                    'relative cursor-pointer py-2 pr-4 pl-10 select-none',
-                                                    active
-                                                        ? 'bg-primary/10 text-foreground'
-                                                        : 'text-foreground',
-                                                ]"
-                                            >
-                                                <span
-                                                    :class="[
-                                                        'block truncate',
-                                                        selected &&
-                                                            'font-medium',
-                                                    ]"
-                                                >
-                                                    {{ preset.name }}
-                                                </span>
-                                                <span
-                                                    class="block truncate text-xs text-muted-foreground"
-                                                    >{{
-                                                        preset.description
-                                                    }}</span
-                                                >
-                                                <span
-                                                    v-if="selected"
-                                                    class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"
-                                                >
-                                                    <CheckIcon
-                                                        class="h-5 w-5"
-                                                    />
-                                                </span>
-                                            </li>
-                                        </ListboxOption>
-                                    </ListboxOptions>
-                                </div>
-                            </Listbox>
-                        </div>
-
-                        <!-- LLM Options (if LLM mode) -->
-                        <div
-                            v-if="cleanForm.mode === 'llm'"
-                            class="grid gap-4 border-t pt-2 md:grid-cols-2"
-                        >
-                            <div>
-                                <label class="mb-1 block text-sm font-medium">
-                                    LLM Provider
-                                    <SparklesIcon
-                                        class="ml-1 inline-block h-4 w-4 text-primary"
-                                    />
-                                </label>
-                                <Listbox v-model="cleanForm.llm_provider">
-                                    <div class="relative">
-                                        <ListboxButton
-                                            class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                        >
-                                            <span class="block truncate">{{
-                                                llmProviders[
-                                                    cleanForm.llm_provider
-                                                ]?.name ||
-                                                cleanForm.llm_provider
-                                            }}</span>
-                                            <span
-                                                class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                                            >
-                                                <ChevronUpDownIcon
-                                                    class="h-5 w-5 text-muted-foreground"
-                                                />
-                                            </span>
-                                        </ListboxButton>
-                                        <ListboxOptions
-                                            class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
-                                        >
-                                            <ListboxOption
-                                                v-for="provider in providerOptions"
-                                                :key="provider.id"
-                                                :value="provider.id"
-                                                v-slot="{ active, selected }"
-                                            >
-                                                <li
-                                                    :class="[
-                                                        'relative cursor-pointer py-2 pr-4 pl-10 select-none',
-                                                        active
-                                                            ? 'bg-primary/10 text-foreground'
-                                                            : 'text-foreground',
-                                                    ]"
-                                                >
-                                                    <span
-                                                        class="flex items-center gap-2"
-                                                    >
-                                                        <span
-                                                            :class="[
-                                                                'block truncate',
-                                                                selected &&
-                                                                    'font-medium',
-                                                            ]"
-                                                            >{{
-                                                                provider.name
-                                                            }}</span
-                                                        >
-                                                        <span
-                                                            v-if="
-                                                                !provider.hasCredential
-                                                            "
-                                                            class="text-xs text-amber-500"
-                                                            >(no key)</span
-                                                        >
-                                                    </span>
-                                                    <span
-                                                        v-if="selected"
-                                                        class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"
-                                                    >
-                                                        <CheckIcon
-                                                            class="h-5 w-5"
-                                                        />
-                                                    </span>
-                                                </li>
-                                            </ListboxOption>
-                                        </ListboxOptions>
-                                    </div>
-                                </Listbox>
-                            </div>
-
-                            <div>
-                                <label class="mb-1 block text-sm font-medium">
-                                    Model
-                                    <ArrowPathIcon
-                                        v-if="loadingModels"
-                                        class="ml-1 inline-block h-4 w-4 animate-spin"
-                                    />
-                                </label>
-                                <Listbox
-                                    v-model="cleanForm.llm_model"
-                                    :disabled="loadingModels"
-                                >
-                                    <div class="relative">
-                                        <ListboxButton
-                                            class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-                                        >
-                                            <span class="block truncate">{{
-                                                selectedModelDisplay
-                                            }}</span>
-                                            <span
-                                                class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                                            >
-                                                <ChevronUpDownIcon
-                                                    class="h-5 w-5 text-muted-foreground"
-                                                />
-                                            </span>
-                                        </ListboxButton>
-                                        <ListboxOptions
-                                            class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
-                                        >
-                                            <ListboxOption
-                                                v-for="model in providerModels"
-                                                :key="model.id"
-                                                :value="model.id"
-                                                v-slot="{ active, selected }"
-                                            >
-                                                <li
-                                                    :class="[
-                                                        'relative cursor-pointer py-2 pr-4 pl-10 select-none',
-                                                        active
-                                                            ? 'bg-primary/10 text-foreground'
-                                                            : 'text-foreground',
-                                                    ]"
-                                                >
-                                                    <span
-                                                        :class="[
-                                                            'block truncate',
-                                                            selected &&
-                                                                'font-medium',
-                                                        ]"
-                                                        >{{ model.name }}</span
-                                                    >
-                                                    <span
-                                                        v-if="
-                                                            model.context_length
-                                                        "
-                                                        class="block text-xs text-muted-foreground"
-                                                        >{{
-                                                            (
-                                                                model.context_length /
-                                                                1000
-                                                            ).toFixed(0)
-                                                        }}k context</span
-                                                    >
-                                                    <span
-                                                        v-if="selected"
-                                                        class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"
-                                                    >
-                                                        <CheckIcon
-                                                            class="h-5 w-5"
-                                                        />
-                                                    </span>
-                                                </li>
-                                            </ListboxOption>
-                                        </ListboxOptions>
-                                    </div>
-                                </Listbox>
-                            </div>
-                        </div>
-
-                        <!-- Cost Estimation (LLM mode only) -->
-                        <div
-                            v-if="cleanForm.mode === 'llm'"
-                            class="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20"
-                        >
-                            <div class="flex items-start gap-3">
-                                <SparklesIcon
-                                    class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
-                                />
-                                <div class="min-w-0 flex-1">
-                                    <div
-                                        class="text-sm font-medium text-amber-800 dark:text-amber-200"
-                                    >
-                                        Estimated Cost
-                                    </div>
-                                    <div
-                                        class="mt-1 grid grid-cols-3 gap-2 text-xs"
-                                    >
-                                        <div>
-                                            <span
-                                                class="text-amber-600 dark:text-amber-400"
-                                                >Input:</span
-                                            >
-                                            <span class="ml-1 font-mono"
-                                                >~{{
-                                                    estimatedTokens.input.toLocaleString()
-                                                }}
-                                                tokens</span
-                                            >
-                                        </div>
-                                        <div>
-                                            <span
-                                                class="text-amber-600 dark:text-amber-400"
-                                                >Output:</span
-                                            >
-                                            <span class="ml-1 font-mono"
-                                                >~{{
-                                                    estimatedTokens.output.toLocaleString()
-                                                }}
-                                                tokens</span
-                                            >
-                                        </div>
-                                        <div class="font-medium">
-                                            <span
-                                                class="text-amber-600 dark:text-amber-400"
-                                                >Total:</span
-                                            >
-                                            <span
-                                                class="ml-1 font-mono text-amber-800 dark:text-amber-200"
-                                                >{{
-                                                    estimatedCost.formatted
-                                                }}</span
-                                            >
-                                        </div>
-                                    </div>
-                                    <p
-                                        class="mt-1 text-xs text-amber-600 dark:text-amber-400"
-                                    >
-                                        Estimates based on
-                                        {{ selectedModelDisplay }} pricing.
-                                        Actual costs may vary.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex justify-end">
-                            <button
-                                type="submit"
-                                :disabled="cleanForm.processing"
-                                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                            >
-                                <ArrowPathIcon
-                                    v-if="cleanForm.processing"
-                                    class="h-4 w-4 animate-spin"
-                                />
-                                <SparklesIcon v-else class="h-4 w-4" />
-                                {{
-                                    cleanForm.processing
-                                        ? 'Cleaning...'
-                                        : 'Clean Transcript'
-                                }}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- Re-clean option (if already cleaned) - More prominent card -->
-                <div
-                    v-if="isCleaned && canBeCleaned"
-                    class="rounded-xl border-2 border-amber-200 bg-amber-50 p-6 dark:border-amber-800 dark:bg-amber-900/20"
-                >
-                    <div class="mb-4 flex items-center justify-between">
-                        <h2
-                            class="flex items-center gap-2 text-lg font-semibold"
-                        >
-                            <ArrowPathIcon class="h-5 w-5 text-amber-600" />
-                            Re-clean with Different Settings
-                        </h2>
-                        <button
-                            type="button"
-                            @click="showRecleanForm = !showRecleanForm"
-                            class="text-sm font-medium text-amber-600 hover:text-amber-700"
-                        >
-                            {{
-                                showRecleanForm
-                                    ? 'Hide Options'
-                                    : 'Show Options'
-                            }}
-                        </button>
-                    </div>
-                    <p
-                        v-if="!showRecleanForm"
-                        class="text-sm text-muted-foreground"
-                    >
-                        Not satisfied with the results? Try a different cleaning
-                        method or AI model.
-                    </p>
-                    <form
-                        v-if="showRecleanForm"
-                        @submit.prevent="submitClean"
-                        class="space-y-4"
-                    >
-                        <!-- Mode Selection -->
-                        <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Mode</label
-                            >
-                            <div class="flex gap-2">
-                                <button
-                                    type="button"
-                                    @click="cleanForm.mode = 'rule'"
-                                    :class="[
-                                        'flex-1 rounded-lg border px-3 py-2',
-                                        cleanForm.mode === 'rule'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : '',
-                                    ]"
-                                >
-                                    Rule-based
-                                </button>
-                                <button
-                                    type="button"
-                                    @click="cleanForm.mode = 'llm'"
-                                    :class="[
-                                        'flex-1 rounded-lg border px-3 py-2',
-                                        cleanForm.mode === 'llm'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : '',
-                                    ]"
-                                >
-                                    AI (LLM)
-                                </button>
-                            </div>
-                        </div>
-                        <!-- Preset Selection (only for rule-based mode) -->
-                        <div v-if="cleanForm.mode === 'rule'">
-                            <label class="mb-1 block text-sm font-medium"
-                                >Cleaning Preset</label
-                            >
-                            <Listbox v-model="cleanForm.preset">
-                                <div class="relative">
-                                    <ListboxButton
-                                        class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                    >
-                                        <span class="block truncate">{{
-                                            presetOptions.find(
-                                                (p) =>
-                                                    p.id === cleanForm.preset,
-                                            )?.name || cleanForm.preset
-                                        }}</span>
-                                        <span
-                                            class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                                        >
-                                            <ChevronUpDownIcon
-                                                class="h-5 w-5 text-muted-foreground"
-                                            />
-                                        </span>
-                                    </ListboxButton>
-                                    <ListboxOptions
-                                        class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
-                                    >
-                                        <ListboxOption
-                                            v-for="preset in presetOptions"
-                                            :key="preset.id"
-                                            :value="preset.id"
-                                            v-slot="{ active, selected }"
-                                        >
-                                            <li
-                                                :class="[
-                                                    'relative cursor-pointer py-2 pr-4 pl-10 select-none',
-                                                    active
-                                                        ? 'bg-primary/10 text-foreground'
-                                                        : 'text-foreground',
-                                                ]"
-                                            >
-                                                <span
-                                                    :class="[
-                                                        'block truncate',
-                                                        selected &&
-                                                            'font-medium',
-                                                    ]"
-                                                    >{{ preset.name }}</span
-                                                >
-                                                <span
-                                                    v-if="selected"
-                                                    class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"
-                                                >
-                                                    <CheckIcon
-                                                        class="h-5 w-5"
-                                                    />
-                                                </span>
-                                            </li>
-                                        </ListboxOption>
-                                    </ListboxOptions>
-                                </div>
-                            </Listbox>
-                        </div>
-                        <!-- LLM Options (if LLM mode) -->
-                        <div
-                            v-if="cleanForm.mode === 'llm'"
-                            class="grid gap-4 md:grid-cols-2"
-                        >
-                            <div>
-                                <label class="mb-1 block text-sm font-medium"
-                                    >Provider</label
-                                >
-                                <Listbox v-model="cleanForm.llm_provider">
-                                    <div class="relative">
-                                        <ListboxButton
-                                            class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                                        >
-                                            <span class="block truncate">{{
-                                                llmProviders[
-                                                    cleanForm.llm_provider
-                                                ]?.name ||
-                                                cleanForm.llm_provider
-                                            }}</span>
-                                            <span
-                                                class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                                            >
-                                                <ChevronUpDownIcon
-                                                    class="h-5 w-5 text-muted-foreground"
-                                                />
-                                            </span>
-                                        </ListboxButton>
-                                        <ListboxOptions
-                                            class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
-                                        >
-                                            <ListboxOption
-                                                v-for="provider in providerOptions"
-                                                :key="provider.id"
-                                                :value="provider.id"
-                                                v-slot="{ active, selected }"
-                                            >
-                                                <li
-                                                    :class="[
-                                                        'relative cursor-pointer py-2 pr-4 pl-10 select-none',
-                                                        active
-                                                            ? 'bg-primary/10 text-foreground'
-                                                            : 'text-foreground',
-                                                    ]"
-                                                >
-                                                    <span
-                                                        class="flex items-center gap-2"
-                                                    >
-                                                        <span
-                                                            :class="[
-                                                                'block truncate',
-                                                                selected &&
-                                                                    'font-medium',
-                                                            ]"
-                                                            >{{
-                                                                provider.name
-                                                            }}</span
-                                                        >
-                                                        <span
-                                                            v-if="
-                                                                !provider.hasCredential
-                                                            "
-                                                            class="text-xs text-amber-500"
-                                                            >(no key)</span
-                                                        >
-                                                    </span>
-                                                    <span
-                                                        v-if="selected"
-                                                        class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"
-                                                    >
-                                                        <CheckIcon
-                                                            class="h-5 w-5"
-                                                        />
-                                                    </span>
-                                                </li>
-                                            </ListboxOption>
-                                        </ListboxOptions>
-                                    </div>
-                                </Listbox>
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-sm font-medium">
-                                    Model
-                                    <ArrowPathIcon
-                                        v-if="loadingModels"
-                                        class="ml-1 inline-block h-4 w-4 animate-spin"
-                                    />
-                                </label>
-                                <Listbox
-                                    v-model="cleanForm.llm_model"
-                                    :disabled="loadingModels"
-                                >
-                                    <div class="relative">
-                                        <ListboxButton
-                                            class="relative w-full rounded-lg border border-border bg-background py-2.5 pr-10 pl-4 text-left transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-                                        >
-                                            <span class="block truncate">{{
-                                                selectedModelDisplay
-                                            }}</span>
-                                            <span
-                                                class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                                            >
-                                                <ChevronUpDownIcon
-                                                    class="h-5 w-5 text-muted-foreground"
-                                                />
-                                            </span>
-                                        </ListboxButton>
-                                        <ListboxOptions
-                                            class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
-                                        >
-                                            <ListboxOption
-                                                v-for="model in providerModels"
-                                                :key="model.id"
-                                                :value="model.id"
-                                                v-slot="{ active, selected }"
-                                            >
-                                                <li
-                                                    :class="[
-                                                        'relative cursor-pointer py-2 pr-4 pl-10 select-none',
-                                                        active
-                                                            ? 'bg-primary/10 text-foreground'
-                                                            : 'text-foreground',
-                                                    ]"
-                                                >
-                                                    <span
-                                                        :class="[
-                                                            'block truncate',
-                                                            selected &&
-                                                                'font-medium',
-                                                        ]"
-                                                        >{{ model.name }}</span
-                                                    >
-                                                    <span
-                                                        v-if="
-                                                            model.context_length
-                                                        "
-                                                        class="block text-xs text-muted-foreground"
-                                                        >{{
-                                                            (
-                                                                model.context_length /
-                                                                1000
-                                                            ).toFixed(0)
-                                                        }}k context</span
-                                                    >
-                                                    <span
-                                                        v-if="selected"
-                                                        class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"
-                                                    >
-                                                        <CheckIcon
-                                                            class="h-5 w-5"
-                                                        />
-                                                    </span>
-                                                </li>
-                                            </ListboxOption>
-                                        </ListboxOptions>
-                                    </div>
-                                </Listbox>
-                            </div>
-                        </div>
-                        <!-- Cost Estimation (LLM mode only) -->
-                        <div
-                            v-if="cleanForm.mode === 'llm'"
-                            class="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20"
-                        >
-                            <div class="flex items-start gap-3">
-                                <SparklesIcon
-                                    class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
-                                />
-                                <div class="min-w-0 flex-1">
-                                    <div
-                                        class="text-sm font-medium text-amber-800 dark:text-amber-200"
-                                    >
-                                        Estimated Cost
-                                    </div>
-                                    <div
-                                        class="mt-1 grid grid-cols-3 gap-2 text-xs"
-                                    >
-                                        <div>
-                                            <span
-                                                class="text-amber-600 dark:text-amber-400"
-                                                >Input:</span
-                                            >
-                                            <span class="ml-1 font-mono"
-                                                >~{{
-                                                    estimatedTokens.input.toLocaleString()
-                                                }}
-                                                tokens</span
-                                            >
-                                        </div>
-                                        <div>
-                                            <span
-                                                class="text-amber-600 dark:text-amber-400"
-                                                >Output:</span
-                                            >
-                                            <span class="ml-1 font-mono"
-                                                >~{{
-                                                    estimatedTokens.output.toLocaleString()
-                                                }}
-                                                tokens</span
-                                            >
-                                        </div>
-                                        <div class="font-medium">
-                                            <span
-                                                class="text-amber-600 dark:text-amber-400"
-                                                >Total:</span
-                                            >
-                                            <span
-                                                class="ml-1 font-mono text-amber-800 dark:text-amber-200"
-                                                >{{
-                                                    estimatedCost.formatted
-                                                }}</span
-                                            >
-                                        </div>
-                                    </div>
-                                    <p
-                                        class="mt-1 text-xs text-amber-600 dark:text-amber-400"
-                                    >
-                                        Estimates based on
-                                        {{ selectedModelDisplay }} pricing.
-                                        Actual costs may vary.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <p class="text-sm text-amber-600 dark:text-amber-400">
-                            ⚠️ Re-cleaning will overwrite the current cleaned
-                            text and remove validation status.
-                        </p>
-                        <button
-                            type="submit"
-                            :disabled="cleanForm.processing"
-                            class="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                        >
-                            <ArrowPathIcon
-                                v-if="cleanForm.processing"
-                                class="h-4 w-4 animate-spin"
-                            />
-                            {{
-                                cleanForm.processing
-                                    ? 'Cleaning...'
-                                    : 'Re-clean Transcript'
-                            }}
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Replace Transcript option (if sample has a transcript already) -->
-                <details
-                    v-if="hasRawText && !isPendingTranscript"
-                    class="rounded-xl border bg-card"
-                >
-                    <summary
-                        class="flex cursor-pointer items-center gap-2 px-4 py-3 font-medium hover:bg-muted/50"
-                    >
-                        <CloudArrowUpIcon class="h-4 w-4" />
-                        Replace Reference Transcript
-                    </summary>
-                    <div class="px-4 pb-4">
-                        <p class="mb-4 text-sm text-muted-foreground">
-                            Upload a new reference transcript to replace the
-                            current one. This will reset any cleaned text and
-                            validation status.
-                        </p>
-                        <form
-                            @submit.prevent="uploadTranscript"
-                            class="space-y-4"
-                        >
-                            <div>
-                                <label class="mb-1 block text-sm font-medium"
-                                    >New Transcript File</label
-                                >
-                                <input
-                                    type="file"
-                                    accept=".txt,.docx,.pdf"
-                                    @change="
-                                        (e: any) =>
-                                            (transcriptForm.transcript =
-                                                e.target.files[0])
-                                    "
-                                    class="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                                />
-                            </div>
-                            <p
-                                class="text-sm text-amber-600 dark:text-amber-400"
-                            >
-                                ⚠️ Replacing the transcript will discard all
-                                cleaned text and remove validation status.
-                            </p>
-                            <button
-                                type="submit"
-                                :disabled="
-                                    !transcriptForm.transcript ||
-                                    transcriptForm.processing
-                                "
-                                class="rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                            >
-                                {{
-                                    transcriptForm.processing
-                                        ? 'Uploading...'
-                                        : 'Replace Transcript'
-                                }}
-                            </button>
-                        </form>
-                    </div>
-                </details>
-
-                <!-- Replace Audio option (if sample has audio already) -->
-                <details v-if="hasAudio" class="rounded-xl border bg-card">
-                    <summary
-                        class="flex cursor-pointer items-center gap-2 px-4 py-3 font-medium hover:bg-muted/50"
-                    >
-                        <MusicalNoteIcon class="h-4 w-4" />
-                        Replace Audio File
-                    </summary>
-                    <div class="px-4 pb-4">
-                        <p class="mb-4 text-sm text-muted-foreground">
-                            Upload a new audio file to replace the current one.
-                        </p>
-                        <form @submit.prevent="uploadAudio" class="space-y-4">
-                            <div>
-                                <label class="mb-1 block text-sm font-medium"
-                                    >New Audio File</label
-                                >
-                                <input
-                                    type="file"
-                                    accept=".mp3,.wav,.ogg,.m4a,.flac"
-                                    @change="
-                                        (e: any) =>
-                                            (audioForm.audio =
-                                                e.target.files[0])
-                                    "
-                                    class="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                :disabled="
-                                    !audioForm.audio || audioForm.processing
-                                "
-                                class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                            >
-                                {{
-                                    audioForm.processing
-                                        ? 'Uploading...'
-                                        : 'Replace Audio'
-                                }}
-                            </button>
-                        </form>
-                    </div>
-                </details>
-
-                <!-- Stats Grid (only if cleaned) -->
-                <div
-                    v-if="hasCleanedText"
-                    class="grid grid-cols-2 gap-4 md:grid-cols-5"
-                >
-                    <div class="rounded-xl border bg-card p-4">
-                        <div class="text-sm text-muted-foreground">
-                            Clean Rate
-                        </div>
-                        <div class="mt-1 flex items-center gap-2">
-                            <span class="text-2xl font-bold"
-                                >{{ audioSample.clean_rate ?? '-' }}%</span
-                            >
-                            <span
-                                v-if="audioSample.clean_rate_category"
-                                :class="[
-                                    'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-                                    getCategoryColor(
-                                        audioSample.clean_rate_category,
-                                    ),
-                                ]"
-                            >
-                                {{ audioSample.clean_rate_category }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="rounded-xl border bg-card p-4">
-                        <div class="text-sm text-muted-foreground">
-                            Reduction
-                        </div>
-                        <div class="text-2xl font-bold text-blue-600">
-                            {{ reductionPercentage }}%
-                        </div>
-                    </div>
-                    <div class="rounded-xl border bg-card p-4">
-                        <div class="text-sm text-muted-foreground">
-                            Words Removed
-                        </div>
-                        <div class="text-2xl font-bold text-rose-500">
-                            {{ removedWords }}
-                        </div>
-                    </div>
-                    <div class="rounded-xl border bg-card p-4">
-                        <div class="text-sm text-muted-foreground">
-                            Original Words
-                        </div>
-                        <div class="text-2xl font-bold">
-                            {{ originalWords }}
-                        </div>
-                    </div>
-                    <div class="rounded-xl border bg-card p-4">
-                        <div class="text-sm text-muted-foreground">
-                            Cleaned Words
-                        </div>
-                        <div class="text-2xl font-bold text-emerald-500">
-                            {{ cleanedWords }}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Additional Metrics -->
-                <div
-                    v-if="formattedMetrics.length > 0"
-                    class="rounded-xl border bg-card p-4"
-                >
-                    <h2 class="mb-3 font-semibold">Processing Metrics</h2>
-                    <div class="flex flex-wrap gap-4">
-                        <div
-                            v-for="metric in formattedMetrics"
-                            :key="metric.name"
-                            class="text-sm"
-                        >
-                            <span class="text-muted-foreground"
-                                >{{ metric.name }}:</span
-                            >
-                            <span class="ml-1 font-medium">{{
-                                metric.value
-                            }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Removals Summary -->
-                <div
-                    v-if="
-                        audioSample.removals && audioSample.removals.length > 0
-                    "
-                    class="rounded-xl border bg-card p-4"
-                >
-                    <h2 class="mb-3 font-semibold">What Was Removed</h2>
-                    <div class="flex flex-wrap gap-2">
-                        <span
-                            v-for="removal in audioSample.removals"
-                            :key="removal.type"
-                            class="rounded-full bg-rose-100 px-3 py-1 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
-                        >
-                            {{ removal.type }}: {{ removal.count }}×
-                        </span>
-                    </div>
-                </div>
-
-                <!-- View Toggle with Copy Buttons -->
-                <div
-                    v-if="hasRawText || hasCleanedText"
-                    class="flex flex-col gap-4 border-b pb-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                    <div class="flex gap-2">
-                        <button
-                            v-if="hasCleanedText"
-                            @click="activeView = 'cleaned'"
-                            :class="[
-                                '-mb-px border-b-2 px-4 py-2 font-medium transition-colors',
-                                activeView === 'cleaned'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                            ]"
-                        >
-                            Cleaned Text
-                        </button>
-                        <button
-                            v-if="hasRawText"
-                            @click="activeView = 'original'"
-                            :class="[
-                                '-mb-px border-b-2 px-4 py-2 font-medium transition-colors',
-                                activeView === 'original'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                            ]"
-                        >
-                            Original Text
-                        </button>
-                        <button
-                            v-if="hasRawText && hasCleanedText"
-                            @click="activeView = 'side-by-side'"
-                            :class="[
-                                '-mb-px border-b-2 px-4 py-2 font-medium transition-colors',
-                                activeView === 'side-by-side'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                            ]"
-                        >
-                            Side by Side
-                        </button>
-                        <button
-                            v-if="hasRawText && hasCleanedText"
-                            @click="activeView = 'diff'"
-                            :class="[
-                                '-mb-px border-b-2 px-4 py-2 font-medium transition-colors',
-                                activeView === 'diff'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                            ]"
-                        >
-                            Diff View
-                        </button>
-                    </div>
-                    <div class="flex gap-2">
-                        <button
-                            v-if="hasRawText"
-                            @click="copyOriginalText"
-                            class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
-                        >
-                            <CheckIcon
-                                v-if="copiedOriginal"
-                                class="h-4 w-4 text-green-500"
-                            />
-                            <ClipboardDocumentIcon v-else class="h-4 w-4" />
-                            {{ copiedOriginal ? 'Copied!' : 'Copy Original' }}
-                        </button>
-                        <button
-                            v-if="hasCleanedText"
-                            @click="copyCleanedText"
-                            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                            <CheckIcon v-if="copiedCleaned" class="h-4 w-4" />
-                            <ClipboardDocumentIcon v-else class="h-4 w-4" />
-                            {{ copiedCleaned ? 'Copied!' : 'Copy Cleaned' }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Cleaned Text View (with inline edit) -->
-                <div
-                    v-if="activeView === 'cleaned' && hasCleanedText"
-                    class="overflow-hidden rounded-xl border bg-card"
-                >
-                    <div
-                        class="flex items-center justify-between border-b bg-emerald-50 px-4 py-2 dark:bg-emerald-900/20"
-                    >
-                        <h3
-                            class="font-semibold text-emerald-700 dark:text-emerald-400"
-                        >
-                            Cleaned Text
-                        </h3>
-                        <div class="flex gap-2">
-                            <button
-                                v-if="!isEditing"
-                                @click="startEditing"
-                                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-sm font-medium hover:bg-muted"
-                            >
-                                <PencilIcon class="h-4 w-4" />
-                                Edit
-                            </button>
-                            <template v-else>
-                                <button
-                                    @click="cancelEditing"
-                                    class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-sm font-medium hover:bg-muted"
-                                >
-                                    <XMarkIcon class="h-4 w-4" />
-                                    Cancel
-                                </button>
-                                <button
-                                    @click="saveEdit"
-                                    :disabled="updateForm.processing"
-                                    class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                                >
-                                    <CheckIcon class="h-4 w-4" />
-                                    Save
-                                </button>
-                            </template>
-                        </div>
-                    </div>
-                    <div class="max-h-[600px] min-h-64 overflow-y-auto p-4">
-                        <textarea
-                            v-if="isEditing"
-                            v-model="editedText"
-                            dir="rtl"
-                            class="h-96 w-full resize-y rounded-lg border bg-transparent p-2 font-mono text-sm"
-                        ></textarea>
-                        <pre
-                            v-else
-                            class="font-mono text-sm whitespace-pre-wrap"
-                            dir="rtl"
-                            >{{ audioSample.reference_text_clean }}</pre
-                        >
-                    </div>
-                </div>
-
-                <!-- Original Text View -->
-                <div
-                    v-else-if="activeView === 'original' && hasRawText"
-                    class="max-h-[600px] min-h-64 overflow-y-auto rounded-xl border bg-card p-4"
-                >
-                    <pre
-                        class="font-mono text-sm whitespace-pre-wrap"
-                        dir="rtl"
-                        >{{ audioSample.reference_text_raw }}</pre
-                    >
-                </div>
-
-                <!-- Side by Side View -->
-                <div
-                    v-else-if="activeView === 'side-by-side'"
-                    class="grid gap-4 md:grid-cols-2"
-                >
-                    <div
-                        class="flex max-h-[600px] min-h-64 flex-col overflow-hidden rounded-xl border bg-card"
-                    >
-                        <div
-                            class="border-b bg-red-50 px-4 py-2 dark:bg-red-900/20"
-                        >
-                            <h3
-                                class="font-semibold text-red-700 dark:text-red-400"
-                            >
-                                Original
-                            </h3>
-                        </div>
-                        <div class="flex-1 overflow-y-auto p-4">
-                            <pre
-                                class="font-mono text-sm whitespace-pre-wrap"
-                                dir="rtl"
-                                >{{
-                                    audioSample.reference_text_raw ||
-                                    'No original text'
-                                }}</pre
-                            >
-                        </div>
-                    </div>
-                    <div
-                        class="flex max-h-[600px] min-h-64 flex-col overflow-hidden rounded-xl border bg-card"
-                    >
-                        <div
-                            class="border-b bg-emerald-50 px-4 py-2 dark:bg-emerald-900/20"
-                        >
-                            <h3
-                                class="font-semibold text-emerald-700 dark:text-emerald-400"
-                            >
-                                Cleaned
-                            </h3>
-                        </div>
-                        <div class="flex-1 overflow-y-auto p-4">
-                            <pre
-                                class="font-mono text-sm whitespace-pre-wrap"
-                                dir="rtl"
-                                >{{
-                                    audioSample.reference_text_clean ||
-                                    'No cleaned text'
-                                }}</pre
-                            >
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Diff View -->
-                <div v-else-if="activeView === 'diff'" class="space-y-4">
-                    <!-- Diff Stats -->
-                    <div class="grid grid-cols-3 gap-4">
-                        <div class="rounded-xl border bg-card p-4">
-                            <div class="text-sm text-muted-foreground">
-                                Chars Removed
-                            </div>
-                            <div class="text-2xl font-bold text-red-500">
-                                {{ diffStats.removed.toLocaleString() }}
-                            </div>
-                        </div>
-                        <div class="rounded-xl border bg-card p-4">
-                            <div class="text-sm text-muted-foreground">
-                                Chars Added
-                            </div>
-                            <div class="text-2xl font-bold text-teal-500">
-                                {{ diffStats.added.toLocaleString() }}
-                            </div>
-                        </div>
-                        <div class="rounded-xl border bg-card p-4">
-                            <div class="text-sm text-muted-foreground">
-                                Chars Unchanged
-                            </div>
-                            <div class="text-2xl font-bold text-emerald-500">
-                                {{ diffStats.unchanged.toLocaleString() }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Legend -->
-                    <div class="flex items-center justify-end gap-4 text-sm">
-                        <div class="flex items-center gap-2">
-                            <span
-                                class="rounded bg-red-500/20 px-2 py-0.5 text-red-600 line-through dark:text-red-400"
-                                >removed</span
-                            >
-                            <span>Removed</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span
-                                class="rounded bg-teal-500/20 px-2 py-0.5 text-teal-600 dark:text-teal-400"
-                                >added</span
-                            >
-                            <span>Added</span>
-                        </div>
-                    </div>
-
-                    <!-- Character-level Diff View -->
-                    <div class="overflow-hidden rounded-xl border bg-card">
-                        <div
-                            class="max-h-[600px] overflow-y-auto p-4"
-                            dir="rtl"
-                        >
-                            <div
-                                class="font-mono text-sm leading-relaxed whitespace-pre-wrap"
-                            >
-                                <template
-                                    v-for="(segment, idx) in charDiff"
-                                    :key="idx"
-                                >
-                                    <span
-                                        v-if="segment.type === 'removed'"
-                                        class="bg-red-500/20 text-red-600 line-through decoration-red-500/50 dark:text-red-400"
-                                        >{{ segment.text }}</span
-                                    >
-                                    <span
-                                        v-else-if="segment.type === 'added'"
-                                        class="bg-teal-500/20 text-teal-600 dark:text-teal-400"
-                                        >{{ segment.text }}</span
-                                    >
-                                    <span v-else>{{ segment.text }}</span>
-                                </template>
-                            </div>
-                            <div
-                                v-if="charDiff.length === 0"
-                                class="p-8 text-center text-muted-foreground"
-                            >
-                                No differences found
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ==========================================
-                 ASR Transcription Section (Benchmark Ready only)
-                 ========================================== -->
-                <div v-if="isValidated" class="mt-6 space-y-6">
-                    <!-- Transcription Section Header -->
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h2
-                                class="flex items-center gap-2 text-xl font-semibold"
-                            >
-                                <MicrophoneIcon class="h-5 w-5" />
-                                ASR Transcriptions
-                            </h2>
-                            <p class="text-sm text-muted-foreground">
-                                Run ASR models against this sample to benchmark
-                                performance
-                            </p>
-                        </div>
-                        <div class="flex gap-2">
-                            <button
-                                @click="
-                                    showManualEntryForm = !showManualEntryForm
-                                "
-                                class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 font-medium hover:bg-muted"
-                            >
-                                <PlusIcon class="h-4 w-4" />
-                                Add Manual Entry
-                            </button>
-                            <button
-                                @click="
-                                    showTranscriptionForm =
-                                        !showTranscriptionForm
-                                "
-                                class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
-                            >
-                                <MicrophoneIcon class="h-4 w-4" />
-                                Run ASR
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ASR Transcription Form -->
-                    <div
-                        v-if="showTranscriptionForm"
-                        class="rounded-xl border bg-card p-6"
-                    >
-                        <h3 class="mb-4 font-semibold">
-                            Run ASR Transcription
-                        </h3>
-                        <form
-                            @submit.prevent="submitTranscription"
-                            class="space-y-4"
-                        >
-                            <div class="grid gap-4 md:grid-cols-2">
-                                <!-- Provider Selection -->
-                                <div>
-                                    <label
-                                        class="mb-1 block text-sm font-medium"
-                                        >ASR Provider</label
-                                    >
-                                    <select
-                                        v-model="transcribeForm.provider"
-                                        class="w-full rounded-lg border bg-background px-3 py-2"
-                                    >
-                                        <option
-                                            v-for="provider in asrProviderOptions"
-                                            :key="provider.id"
-                                            :value="provider.id"
-                                        >
-                                            {{ provider.name }}
-                                            <span v-if="!provider.hasCredential"
-                                                >(No API Key)</span
-                                            >
-                                        </option>
-                                    </select>
-                                    <p
-                                        v-if="
-                                            asrProviders[
-                                                transcribeForm.provider
-                                            ]?.description
-                                        "
-                                        class="mt-1 text-xs text-muted-foreground"
-                                    >
-                                        {{
-                                            asrProviders[
-                                                transcribeForm.provider
-                                            ].description
-                                        }}
-                                    </p>
-                                </div>
-
-                                <!-- Model Selection -->
-                                <div>
-                                    <label
-                                        class="mb-1 block text-sm font-medium"
-                                        >Model</label
-                                    >
-                                    <select
-                                        v-model="transcribeForm.model"
-                                        :disabled="loadingAsrModels"
-                                        class="w-full rounded-lg border bg-background px-3 py-2 disabled:opacity-50"
-                                    >
-                                        <option
-                                            v-for="model in asrProviderModels"
-                                            :key="model.id"
-                                            :value="model.id"
-                                        >
-                                            {{ model.name }}
-                                        </option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <!-- Notes -->
-                            <div>
-                                <label class="mb-1 block text-sm font-medium"
-                                    >Notes (optional)</label
-                                >
-                                <textarea
-                                    v-model="transcribeForm.notes"
-                                    rows="2"
-                                    class="w-full rounded-lg border bg-background px-3 py-2"
-                                    placeholder="Any notes about this transcription run..."
-                                ></textarea>
-                            </div>
-
-                            <!-- Provider Warning -->
-                            <div
-                                v-if="
-                                    asrProviderOptions.find(
-                                        (p) =>
-                                            p.id === transcribeForm.provider &&
-                                            !p.hasCredential,
-                                    )
-                                "
-                                class="flex items-center gap-2 rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
-                            >
-                                <ExclamationTriangleIcon class="h-5 w-5" />
-                                No API key configured for this provider. Please
-                                add credentials in Settings.
-                            </div>
-
-                            <div class="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    @click="showTranscriptionForm = false"
-                                    class="rounded-lg border px-4 py-2 font-medium hover:bg-muted"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    :disabled="
-                                        transcribeForm.processing ||
-                                        !asrProviderOptions.find(
-                                            (p) =>
-                                                p.id ===
-                                                transcribeForm.provider,
-                                        )?.hasCredential
-                                    "
-                                    class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                                >
-                                    <span v-if="transcribeForm.processing"
-                                        >Processing...</span
-                                    >
-                                    <span v-else>Start Transcription</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <!-- Manual Entry Form -->
-                    <div
-                        v-if="showManualEntryForm"
-                        class="rounded-xl border bg-card p-6"
-                    >
-                        <h3 class="mb-4 font-semibold">
-                            Add Manual Benchmark Entry
-                        </h3>
-                        <p class="mb-4 text-sm text-muted-foreground">
-                            Manually enter transcription results from an
-                            external ASR system for benchmarking.
-                        </p>
-                        <form
-                            @submit.prevent="submitManualTranscription"
-                            class="space-y-4"
-                        >
-                            <div class="grid gap-4 md:grid-cols-2">
-                                <!-- Model Name -->
-                                <div>
-                                    <label
-                                        class="mb-1 block text-sm font-medium"
-                                        >Model Name *</label
-                                    >
-                                    <input
-                                        v-model="
-                                            manualTranscriptionForm.model_name
-                                        "
-                                        type="text"
-                                        required
-                                        class="w-full rounded-lg border bg-background px-3 py-2"
-                                        placeholder="e.g., google/chirp, azure/whisper-large"
-                                    />
-                                </div>
-
-                                <!-- Model Version -->
-                                <div>
-                                    <label
-                                        class="mb-1 block text-sm font-medium"
-                                        >Model Version</label
-                                    >
-                                    <input
-                                        v-model="
-                                            manualTranscriptionForm.model_version
-                                        "
-                                        type="text"
-                                        class="w-full rounded-lg border bg-background px-3 py-2"
-                                        placeholder="e.g., v2, 2024-01"
-                                    />
-                                </div>
-                            </div>
-
-                            <!-- Hypothesis Text -->
-                            <div>
-                                <label class="mb-1 block text-sm font-medium"
-                                    >Transcription Output *</label
-                                >
-                                <textarea
-                                    v-model="
-                                        manualTranscriptionForm.hypothesis_text
-                                    "
-                                    required
-                                    rows="4"
-                                    dir="rtl"
-                                    class="w-full rounded-lg border bg-background px-3 py-2 font-mono"
-                                    placeholder="Paste the ASR output here..."
-                                ></textarea>
-                                <p class="mt-1 text-xs text-muted-foreground">
-                                    WER and CER will be calculated automatically
-                                    against the reference text.
-                                </p>
-                            </div>
-
-                            <!-- Notes -->
-                            <div>
-                                <label class="mb-1 block text-sm font-medium"
-                                    >Notes</label
-                                >
-                                <textarea
-                                    v-model="manualTranscriptionForm.notes"
-                                    rows="2"
-                                    class="w-full rounded-lg border bg-background px-3 py-2"
-                                    placeholder="Configuration details, processing time, etc..."
-                                ></textarea>
-                            </div>
-
-                            <div class="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    @click="showManualEntryForm = false"
-                                    class="rounded-lg border px-4 py-2 font-medium hover:bg-muted"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    :disabled="
-                                        manualTranscriptionForm.processing
-                                    "
-                                    class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                                >
-                                    <span
-                                        v-if="
-                                            manualTranscriptionForm.processing
-                                        "
-                                        >Saving...</span
-                                    >
-                                    <span v-else>Add Entry</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <!-- Transcriptions List -->
-                    <div
-                        v-if="transcriptions.length > 0"
-                        class="overflow-hidden rounded-xl border bg-card"
-                    >
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead class="bg-muted/50">
-                                    <tr>
-                                        <th
-                                            class="px-4 py-3 text-left text-sm font-medium"
-                                        >
-                                            Model
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-left text-sm font-medium"
-                                        >
-                                            Source
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-center text-sm font-medium"
-                                        >
-                                            WER
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-center text-sm font-medium"
-                                        >
-                                            CER
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-center text-sm font-medium"
-                                        >
-                                            Errors
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-left text-sm font-medium"
-                                        >
-                                            Notes
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-right text-sm font-medium"
-                                        >
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y">
-                                    <tr
-                                        v-for="transcription in transcriptions"
-                                        :key="transcription.id"
-                                        class="hover:bg-muted/30"
-                                    >
-                                        <td class="px-4 py-3">
-                                            <div class="font-medium">
-                                                {{ transcription.model_name }}
-                                            </div>
-                                            <div
-                                                v-if="
-                                                    transcription.model_version
-                                                "
-                                                class="text-xs text-muted-foreground"
-                                            >
-                                                v{{
-                                                    transcription.model_version
-                                                }}
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3">
-                                            <span
-                                                :class="[
-                                                    'rounded-full px-2 py-0.5 text-xs font-medium',
-                                                    getSourceColor(
-                                                        transcription.source,
-                                                    ),
-                                                ]"
-                                            >
-                                                {{
-                                                    transcription.source ===
-                                                    'generated'
-                                                        ? 'API'
-                                                        : 'Manual'
-                                                }}
-                                            </span>
-                                        </td>
-                                        <td class="px-4 py-3 text-center">
-                                            <span
-                                                :class="[
-                                                    'font-mono font-semibold',
-                                                    getWerColor(
-                                                        transcription.wer,
-                                                    ),
-                                                ]"
-                                            >
-                                                {{
-                                                    formatErrorRate(
-                                                        transcription.wer,
-                                                    )
-                                                }}
-                                            </span>
-                                        </td>
-                                        <td class="px-4 py-3 text-center">
-                                            <span
-                                                class="font-mono text-muted-foreground"
-                                            >
-                                                {{
-                                                    formatErrorRate(
-                                                        transcription.cer,
-                                                    )
-                                                }}
-                                            </span>
-                                        </td>
-                                        <td class="px-4 py-3 text-center">
-                                            <div
-                                                class="text-xs text-muted-foreground"
-                                            >
-                                                <span title="Substitutions"
-                                                    >S:{{
-                                                        transcription.substitutions
-                                                    }}</span
-                                                >
-                                                <span class="mx-1">·</span>
-                                                <span title="Insertions"
-                                                    >I:{{
-                                                        transcription.insertions
-                                                    }}</span
-                                                >
-                                                <span class="mx-1">·</span>
-                                                <span title="Deletions"
-                                                    >D:{{
-                                                        transcription.deletions
-                                                    }}</span
-                                                >
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3">
-                                            <span
-                                                v-if="transcription.notes"
-                                                class="block max-w-48 truncate text-sm text-muted-foreground"
-                                                :title="transcription.notes"
-                                            >
-                                                {{ transcription.notes }}
-                                            </span>
-                                            <span
-                                                v-else
-                                                class="text-muted-foreground/50"
-                                                >—</span
-                                            >
-                                        </td>
-                                        <td class="px-4 py-3 text-right">
-                                            <button
-                                                @click="
-                                                    deleteTranscription(
-                                                        transcription.id,
-                                                    )
-                                                "
-                                                class="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                title="Delete transcription"
-                                            >
-                                                <TrashIcon class="h-4 w-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Empty State -->
-                    <div
-                        v-else
-                        class="rounded-xl border border-dashed bg-card p-8 text-center"
-                    >
-                        <MicrophoneIcon
-                            class="mx-auto h-12 w-12 text-muted-foreground/50"
-                        />
-                        <h3 class="mt-4 font-semibold">
-                            No Transcriptions Yet
-                        </h3>
-                        <p class="mt-2 text-sm text-muted-foreground">
-                            Run an ASR model or add a manual entry to start
-                            benchmarking this sample.
-                        </p>
                     </div>
                 </div>
             </div>

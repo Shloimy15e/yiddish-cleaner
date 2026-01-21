@@ -102,6 +102,7 @@ class AudioSample extends Model implements HasMedia
                 'audio/mp4',       // .m4a
                 'audio/x-m4a',     // .m4a (alternative)
                 'audio/aac',       // .aac
+                'video/mp4',       // .m4a detected as video/mp4
             ]);
 
         // Original reference transcript (docx, txt, pdf, etc.)

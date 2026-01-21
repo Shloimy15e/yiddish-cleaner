@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\CalculateTranscriptionMetricsJob;
 use App\Models\AudioSample;
 use App\Models\Transcription;
 use App\Services\Asr\WerCalculator;
@@ -27,7 +28,7 @@ class TranscriptionController extends Controller
     /**
      * Store a manually entered transcription (benchmark).
      */
-    public function store(Request $request, AudioSample $audioSample, WerCalculator $werCalculator)
+    public function store(Request $request, AudioSample $audioSample)
     {
         $validated = $request->validate([
             'provider' => 'required|string|max:255',
@@ -35,14 +36,6 @@ class TranscriptionController extends Controller
             'hypothesis_text' => 'required|string',
             'notes' => 'nullable|string|max:1000',
         ]);
-
-        // Calculate WER/CER against reference
-        $referenceText = $audioSample->reference_text_clean;
-        $werResult = null;
-
-        if ($referenceText && $validated['hypothesis_text']) {
-            $werResult = $werCalculator->calculate($referenceText, $validated['hypothesis_text']);
-        }
 
         // Create model name from provider/model
         $modelName = $validated['provider'].'/'.$validated['model'];
@@ -52,15 +45,16 @@ class TranscriptionController extends Controller
             'model_name' => $modelName,
             'model_version' => $validated['model'],
             'source' => 'imported',
+            'status' => Transcription::STATUS_PROCESSING,
             'hypothesis_text' => $validated['hypothesis_text'],
             'hypothesis_hash' => hash('sha256', $validated['hypothesis_text']),
-            'wer' => $werResult?->wer,
-            'cer' => $werResult?->cer,
-            'substitutions' => $werResult?->substitutions ?? 0,
-            'insertions' => $werResult?->insertions ?? 0,
-            'deletions' => $werResult?->deletions ?? 0,
-            'reference_words' => $werResult?->referenceWords ?? 0,
-            'errors' => $werResult?->errors ?? [],
+            'wer' => null,
+            'cer' => null,
+            'substitutions' => 0,
+            'insertions' => 0,
+            'deletions' => 0,
+            'reference_words' => 0,
+            'errors' => [],
             'notes' => $validated['notes'],
         ]);
 
@@ -74,14 +68,19 @@ class TranscriptionController extends Controller
             ->usingFileName('hypothesis.txt')
             ->toMediaCollection('hypothesis_transcript');
 
+        CalculateTranscriptionMetricsJob::dispatch(
+            audioSampleId: $audioSample->id,
+            transcriptionId: $transcription->id,
+        );
+
         return redirect()->route('audio-samples.show', $audioSample)
-            ->with('success', 'Benchmark transcription added successfully.');
+            ->with('success', 'Benchmark transcription added. Metrics are being calculated.');
     }
 
     /**
      * Import a transcription from a text file.
      */
-    public function import(Request $request, AudioSample $audioSample, WerCalculator $werCalculator)
+    public function import(Request $request, AudioSample $audioSample)
     {
         $validated = $request->validate([
             'provider' => 'required|string|max:255',
@@ -92,13 +91,6 @@ class TranscriptionController extends Controller
 
         $hypothesisText = file_get_contents($request->file('file')->getRealPath());
 
-        $referenceText = $audioSample->reference_text_clean;
-        $werResult = null;
-
-        if ($referenceText && $hypothesisText) {
-            $werResult = $werCalculator->calculate($referenceText, $hypothesisText);
-        }
-
         $modelName = $validated['provider'].'/'.$validated['model'];
 
         $transcription = Transcription::create([
@@ -106,15 +98,16 @@ class TranscriptionController extends Controller
             'model_name' => $modelName,
             'model_version' => $validated['model'],
             'source' => 'imported',
+            'status' => Transcription::STATUS_PROCESSING,
             'hypothesis_text' => $hypothesisText,
             'hypothesis_hash' => hash('sha256', $hypothesisText),
-            'wer' => $werResult?->wer,
-            'cer' => $werResult?->cer,
-            'substitutions' => $werResult?->substitutions ?? 0,
-            'insertions' => $werResult?->insertions ?? 0,
-            'deletions' => $werResult?->deletions ?? 0,
-            'reference_words' => $werResult?->referenceWords ?? 0,
-            'errors' => $werResult?->errors ?? [],
+            'wer' => null,
+            'cer' => null,
+            'substitutions' => 0,
+            'insertions' => 0,
+            'deletions' => 0,
+            'reference_words' => 0,
+            'errors' => [],
             'notes' => $validated['notes'],
         ]);
 
@@ -122,8 +115,13 @@ class TranscriptionController extends Controller
             ->usingFileName('hypothesis.txt')
             ->toMediaCollection('hypothesis_transcript');
 
+        CalculateTranscriptionMetricsJob::dispatch(
+            audioSampleId: $audioSample->id,
+            transcriptionId: $transcription->id,
+        );
+
         return redirect()->route('audio-samples.show', $audioSample)
-            ->with('success', 'Transcription file imported successfully.');
+            ->with('success', 'Transcription file imported. Metrics are being calculated.');
     }
 
     /**

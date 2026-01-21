@@ -252,27 +252,27 @@ watch(search, () => {
     <Head title="Audio Samples" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 p-6">
-            <div class="flex items-center justify-between">
+        <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h1 class="text-2xl font-bold">Audio Samples</h1>
-                <Link :href="route('audio-samples.create')" class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90">
+                <Link :href="route('audio-samples.create')" class="w-full rounded-lg bg-primary px-4 py-2 text-center font-medium text-primary-foreground hover:bg-primary/90 sm:w-auto">
                     Import New
                 </Link>
             </div>
 
             <!-- Filters -->
-            <div class="flex flex-wrap gap-4">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <input 
                     v-model="search"
                     type="text" 
                     placeholder="Search audio samples..."
-                    class="rounded-lg border bg-background px-4 py-2 w-64"
+                    class="h-11 w-full rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
                 
                 <!-- Status Filter -->
                 <Listbox :model-value="selectedStatus" @update:model-value="setStatus">
-                    <div class="relative w-48">
-                        <ListboxButton class="relative w-full cursor-pointer rounded-lg border bg-background py-2 pl-4 pr-10 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <div class="relative w-full">
+                        <ListboxButton class="relative h-11 w-full cursor-pointer rounded-lg border border-border bg-muted py-2 pl-4 pr-10 text-left text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                             <span class="block truncate">{{ selectedStatus.label }}</span>
                             <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                                 <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -307,8 +307,8 @@ watch(search, () => {
 
                 <!-- Category Filter -->
                 <Listbox :model-value="selectedCategory" @update:model-value="setCategory">
-                    <div class="relative w-48">
-                        <ListboxButton class="relative w-full cursor-pointer rounded-lg border bg-background py-2 pl-4 pr-10 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <div class="relative w-full">
+                        <ListboxButton class="relative h-11 w-full cursor-pointer rounded-lg border border-border bg-muted py-2 pl-4 pr-10 text-left text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                             <span class="block truncate">{{ selectedCategory.label }}</span>
                             <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                                 <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -343,8 +343,8 @@ watch(search, () => {
             </div>
 
             <!-- Bulk Action Bar (when items selected) -->
-            <div v-if="selectedCount > 0" class="rounded-xl border-2 border-primary bg-primary/5 p-4 flex items-center justify-between">
-                <div class="flex items-center gap-4">
+            <div v-if="selectedCount > 0" class="rounded-xl border-2 border-primary bg-primary/5 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex flex-wrap items-center gap-3">
                     <span class="font-medium">{{ selectedCount }} selected</span>
                     <button 
                         @click="selectedIds = new Set(); selectAll = false"
@@ -353,7 +353,7 @@ watch(search, () => {
                         Clear selection
                     </button>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <span v-if="selectedForCleaning.length > 0" class="text-sm text-muted-foreground">
                         {{ selectedForCleaning.length }} can be cleaned
                     </span>
@@ -370,23 +370,24 @@ watch(search, () => {
             </div>
 
             <!-- Audio Samples Table -->
-            <div class="rounded-xl border bg-card overflow-hidden">
-                <table class="w-full">
-                    <thead class="border-b bg-muted/50">
+            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[720px]">
+                    <thead class="border-b border-border bg-muted/40">
                         <tr>
-                            <th class="px-4 py-3 text-left text-sm font-medium w-10">
+                            <th class="w-10 px-4 py-3 text-left text-sm font-medium text-muted-foreground">
                                 <input 
                                     type="checkbox" 
                                     :checked="selectAll"
                                     @change="toggleSelectAll"
-                                    class="rounded border-gray-300"
+                                    class="h-4 w-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary/30"
                                 />
                             </th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Name</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Clean Rate</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Method</th>
+                            <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Method</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Date</th>
+                            <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Date</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
                         </tr>
                     </thead>
@@ -396,54 +397,58 @@ watch(search, () => {
                             :key="sample.id" 
                             :class="['hover:bg-muted/30', isSelected(sample.id) ? 'bg-primary/5' : '']"
                         >
-                            <td class="px-4 py-3">
+                            <td class="px-4 py-4">
                                 <input 
                                     type="checkbox" 
                                     :checked="isSelected(sample.id)"
                                     @change="toggleSelection(sample.id)"
-                                    class="rounded border-gray-300"
+                                    class="h-4 w-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary/30"
                                 />
                             </td>
-                            <td class="px-4 py-3">
-                                <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="font-medium hover:underline">
-                                    {{ sample.name }}
-                                </Link>
+                            <td class="px-4 py-4">
+                                <div class="min-w-0">
+                                    <Link
+                                        :href="route('audio-samples.show', { audioSample: sample.id })"
+                                        class="block truncate font-medium hover:text-primary transition-colors"
+                                    >
+                                        {{ sample.name }}
+                                    </Link>
+                                </div>
                             </td>
-                            <td class="px-4 py-3">
-                                <span v-if="sample.clean_rate !== null" :class="['rounded-full px-2 py-1 text-xs font-medium', getCategoryColor(sample.clean_rate_category)]">
+                            <td class="px-4 py-4">
+                                <span v-if="sample.clean_rate !== null" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCategoryColor(sample.clean_rate_category)]">
                                     {{ sample.clean_rate }}%
                                 </span>
                                 <span v-else class="text-muted-foreground">-</span>
                             </td>
-                            <td class="px-4 py-3">
+                            <td class="hidden px-4 py-4 md:table-cell">
                                 <template v-if="getMethodDisplay(sample.processing_run)">
-                                    <span 
-                                        v-if="getMethodDisplay(sample.processing_run)?.mode === 'llm'" 
-                                        class="inline-flex items-center gap-1.5 text-sm"
-                                    >
-                                        <SparklesIcon class="w-3.5 h-3.5 text-purple-500" />
-                                        <span class="text-muted-foreground capitalize">{{ getMethodDisplay(sample.processing_run)?.text }}</span>
-                                    </span>
-                                    <span 
-                                        v-else 
-                                        class="inline-flex items-center gap-1.5 text-sm"
-                                    >
-                                        <CpuChipIcon class="w-3.5 h-3.5 text-blue-500" />
-                                        <span class="text-muted-foreground capitalize">{{ getMethodDisplay(sample.processing_run)?.text }}</span>
-                                    </span>
+                                    <div class="flex min-w-0 items-center gap-1.5 text-sm">
+                                        <SparklesIcon
+                                            v-if="getMethodDisplay(sample.processing_run)?.mode === 'llm'"
+                                            class="h-3.5 w-3.5 text-secondary"
+                                        />
+                                        <CpuChipIcon
+                                            v-else
+                                            class="h-3.5 w-3.5 text-primary"
+                                        />
+                                        <span class="truncate text-muted-foreground capitalize">
+                                            {{ getMethodDisplay(sample.processing_run)?.text }}
+                                        </span>
+                                    </div>
                                 </template>
                                 <span v-else class="text-muted-foreground">-</span>
                             </td>
-                            <td class="px-4 py-3">
-                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium', getStatusColor(sample.status)]">
+                            <td class="px-4 py-4">
+                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap', getStatusColor(sample.status)]">
                                     {{ getStatusLabel(sample.status) }}
                                 </span>
                             </td>
-                            <td class="px-4 py-3 text-sm text-muted-foreground">
+                            <td class="hidden px-4 py-4 text-sm text-muted-foreground md:table-cell whitespace-nowrap">
                                 {{ sample.created_at }}
                             </td>
-                            <td class="px-4 py-3">
-                                <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="text-sm text-primary hover:underline">
+                            <td class="px-4 py-4">
+                                <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="text-sm font-medium text-primary hover:text-primary/80">
                                     View
                                 </Link>
                             </td>
@@ -454,17 +459,18 @@ watch(search, () => {
                             </td>
                         </tr>
                     </tbody>
-                </table>
+                    </table>
+                </div>
             </div>
 
             <!-- Pagination -->
-            <div v-if="audioSamples.last_page > 1" class="flex items-center justify-between">
+            <div v-if="audioSamples.last_page > 1" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <span class="text-sm text-muted-foreground">
                     Showing {{ (audioSamples.current_page - 1) * audioSamples.per_page + 1 }} to 
                     {{ Math.min(audioSamples.current_page * audioSamples.per_page, audioSamples.total) }} of 
                     {{ audioSamples.total }} audio samples
                 </span>
-                <div class="flex gap-1">
+                <div class="flex flex-wrap gap-1">
                     <button 
                         @click="goToPage(audioSamples.current_page - 1)"
                         :disabled="audioSamples.current_page === 1"

@@ -12,11 +12,11 @@ class SeifMarkerProcessor implements ProcessorInterface
         // Remove Hebrew letter markers (א', ב', etc.) at start of paragraphs
         $patterns = [
             // Hebrew letter with geresh/apostrophe at line start
-            '/^[\u{05D0}-\u{05EA}][\'׳]\s*/mu' => 'Hebrew letter marker',
+            '/^[\x{05D0}-\x{05EA}][\'׳]\s*/mu' => 'Hebrew letter marker',
             // Parenthesized Hebrew letter at line start
-            '/^\([\u{05D0}-\u{05EA}]\)\s*/mu' => 'Parenthesized Hebrew marker',
+            '/^\([\x{05D0}-\x{05EA}]\)\s*/mu' => 'Parenthesized Hebrew marker',
             // Seif numbers like "סעיף א" or "ס' א"
-            '/^ס(?:עיף|\')\s*[\u{05D0}-\u{05EA}][\'׳]?\s*/mu' => 'Seif marker',
+            '/^ס(?:עיף|\')\s*[\x{05D0}-\x{05EA}][\'׳]?\s*/mu' => 'Seif marker',
             // Numeric markers at line start
             '/^\d+[\.\)]\s*/m' => 'Numeric marker',
         ];
