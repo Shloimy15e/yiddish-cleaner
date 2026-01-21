@@ -17,6 +17,7 @@
         "laravel/reverb": "^1.7",
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.9",
+        "league/flysystem-aws-s3-v3": "*",
         "phpoffice/phpspreadsheet": "^5.4",
         "phpoffice/phpword": "^1.4",
         "spatie/laravel-medialibrary": "^11.17",
