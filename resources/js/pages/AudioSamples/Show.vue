@@ -58,6 +58,12 @@ const baseIsCleaned = computed(() => !!baseTranscription.value?.text_clean);
 
 // ASR transcriptions
 const asrTranscriptions = computed(() => props.audioSample.asr_transcriptions || []);
+const failedAsrTranscriptions = computed(() =>
+    asrTranscriptions.value.filter(
+        (transcription) =>
+            transcription.status === 'failed' && transcription.error_message,
+    ),
+);
 
 // Can run ASR benchmarks?
 const canBenchmark = computed(() => 
@@ -344,6 +350,13 @@ const formatDate = (dateString: string | null) => {
                 <AlertError
                     :errors="[audioSample.error_message]"
                     title="Processing Failed"
+                />
+            </div>
+
+            <div v-else-if="failedAsrTranscriptions.length">
+                <AlertError
+                    :errors="failedAsrTranscriptions.map((t) => t.error_message!)"
+                    title="ASR Transcription Failed"
                 />
             </div>
 

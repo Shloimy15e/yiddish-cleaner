@@ -53,6 +53,7 @@ class Transcription extends Model implements HasMedia
         'source',
         'status',
         'notes',
+        'error_message',
 
         // Base transcription fields (text before/after cleaning)
         'text_raw',

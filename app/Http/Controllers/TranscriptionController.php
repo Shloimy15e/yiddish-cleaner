@@ -112,7 +112,7 @@ class TranscriptionController extends Controller
      */
     public function show(Transcription $transcription): Response
     {
-        $transcription->load('audioSample');
+        $transcription->load('audioSample.baseTranscription');
 
         $viewData = [
             'transcription' => $transcription,
@@ -136,7 +136,8 @@ class TranscriptionController extends Controller
             abort(404);
         }
 
-        $transcription->load('audioSample');
+        $transcription->load('audioSample.baseTranscription');
+        $audioSample->load('baseTranscription');
 
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,

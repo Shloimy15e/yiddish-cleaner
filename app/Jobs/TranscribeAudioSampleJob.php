@@ -176,6 +176,18 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 unlink($tempAudioPath);
             }
 
+            if ($transcription) {
+                $transcription->update([
+                    'status' => Transcription::STATUS_FAILED,
+                    'error_message' => $e->getMessage(),
+                ]);
+            } elseif ($this->transcriptionId) {
+                Transcription::whereKey($this->transcriptionId)->update([
+                    'status' => Transcription::STATUS_FAILED,
+                    'error_message' => $e->getMessage(),
+                ]);
+            }
+
             Log::error("ASR transcription failed for AudioSample #{$this->audioSample->id}", [
                 'error' => $e->getMessage(),
                 'provider' => $this->provider,
@@ -200,6 +212,7 @@ class TranscribeAudioSampleJob implements ShouldQueue
         if ($this->transcriptionId) {
             Transcription::whereKey($this->transcriptionId)->update([
                 'status' => Transcription::STATUS_FAILED,
+                'error_message' => $exception->getMessage(),
             ]);
         }
     }

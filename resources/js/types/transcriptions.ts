@@ -75,6 +75,7 @@ export interface AsrTranscription extends AsrMetrics {
     model_version: string | null;
     source: TranscriptionSource;
     status: TranscriptionStatus;
+    error_message?: string | null;
     hypothesis_text: string | null;
     hypothesis_hash: string | null;
     errors: Record<string, unknown> | null;
@@ -102,6 +103,7 @@ export interface TranscriptionDetail extends AsrMetrics {
     source: TranscriptionSource;
     hypothesis_text: string | null;
     notes: string | null;
+    error_message?: string | null;
     created_at?: string;
 }
 
