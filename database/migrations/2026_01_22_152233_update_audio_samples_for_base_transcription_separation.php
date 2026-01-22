@@ -61,9 +61,13 @@ return new class extends Migration
             $audioSample = AudioSample::find($sampleData->id);
             if ($audioSample) {
                 $referenceMedia = $audioSample->getFirstMedia('reference_transcript');
-                if ($referenceMedia && $referenceMedia->size > 0) {
-                    // Copy the media file to the new transcription (skip empty files)
-                    $referenceMedia->copy($transcription, 'source_file');
+                if ($referenceMedia && $referenceMedia->size > 0 && $referenceMedia->mime_type !== 'application/x-empty') {
+                    try {
+                        // Copy the media file to the new transcription (skip empty/invalid files)
+                        $referenceMedia->copy($transcription, 'source_file');
+                    } catch (\Spatie\MediaLibrary\MediaCollections\Exceptions\FileUnacceptableForCollection $e) {
+                        // Skip files that can't be accepted (e.g., empty files)
+                    }
                 }
             }
         }
