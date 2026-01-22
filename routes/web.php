@@ -23,6 +23,11 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
+// Documentation page (public)
+Route::get('/docs', function () {
+    return Inertia::render('Docs');
+})->name('docs');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');

@@ -1,17 +1,11 @@
 <template>
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-        <!-- Microphone body -->
-        <rect x="9" y="2" width="6" height="11" rx="3" />
-        <!-- Microphone arc -->
-        <path
-            d="M5 11a7 7 0 0 0 14 0"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-        />
-        <!-- Stand -->
-        <path d="M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        <path d="M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    <!-- Lucide "audio-lines" icon - soft curved audio waves -->
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 10v3"/>
+        <path d="M6 6v11"/>
+        <path d="M10 3v18"/>
+        <path d="M14 8v7"/>
+        <path d="M18 5v13"/>
+        <path d="M22 10v3"/>
     </svg>
 </template>

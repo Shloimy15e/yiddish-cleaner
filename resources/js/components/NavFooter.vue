@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
 import {
     SidebarGroup,
     SidebarGroupContent,
@@ -15,6 +16,8 @@ interface Props {
 }
 
 defineProps<Props>();
+
+const isExternalUrl = (href: string) => href.startsWith('http://') || href.startsWith('https://');
 </script>
 
 <template>
@@ -28,14 +31,24 @@ defineProps<Props>();
                         class="text-neutral-600 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-neutral-100"
                         as-child
                     >
+                        <!-- External links open in new tab -->
                         <a
-                            :href="toUrl(item.href)"
+                            v-if="isExternalUrl(item.href)"
+                            :href="item.href"
                             target="_blank"
                             rel="noopener noreferrer"
                         >
                             <component :is="item.icon" />
                             <span>{{ item.title }}</span>
                         </a>
+                        <!-- Internal links use Inertia Link -->
+                        <Link
+                            v-else
+                            :href="toUrl(item.href)"
+                        >
+                            <component :is="item.icon" />
+                            <span>{{ item.title }}</span>
+                        </Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>

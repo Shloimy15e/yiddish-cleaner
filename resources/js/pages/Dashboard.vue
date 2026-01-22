@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { type BreadcrumbItem } from '@/types';
 import type { AudioSampleSummary } from '@/types/audio-samples';
 
 interface Stats {
     total_audio_samples: number;
     audio_samples_this_week: number;
-    awaiting_cleaning: number;
-    awaiting_review: number;
-    benchmark_ready: number;
-    average_clean_rate: number;
+    pending_base: number;
+    unclean: number;
+    ready: number;
+    benchmarked: number;
 }
 
 interface Run {
@@ -28,9 +27,9 @@ const props = defineProps<{
     stats: Stats;
     recentAudioSamples: AudioSampleSummary[];
     activeRuns: Run[];
-    needsCleaningQueue: AudioSampleSummary[];
-    needsReviewQueue: AudioSampleSummary[];
-    benchmarkReadyQueue: AudioSampleSummary[];
+    pendingBaseQueue: AudioSampleSummary[];
+    uncleanQueue: AudioSampleSummary[];
+    readyQueue: AudioSampleSummary[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -39,24 +38,22 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-        'pending_transcript': 'bg-gray-500/20 text-gray-400',
-        'imported': 'bg-blue-500/20 text-blue-400',
-        'cleaning': 'bg-yellow-500/20 text-yellow-400',
-        'cleaned': 'bg-purple-500/20 text-purple-400',
-        'validated': 'bg-green-500/20 text-green-400',
-        'failed': 'bg-red-500/20 text-red-400',
+        'draft': 'bg-gray-500/20 text-gray-400',
+        'pending_base': 'bg-amber-500/20 text-amber-400',
+        'unclean': 'bg-blue-500/20 text-blue-400',
+        'ready': 'bg-green-500/20 text-green-400',
+        'benchmarked': 'bg-purple-500/20 text-purple-400',
     };
     return colors[status] ?? 'bg-muted text-muted-foreground';
 };
 
 const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
-        'pending_transcript': 'Pending Transcript',
-        'imported': 'Imported',
-        'cleaning': 'Cleaning...',
-        'cleaned': 'Cleaned',
-        'validated': 'Benchmark Ready',
-        'failed': 'Failed',
+        'draft': 'Draft',
+        'pending_base': 'Needs Transcript',
+        'unclean': 'Needs Validation',
+        'ready': 'Ready',
+        'benchmarked': 'Benchmarked',
     };
     return labels[status] ?? status;
 };
@@ -68,7 +65,7 @@ const getStatusLabel = (status: string) => {
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <!-- Workflow Progress Stats -->
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
                 <div class="rounded-xl border bg-card p-6 hover:border-primary/50 transition-colors">
                     <div class="text-sm font-medium text-muted-foreground">Total Samples</div>
                     <div class="text-3xl font-bold gradient-text">{{ stats.total_audio_samples }}</div>
@@ -77,33 +74,37 @@ const getStatusLabel = (status: string) => {
                     <div class="text-sm font-medium text-muted-foreground">This Week</div>
                     <div class="text-3xl font-bold text-primary">{{ stats.audio_samples_this_week }}</div>
                 </div>
-                <div class="rounded-xl border bg-card p-6 hover:border-blue-500/50 transition-colors">
-                    <div class="text-sm font-medium text-muted-foreground">Awaiting Cleaning</div>
-                    <div class="text-3xl font-bold text-blue-400">{{ stats.awaiting_cleaning }}</div>
+                <div class="rounded-xl border bg-card p-6 hover:border-amber-500/50 transition-colors">
+                    <div class="text-sm font-medium text-muted-foreground">Pending Transcript</div>
+                    <div class="text-3xl font-bold text-amber-400">{{ stats.pending_base }}</div>
                 </div>
-                <div class="rounded-xl border bg-card p-6 hover:border-purple-500/50 transition-colors">
-                    <div class="text-sm font-medium text-muted-foreground">Awaiting Review</div>
-                    <div class="text-3xl font-bold text-purple-400">{{ stats.awaiting_review }}</div>
+                <div class="rounded-xl border bg-card p-6 hover:border-blue-500/50 transition-colors">
+                    <div class="text-sm font-medium text-muted-foreground">Needs Validation</div>
+                    <div class="text-3xl font-bold text-blue-400">{{ stats.unclean }}</div>
                 </div>
                 <div class="rounded-xl border bg-card p-6 hover:border-green-500/50 transition-colors">
-                    <div class="text-sm font-medium text-muted-foreground">Benchmark Ready</div>
-                    <div class="text-3xl font-bold text-green-400">{{ stats.benchmark_ready }}</div>
+                    <div class="text-sm font-medium text-muted-foreground">Ready</div>
+                    <div class="text-3xl font-bold text-green-400">{{ stats.ready }}</div>
+                </div>
+                <div class="rounded-xl border bg-card p-6 hover:border-purple-500/50 transition-colors">
+                    <div class="text-sm font-medium text-muted-foreground">Benchmarked</div>
+                    <div class="text-3xl font-bold text-purple-400">{{ stats.benchmarked }}</div>
                 </div>
             </div>
 
             <!-- Workflow Queues -->
             <div class="grid gap-6 lg:grid-cols-3">
-                <!-- Needs Cleaning Queue -->
+                <!-- Pending Base Queue -->
                 <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
                     <div class="flex items-center justify-between border-b p-4">
                         <div class="flex items-center gap-2">
-                            <div class="h-2 w-2 rounded-full bg-blue-400"></div>
-                            <h2 class="font-semibold">Needs Cleaning</h2>
+                            <div class="h-2 w-2 rounded-full bg-amber-400"></div>
+                            <h2 class="font-semibold">Needs Transcript</h2>
                         </div>
-                        <Link href="/audio-samples?status=imported" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <Link href="/audio-samples?status=pending_base" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
                     </div>
                     <div class="divide-y divide-border">
-                        <div v-for="sample in needsCleaningQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                        <div v-for="sample in pendingBaseQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
                             <div class="min-w-0 flex-1">
                                 <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
                                     {{ sample.name }}
@@ -114,60 +115,60 @@ const getStatusLabel = (status: string) => {
                                 {{ getStatusLabel(sample.status) }}
                             </span>
                         </div>
-                        <div v-if="needsCleaningQueue.length === 0" class="p-4 text-center text-muted-foreground">
-                            No samples awaiting cleaning
+                        <div v-if="pendingBaseQueue.length === 0" class="p-4 text-center text-muted-foreground">
+                            No samples need transcripts
                         </div>
                     </div>
                 </div>
 
-                <!-- Needs Review Queue -->
+                <!-- Unclean Queue -->
                 <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
                     <div class="flex items-center justify-between border-b p-4">
                         <div class="flex items-center gap-2">
-                            <div class="h-2 w-2 rounded-full bg-purple-400"></div>
-                            <h2 class="font-semibold">Needs Review</h2>
+                            <div class="h-2 w-2 rounded-full bg-blue-400"></div>
+                            <h2 class="font-semibold">Needs Validation</h2>
                         </div>
-                        <Link href="/audio-samples?status=cleaned" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <Link href="/audio-samples?status=unclean" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
                     </div>
                     <div class="divide-y divide-border">
-                        <div v-for="sample in needsReviewQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                        <div v-for="sample in uncleanQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
                             <div class="min-w-0 flex-1">
                                 <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
                                     {{ sample.name }}
                                 </Link>
                             </div>
-                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCleanRateCategoryClass(sample.clean_rate_category)]">
-                                {{ sample.clean_rate }}%
+                            <span :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getStatusColor(sample.status)]">
+                                {{ getStatusLabel(sample.status) }}
                             </span>
                         </div>
-                        <div v-if="needsReviewQueue.length === 0" class="p-4 text-center text-muted-foreground">
-                            No samples awaiting review
+                        <div v-if="uncleanQueue.length === 0" class="p-4 text-center text-muted-foreground">
+                            No samples need validation
                         </div>
                     </div>
                 </div>
 
-                <!-- Benchmark Ready Queue -->
+                <!-- Ready Queue -->
                 <div class="rounded-xl border bg-card hover:shadow-glow-sm transition-all">
                     <div class="flex items-center justify-between border-b p-4">
                         <div class="flex items-center gap-2">
                             <div class="h-2 w-2 rounded-full bg-green-400"></div>
-                            <h2 class="font-semibold">Benchmark Ready</h2>
+                            <h2 class="font-semibold">Ready for Benchmark</h2>
                         </div>
-                        <Link href="/audio-samples?status=validated" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <Link href="/audio-samples?status=ready" class="text-sm text-primary hover:text-primary/80 transition-colors">View all</Link>
                     </div>
                     <div class="divide-y divide-border">
-                        <div v-for="sample in benchmarkReadyQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                        <div v-for="sample in readyQueue" :key="sample.id" class="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
                             <div class="min-w-0 flex-1">
                                 <Link :href="`/audio-samples/${sample.id}`" class="font-medium hover:text-primary transition-colors truncate block">
                                     {{ sample.name }}
                                 </Link>
                             </div>
-                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCleanRateCategoryClass(sample.clean_rate_category)]">
-                                {{ sample.clean_rate }}%
+                            <span :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getStatusColor(sample.status)]">
+                                {{ getStatusLabel(sample.status) }}
                             </span>
                         </div>
-                        <div v-if="benchmarkReadyQueue.length === 0" class="p-4 text-center text-muted-foreground">
-                            No benchmark-ready samples
+                        <div v-if="readyQueue.length === 0" class="p-4 text-center text-muted-foreground">
+                            No samples ready for benchmark
                         </div>
                     </div>
                 </div>
@@ -228,12 +229,12 @@ const getStatusLabel = (status: string) => {
 
             <!-- Quick Actions -->
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Link href="/audio-samples/create" class="w-full rounded-lg bg-primary px-6 py-3 text-center font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:w-auto">
+                <Link href="/imports/create" class="w-full rounded-lg bg-primary px-6 py-3 text-center font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:w-auto">
                     Import Audio Samples
                 </Link>
-                <Link href="/training/create" class="w-full rounded-lg border px-6 py-3 text-center font-medium hover:bg-accent transition-colors sm:w-auto">
+    <!--             <Link href="/training/create" class="w-full rounded-lg border px-6 py-3 text-center font-medium hover:bg-accent transition-colors sm:w-auto">
                     Create Training Version
-                </Link>
+                </Link> -->
             </div>
         </div>
     </AppLayout>

@@ -7,6 +7,6 @@ import AppLogoIcon from '@/components/AppLogoIcon.vue';
         <div class="flex size-8 items-center justify-center rounded-md bg-gradient-to-br from-[#00d4ff] to-[#ff006e]">
             <AppLogoIcon class="size-5 text-white" />
         </div>
-        <span class="truncate text-sm font-semibold bg-gradient-to-r from-[#00d4ff] to-[#ff006e] bg-clip-text text-transparent">Yiddish ASR Benchmark</span>
+        <span class="truncate text-sm font-bold tracking-tight bg-gradient-to-r from-[#00d4ff] to-[#ff006e] bg-clip-text text-transparent">KolYid</span>
     </div>
 </template>

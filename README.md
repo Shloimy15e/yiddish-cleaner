@@ -1,14 +1,28 @@
 # Yiddish ASR Benchmark
 
-A web application for benchmarking Yiddish Automatic Speech Recognition (ASR) models. Import audio samples with reference transcriptions, clean and validate them, then compare ASR model performance using WER/CER metrics.
+A web application for benchmarking Yiddish Automatic Speech Recognition (ASR) models. Import audio samples, manage reference transcriptions, clean and validate them, then compare ASR model performance using WER/CER metrics.
 
 ## Features
 
-- **Import Audio Samples** - Import from Google Sheets with audio links and manual transcriptions
+### Core Workflow
+
+- **Import Audio Samples** - Import from Google Sheets with audio links or upload files directly
+- **Manage Transcriptions** - Transcriptions are managed separately and can be linked to audio samples
 - **Clean Reference Transcripts** - LLM-based or rule-based cleaning with diff view
 - **Validate Transcripts** - Review, compare, and mark transcripts as validated
 - **ASR Benchmarking** - Transcribe audio with different ASR models and calculate WER/CER
-- **Model Comparison** - Compare performance across models to find the best performer
+- **Model Comparison** - Compare performance across models on public benchmark page
+
+### Key Concepts
+
+**Two Types of Transcriptions:**
+1. **Base Transcriptions** (Reference/Ground Truth) - The human-verified "correct" transcription used as reference
+2. **ASR Transcriptions** (Hypothesis) - Machine-generated transcriptions to benchmark against the reference
+
+**Transcription Workflow:**
+- Base transcriptions can exist as "orphan" (not linked to any audio) or linked to an audio sample
+- ASR transcriptions always require an audio sample context
+- Audio samples progress through statuses: `draft` → `pending_base` → `unclean` → `ready` → `benchmarked`
 
 ## Tech Stack
 
@@ -104,69 +118,123 @@ FEATURE_TRAINING=false  # Enable training data export features
 
 ### 1. Import Audio Samples
 
-1. Go to **Process** page
+**From Google Sheets:**
+1. Go to **Import** page
 2. Enter your Google Sheet URL containing:
    - `Name` column - Sample identifier
-   - `Doc Link` column - Link to transcript document
+   - `Doc Link` column - Link to transcript document (optional)
    - `Audio Link` column - Link to audio file
 3. Select cleaning preset and mode (LLM or rule-based)
 4. Click **Process Sheet**
 
-### 2. Review & Validate
+**Single Upload:**
+1. Go to **Import** page, **Single Import** tab
+2. Upload audio file and/or transcript file
+3. Optionally link an existing orphan transcription
+
+### 2. Manage Transcriptions
+
+1. Go to **Transcriptions** page
+2. Create new base transcriptions or view existing ones
+3. From transcription detail page:
+   - Clean the text using presets or LLM
+   - Review raw vs cleaned text
+   - Validate when ready
+   - Link/unlink to audio samples
+
+### 3. Prepare Audio Samples
 
 1. Go to **Audio Samples** page
-2. Click on a sample to view details
-3. Use the tabs to switch between:
-   - **Cleaned Text** - The processed reference transcript
-   - **Original Text** - The raw imported text
-   - **Side by Side** - Compare both versions
-   - **Diff View** - See line-by-line changes
-4. Click **Validate** when the transcript is correct
+2. Audio samples show their status:
+   - **Pending Base** - Needs a base transcription linked
+   - **Unclean** - Has transcription but not validated
+   - **Ready** - Validated and ready for ASR benchmarking
+   - **Benchmarked** - Has ASR transcriptions
+3. Link transcriptions to audio samples as needed
 
-### 3. Benchmark ASR Models
+### 4. Benchmark ASR Models
 
-1. Open a validated audio sample
-2. Run transcription with an ASR model (e.g., Yiddish Libre)
-3. The system calculates:
+1. Open a **Ready** audio sample
+2. In the Benchmark section, select an ASR provider/model
+3. Run transcription
+4. The system calculates:
    - **WER** (Word Error Rate)
    - **CER** (Character Error Rate)
    - Substitutions, insertions, deletions
-4. Compare results across different models
+5. Compare results across different models
 
-### 4. View Benchmarks
+### 5. View Public Benchmarks
 
-- View per-sample transcription results
+- Visit `/benchmark` to see public benchmark results
 - Compare average WER/CER across ASR models
-- Export results for further analysis
+- View per-model details and statistics
 
 ## Data Models
 
 ### AudioSample
 
-Represents an audio clip with its reference transcript:
+Represents an audio clip:
 
 - `name` - Sample identifier
-- `reference_text_raw` - Original imported transcript
-- `reference_text_clean` - Cleaned/normalized transcript
 - `audio_duration_seconds` - Audio length
-- `clean_rate` - Quality score (0-100)
-- `validated_at` - Validation timestamp
+- `status` - Workflow status (draft, pending_base, unclean, ready, benchmarked)
+
+Relationships:
+- `baseTranscription` - The linked reference transcription (HasOne)
+- `asrTranscriptions` - ASR outputs for benchmarking (HasMany)
 
 Media collections:
-- `audio` - The audio file
-- `reference_transcript` - Text file of the transcript
+- `audio` - The audio file (mp3, wav, ogg, m4a, flac)
 
 ### Transcription
 
-An ASR output for an audio sample:
+Can be either a base (reference) or ASR (hypothesis) transcription:
 
-- `audio_sample_id` - Reference to the audio sample
-- `model_name` - ASR model identifier (e.g., "yiddish-libre")
+**Common fields:**
+- `type` - 'base' or 'asr'
+- `audio_sample_id` - Link to audio (required for ASR, optional for base)
+- `status` - pending, processing, completed, failed
+- `source` - imported, generated, manual
+
+**Base transcription fields:**
+- `name` - Transcription name
+- `text_raw` - Original imported text
+- `text_clean` - Cleaned/normalized text
+- `clean_rate` - Quality score (0-100)
+- `validated_at` - Validation timestamp
+- `cleaning_preset` - Which preset was used
+
+**ASR transcription fields:**
+- `model_name` - ASR model identifier
 - `model_version` - Model version
-- `source` - "generated" or "imported"
 - `hypothesis_text` - The ASR output
 - `wer`, `cer` - Error rates
 - `substitutions`, `insertions`, `deletions` - Error breakdown
+
+Media collections:
+- `source_file` - Original transcript file (for base)
+- `cleaned_file` - Cleaned transcript file (for base)
+- `hypothesis_transcript` - ASR output file (for ASR)
+
+### ProcessingRun
+
+Tracks batch import operations:
+
+- `batch_id` - Unique batch identifier
+- `preset` - Cleaning preset used
+- `mode` - 'llm' or 'rule_based'
+- `status` - pending, processing, completed, failed
+- `stats` - Processing statistics
+
+## Cleaning Presets
+
+| Preset | Description | Use Case |
+|--------|-------------|----------|
+| `titles_only` | Removes titles/headings, keeps brackets | Older texts (5710-5711) |
+| `full_clean` | Removes titles AND inline brackets | Standard texts (5712+) |
+| `with_editorial` | Standard + editorial Hebrew citations | Texts with Hebrew sources |
+| `heavy` | All processors including parentheses | Heavily formatted texts |
+| `minimal` | Only whitespace and special chars | Light cleanup needed |
 
 ## Development
 
@@ -194,15 +262,18 @@ npm run build
 ```
 app/
 ├── Http/Controllers/
-│   ├── AudioSampleController.php  # Audio sample CRUD
-│   ├── ProcessController.php      # Import & processing
+│   ├── AudioSampleController.php  # Audio sample management
+│   ├── TranscriptionController.php # Transcription CRUD & cleaning
+│   ├── ImportController.php       # Import from sheets/files
+│   ├── BenchmarkController.php    # Public benchmark pages
 │   └── DashboardController.php    # Dashboard stats
 ├── Jobs/
-│   ├── ProcessAudioSampleJob.php  # Background processing
+│   ├── CleanTranscriptionJob.php  # Background cleaning
+│   ├── ProcessAudioSampleJob.php  # Audio processing
 │   └── ProcessSheetBatchJob.php   # Batch import
 ├── Models/
-│   ├── AudioSample.php            # Audio + reference transcript
-│   ├── Transcription.php          # ASR output + metrics
+│   ├── AudioSample.php            # Audio + status workflow
+│   ├── Transcription.php          # Base & ASR transcriptions
 │   └── ProcessingRun.php          # Batch import tracking
 └── Services/
     ├── Cleaning/                  # Text cleaning processors
@@ -210,12 +281,39 @@ app/
     └── Llm/                       # LLM provider drivers
 
 resources/js/pages/
-├── AudioSamples/                  # Sample list and detail views
+├── AudioSamples/                  # Sample list and detail
+├── Transcriptions/                # Transcription management
+├── Import/                        # Import interface
+├── Benchmark/                     # Public benchmarks
 ├── Dashboard.vue                  # Main dashboard
-├── Process.vue                    # Import interface
 └── Welcome.vue                    # Landing page
 ```
+
+## API Routes
+
+### Import
+- `GET /imports` - List import runs
+- `POST /imports` - Start new import
+- `GET /imports/{run}` - View import run details
+
+### Audio Samples
+- `GET /audio-samples` - List audio samples
+- `GET /audio-samples/{id}` - View sample details
+- `POST /audio-samples/{id}/transcribe` - Run ASR transcription
+
+### Transcriptions
+- `GET /transcriptions` - List base transcriptions
+- `POST /transcriptions` - Create base transcription
+- `POST /transcriptions/{id}/clean` - Clean transcription
+- `POST /transcriptions/{id}/validate` - Mark as validated
+- `POST /transcriptions/{id}/link` - Link to audio sample
+
+### Benchmarks (Public)
+- `GET /benchmark` - Public benchmark overview
+- `GET /benchmark/compare` - Model comparison
+- `GET /benchmark/models/{name}` - Model details
 
 ## License
 
 MIT
+

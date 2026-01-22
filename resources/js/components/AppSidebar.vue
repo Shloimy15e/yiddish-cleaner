@@ -80,7 +80,7 @@ const footerNavItems: NavItem[] = [
     },
     {
         title: 'Documentation',
-        href: 'docs',
+        href: '/docs',
         icon: BookOpen,
     },
 ];

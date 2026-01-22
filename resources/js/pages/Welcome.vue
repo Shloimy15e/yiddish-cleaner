@@ -13,7 +13,7 @@ withDefaults(
 </script>
 
 <template>
-    <Head title="Yiddish ASR Benchmark">
+    <Head title="KolYid - Yiddish ASR Benchmark">
         <link rel="preconnect" href="https://rsms.me/" />
         <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     </Head>
@@ -23,10 +23,10 @@ withDefaults(
         <header class="container mx-auto px-4 py-6 sm:px-6">
             <nav class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[#00d4ff] to-[#ff006e]">
-                        <AppLogoIcon class="h-5 w-5 text-white" />
+                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#00d4ff] to-[#ff006e] shadow-[0_0_20px_rgba(0,212,255,0.4)]">
+                        <AppLogoIcon class="h-6 w-6 text-white" />
                     </div>
-                    <span class="text-xl font-bold text-[#f5f5f7]">Yiddish ASR Benchmark</span>
+                    <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-[#00d4ff] via-[#a855f7] to-[#ff006e] bg-clip-text text-transparent">KolYid</span>
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <Link

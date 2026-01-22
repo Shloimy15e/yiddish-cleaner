@@ -7,11 +7,10 @@
     </defs>
     <!-- Background -->
     <rect width="24" height="24" rx="6" fill="url(#logoGradient)"/>
-    <!-- Microphone body -->
-    <rect x="9" y="4" width="6" height="9" rx="3" fill="white"/>
-    <!-- Microphone arc -->
-    <path d="M6 11a6 6 0 0 0 12 0" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
-    <!-- Stand -->
-    <path d="M12 17v2" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
-    <path d="M9 19h6" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <!-- Audio lines icon -->
+    <path d="M4 10v4" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <path d="M8 7v10" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <path d="M12 4v16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <path d="M16 8v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <path d="M20 10v4" stroke="white" stroke-width="2" stroke-linecap="round"/>
 </svg>
