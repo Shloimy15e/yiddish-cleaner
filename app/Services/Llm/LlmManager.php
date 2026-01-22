@@ -55,4 +55,18 @@ class LlmManager
     {
         return array_keys(config('cleaning.llm_providers', []));
     }
+
+    /**
+     * Check if credentials exist for a given provider.
+     */
+    public function hasCredentials(string $provider): bool
+    {
+        // Check if provider is configured
+        if (! config("cleaning.llm_providers.{$provider}")) {
+            return false;
+        }
+
+        // Check if there's an active credential for this provider
+        return ApiCredential::forProvider($provider)->active()->exists();
+    }
 }
