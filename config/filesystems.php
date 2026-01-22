@@ -47,18 +47,40 @@ return [
             'report' => false,
         ],
 
-        's3' => [
-            'driver' => 's3',
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_BUCKET'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
-            'report' => false,
-        ],
+        's3' => (function () {
+            // Check for Laravel Cloud bucket config
+            $cloudConfig = json_decode(env('LARAVEL_CLOUD_DISK_CONFIG', '[]'), true) ?? [];
+            $bucket = collect($cloudConfig)->firstWhere('disk', 'public') ?? [];
+            
+            if ($bucket) {
+                return [
+                    'driver' => 's3',
+                    'key' => $bucket['access_key_id'] ?? null,
+                    'secret' => $bucket['access_key_secret'] ?? null,
+                    'region' => $bucket['default_region'] ?? 'auto',
+                    'bucket' => $bucket['bucket'] ?? null,
+                    'url' => $bucket['url'] ?? null,
+                    'endpoint' => $bucket['endpoint'] ?? null,
+                    'use_path_style_endpoint' => $bucket['use_path_style_endpoint'] ?? false,
+                    'throw' => false,
+                    'report' => false,
+                ];
+            }
+            
+            // Fallback to standard AWS env vars for local dev
+            return [
+                'driver' => 's3',
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'region' => env('AWS_DEFAULT_REGION', 'auto'),
+                'bucket' => env('AWS_BUCKET'),
+                'url' => env('AWS_URL'),
+                'endpoint' => env('AWS_ENDPOINT'),
+                'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+                'throw' => false,
+                'report' => false,
+            ];
+        })(),
 
     ],
 
