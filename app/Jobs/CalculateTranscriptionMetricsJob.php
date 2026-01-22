@@ -39,7 +39,7 @@ class CalculateTranscriptionMetricsJob implements ShouldQueue
             return;
         }
 
-        $referenceText = $audioSample->reference_text_clean;
+        $referenceText = $audioSample->baseTranscription?->text_clean;
         $hypothesisText = $transcription->hypothesis_text;
 
         if (! $referenceText || ! $hypothesisText) {

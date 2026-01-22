@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\AudioSample;
-use App\Models\AudioSampleStatusHistory;
+use App\Models\Transcription;
 use App\Services\Cleaning\CleanerService;
 use App\Services\Cleaning\CleaningResult;
 use App\Services\Cleaning\CleanRateCalculator;
@@ -40,10 +40,21 @@ class CleanAudioSampleJob implements ShouldQueue
         CleanRateCalculator $calculator,
         LlmManager $llm,
     ): void {
+        $baseTranscription = null;
         try {
-            $this->audioSample->update(['status' => AudioSample::STATUS_CLEANING]);
+            $baseTranscription = $this->audioSample->baseTranscription;
 
-            $text = $this->audioSample->reference_text_raw;
+            if (! $baseTranscription) {
+                throw new \RuntimeException('No base transcription linked to this audio sample');
+            }
+
+            $baseTranscription->update([
+                'status' => Transcription::STATUS_PROCESSING,
+                'cleaning_preset' => $this->preset,
+                'cleaning_mode' => $this->mode,
+            ]);
+
+            $text = $baseTranscription->text_raw;
 
             if (! $text) {
                 throw new \RuntimeException('No raw text to clean');
@@ -58,50 +69,39 @@ class CleanAudioSampleJob implements ShouldQueue
             $cleanRate = $calculator->calculate($result);
 
             // Clear any existing cleaned transcript media
-            $this->audioSample->clearMediaCollection('cleaned_transcript');
+            $baseTranscription->clearMediaCollection('cleaned_file');
 
             // Save cleaned transcript as a text file via media library
             $cleanedFilePath = storage_path('app/temp/cleaned_'.$this->audioSample->id.'.txt');
             file_put_contents($cleanedFilePath, $result->cleanedText);
-            $this->audioSample->addMedia($cleanedFilePath)
+            $baseTranscription->addMedia($cleanedFilePath)
                 ->usingFileName('cleaned_transcript.txt')
-                ->toMediaCollection('cleaned_transcript');
+                ->toMediaCollection('cleaned_file');
 
             // Update sample with cleaning results
-            $this->audioSample->update([
-                'reference_text_clean' => $result->cleanedText,
-                'reference_hash_clean' => $result->getCleanedHash(),
+            $baseTranscription->update([
+                'text_clean' => $result->cleanedText,
+                'hash_clean' => $result->getCleanedHash(),
                 'clean_rate' => $cleanRate->score,
                 'clean_rate_category' => $cleanRate->category,
                 'metrics' => $result->getMetrics(),
                 'removals' => $result->removals,
-                'status' => AudioSample::STATUS_CLEANED,
+                'status' => Transcription::STATUS_COMPLETED,
                 // Reset validation when re-cleaning
                 'validated_at' => null,
                 'validated_by' => null,
                 'review_notes' => null,
             ]);
 
-            // Log status history
-            AudioSampleStatusHistory::log(
-                audioSample: $this->audioSample,
-                action: AudioSampleStatusHistory::ACTION_CLEANED,
-                fromStatus: AudioSample::STATUS_CLEANING,
-                toStatus: AudioSample::STATUS_CLEANED,
-                metadata: [
-                    'preset' => $this->preset,
-                    'mode' => $this->mode,
-                    'clean_rate' => $cleanRate->score,
-                    'llm_provider' => $this->llmProvider,
-                    'llm_model' => $this->llmModel,
-                ],
-            );
+            $this->audioSample->syncStatusFromBaseTranscription();
 
         } catch (Throwable $e) {
-            $this->audioSample->update([
-                'status' => AudioSample::STATUS_FAILED,
-                'error_message' => $e->getMessage(),
-            ]);
+            if ($baseTranscription) {
+                $baseTranscription->update([
+                    'status' => Transcription::STATUS_FAILED,
+                    'error_message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

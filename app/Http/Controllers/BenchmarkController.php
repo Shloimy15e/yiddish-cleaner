@@ -71,7 +71,7 @@ class BenchmarkController extends Controller
         $modelName = urldecode($modelName);
 
         $transcriptions = Transcription::query()
-            ->with(['audioSample:id,name,reference_text_clean'])
+            ->with(['audioSample:id,name', 'audioSample.baseTranscription:id,audio_sample_id,text_clean'])
             ->where('model_name', $modelName)
             ->orderBy('wer', 'asc')
             ->paginate(25);

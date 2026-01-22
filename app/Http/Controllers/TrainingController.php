@@ -93,12 +93,12 @@ class TrainingController extends Controller
             'format' => 'required|in:json,csv,kaldi',
         ]);
 
-        $audioSamples = $version->audioSamples()->get();
+        $audioSamples = $version->audioSamples()->with('baseTranscription')->get();
 
         $data = $audioSamples->map(fn ($sample) => [
             'id' => $sample->id,
             'name' => $sample->name,
-            'text' => $sample->reference_text_clean,
+            'text' => $sample->baseTranscription?->text_clean,
             'clean_rate' => $sample->clean_rate,
         ]);
 

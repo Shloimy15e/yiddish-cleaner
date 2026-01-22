@@ -111,7 +111,7 @@ class TranscribeAudioSampleJob implements ShouldQueue
             );
 
             // Calculate WER/CER against reference
-            $referenceText = $this->audioSample->reference_text_clean;
+            $referenceText = $this->audioSample->baseTranscription?->text_clean;
             $werResult = null;
 
             if ($referenceText) {

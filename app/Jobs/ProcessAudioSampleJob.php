@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\AudioSampleProcessed;
 use App\Models\AudioSample;
+use App\Models\Transcription;
 use App\Services\Cleaning\CleanerService;
 use App\Services\Cleaning\CleanRateCalculator;
 use App\Services\Document\ParserService;
@@ -35,26 +36,43 @@ class ProcessAudioSampleJob implements ShouldQueue
         LlmManager $llm,
     ): void {
         $run = $this->audioSample->processingRun;
+        $baseTranscription = null;
 
         try {
-            $this->audioSample->update(['status' => 'processing']);
-
-            // Save the reference transcript file to media collection if provided
-            if ($this->filePath && file_exists($this->filePath)) {
-                $this->audioSample->addMedia($this->filePath)
-                    ->preservingOriginal() // Keep file for text extraction
-                    ->toMediaCollection('reference_transcript');
-            }
+            $baseTranscription = $this->audioSample->baseTranscription;
 
             $text = $this->filePath
                 ? $parser->extractText($this->filePath)
-                : $this->audioSample->reference_text_raw;
+                : $baseTranscription?->text_raw;
 
             if (! $text) {
                 throw new \RuntimeException('No text to process');
             }
 
-            $this->audioSample->update(['reference_text_raw' => $text]);
+            if (! $baseTranscription) {
+                $baseTranscription = Transcription::create([
+                    'type' => Transcription::TYPE_BASE,
+                    'audio_sample_id' => $this->audioSample->id,
+                    'name' => $this->audioSample->name,
+                    'source' => Transcription::SOURCE_IMPORTED,
+                    'status' => Transcription::STATUS_PROCESSING,
+                    'text_raw' => $text,
+                    'hash_raw' => hash('sha256', $text),
+                ]);
+            } else {
+                $baseTranscription->update([
+                    'status' => Transcription::STATUS_PROCESSING,
+                    'text_raw' => $text,
+                    'hash_raw' => hash('sha256', $text),
+                ]);
+            }
+
+            if ($this->filePath && file_exists($this->filePath)) {
+                $baseTranscription->clearMediaCollection('source_file');
+                $baseTranscription->addMedia($this->filePath)
+                    ->preservingOriginal()
+                    ->toMediaCollection('source_file');
+            }
 
             if ($run->mode === 'llm') {
                 $user = $run->user;
@@ -80,24 +98,32 @@ class ProcessAudioSampleJob implements ShouldQueue
 
             $cleanRate = $calculator->calculate($result);
 
-            $this->audioSample->update([
-                'reference_text_raw' => $result->originalText,
-                'reference_text_clean' => $result->cleanedText,
-                'reference_hash_raw' => $result->getOriginalHash(),
-                'reference_hash_clean' => $result->getCleanedHash(),
+            $baseTranscription->update([
+                'text_raw' => $result->originalText,
+                'text_clean' => $result->cleanedText,
+                'hash_raw' => $result->getOriginalHash(),
+                'hash_clean' => $result->getCleanedHash(),
                 'clean_rate' => $cleanRate->score,
                 'clean_rate_category' => $cleanRate->category,
                 'metrics' => $result->getMetrics(),
                 'removals' => $result->removals,
-                'status' => 'completed',
+                'cleaning_preset' => $run->preset,
+                'cleaning_mode' => $run->mode,
+                'status' => Transcription::STATUS_COMPLETED,
+                'validated_at' => null,
+                'validated_by' => null,
+                'review_notes' => null,
             ]);
 
             // Save cleaned transcript as a text file
             $cleanedFilePath = storage_path('app/temp/cleaned_' . $this->audioSample->id . '.txt');
             file_put_contents($cleanedFilePath, $result->cleanedText);
-            $this->audioSample->addMedia($cleanedFilePath)
+            $baseTranscription->clearMediaCollection('cleaned_file');
+            $baseTranscription->addMedia($cleanedFilePath)
                 ->usingFileName('cleaned_transcript.txt')
-                ->toMediaCollection('cleaned_transcript');
+                ->toMediaCollection('cleaned_file');
+
+            $this->audioSample->syncStatusFromBaseTranscription();
 
             $run->incrementCompleted();
 
@@ -106,10 +132,12 @@ class ProcessAudioSampleJob implements ShouldQueue
             }
 
         } catch (Throwable $e) {
-            $this->audioSample->update([
-                'status' => 'failed',
-                'error_message' => $e->getMessage(),
-            ]);
+            if ($baseTranscription) {
+                $baseTranscription->update([
+                    'status' => Transcription::STATUS_FAILED,
+                    'error_message' => $e->getMessage(),
+                ]);
+            }
 
             $run->incrementFailed();
         }

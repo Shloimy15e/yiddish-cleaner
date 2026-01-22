@@ -14,8 +14,10 @@ class RecalculateTranscriptionMetrics
 
     public function handle(AudioSample $audioSample, Transcription $transcription): void
     {
+        $referenceText = $audioSample->baseTranscription?->text_clean;
+
         $werResult = $this->werCalculator->calculate(
-            $audioSample->reference_text_clean,
+            $referenceText,
             $transcription->hypothesis_text,
         );
 
