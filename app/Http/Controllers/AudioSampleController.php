@@ -795,4 +795,32 @@ class AudioSampleController extends Controller
 
         return back()->with('success', "{$dispatched} transcription job(s) dispatched.");
     }
+
+    /**
+     * Get audio samples without base transcription (for linking API endpoint).
+     */
+    public function linkableList(Request $request)
+    {
+        $user = $request->user();
+        $search = $request->input('search');
+
+        $audioSamples = AudioSample::whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id))
+            ->pendingBase()
+            ->when($search, function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%");
+            })
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->map(fn ($sample) => [
+                'id' => $sample->id,
+                'name' => $sample->name,
+                'status' => $sample->status,
+                'audio_url' => $sample->audio_url,
+                'has_audio' => $sample->hasAudio(),
+                'created_at' => $sample->created_at,
+            ]);
+
+        return response()->json(['audioSamples' => $audioSamples]);
+    }
 }

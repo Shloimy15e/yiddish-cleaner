@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
+import LinkAudioSampleModal from '@/components/transcriptions/LinkAudioSampleModal.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { Preset } from '@/types/audio-samples';
 import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
@@ -210,6 +211,14 @@ const submitUnvalidate = () => {
     router.delete(`/transcriptions/${props.transcription.id}/validate`, {
         preserveScroll: true,
     });
+};
+
+// Link modal state
+const showLinkModal = ref(false);
+
+const handleLinked = () => {
+    showLinkModal.value = false;
+    // Page will refresh automatically via Inertia
 };
 
 // Link form
@@ -448,6 +457,14 @@ const formatDate = (dateString: string | null) => {
 
                     <!-- Actions -->
                     <div class="flex flex-wrap gap-2 pt-2 border-t">
+                        <button
+                            v-if="!baseTranscription.audio_sample_id"
+                            @click="showLinkModal = true"
+                            class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
+                        >
+                            <LinkIcon class="h-4 w-4" />
+                            Link to Audio Sample
+                        </button>
                         <button
                             v-if="baseTranscription.audio_sample_id"
                             @click="submitUnlink"
@@ -912,5 +929,15 @@ const formatDate = (dateString: string | null) => {
                 </div>
             </template>
         </div>
+
+        <!-- Link Audio Sample Modal -->
+        <LinkAudioSampleModal
+            v-if="isBase && baseTranscription"
+            :is-open="showLinkModal"
+            :transcription-id="baseTranscription.id"
+            :transcription-name="baseTranscription.name"
+            @close="showLinkModal = false"
+            @linked="handleLinked"
+        />
     </AppLayout>
 </template>

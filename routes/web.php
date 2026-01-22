@@ -55,7 +55,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/transcriptions', [TranscriptionController::class, 'index'])->name('transcriptions.index');
     Route::get('/transcriptions/create', [TranscriptionController::class, 'create'])->name('transcriptions.create');
     Route::post('/transcriptions', [TranscriptionController::class, 'storeBase'])->name('transcriptions.store-base');
-    Route::get('/transcriptions/orphan', [TranscriptionController::class, 'orphanList'])->name('transcriptions.orphan-list');
+    Route::get('/transcriptions/orphan-list', [TranscriptionController::class, 'orphanList'])->name('transcriptions.orphan-list');
     Route::get('/transcriptions/{transcription}', [TranscriptionController::class, 'show'])->name('transcriptions.show');
     Route::patch('/transcriptions/{transcription}', [TranscriptionController::class, 'update'])->name('transcriptions.update');
     Route::delete('/transcriptions/{transcription}', [TranscriptionController::class, 'destroy'])->name('transcriptions.destroy');
@@ -82,6 +82,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // API - ASR Providers
     Route::get('/api/asr/providers', [AsrController::class, 'providers'])->name('api.asr.providers');
+
+    // API - Audio Samples
+    Route::get('/api/audio-samples/linkable', [AudioSampleController::class, 'linkableList'])->name('api.audio-samples.linkable');
 
     // Training
     if (config('features.training')) {
