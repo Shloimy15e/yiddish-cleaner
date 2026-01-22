@@ -119,7 +119,12 @@ class ProcessSheetBatchJob implements ShouldQueue
                             throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
                         }
 
-                        $tempPath = storage_path("app/temp/{$fileId}.docx");
+                        $tempDir = storage_path('app/temp');
+                        if (! is_dir($tempDir)) {
+                            mkdir($tempDir, 0755, true);
+                        }
+
+                        $tempPath = $tempDir."/{$fileId}.docx";
 
                         // Download or export
                         $file = $drive->getFile($fileId);
