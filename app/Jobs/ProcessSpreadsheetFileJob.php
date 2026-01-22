@@ -229,13 +229,22 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
             // Download from Google Drive
             $file = $drive->getFile($fileId);
             $fileName = $file->getName();
-            $tempPath = storage_path("app/temp/audio_{$fileId}");
+            $tempDir = storage_path('app/temp');
+            if (! is_dir($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            $tempPath = $tempDir."/audio_{$fileId}";
 
             $drive->downloadFile($fileId, $tempPath);
 
             $audioSample->addMedia($tempPath)
                 ->usingFileName($fileName)
                 ->toMediaCollection('audio');
+
+            if (file_exists($tempPath)) {
+                unlink($tempPath);
+            }
         } else {
             // Download from regular URL
             $audioSample->addMediaFromUrl($audioUrl)
