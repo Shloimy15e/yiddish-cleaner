@@ -61,8 +61,8 @@ return new class extends Migration
             $audioSample = AudioSample::find($sampleData->id);
             if ($audioSample) {
                 $referenceMedia = $audioSample->getFirstMedia('reference_transcript');
-                if ($referenceMedia) {
-                    // Copy the media file to the new transcription
+                if ($referenceMedia && $referenceMedia->size > 0) {
+                    // Copy the media file to the new transcription (skip empty files)
                     $referenceMedia->copy($transcription, 'source_file');
                 }
             }
@@ -157,7 +157,7 @@ return new class extends Migration
             $audioSample = AudioSample::find($transcription->audio_sample_id);
             if ($audioSample) {
                 $sourceMedia = $transcription->getFirstMedia('source_file');
-                if ($sourceMedia) {
+                if ($sourceMedia && $sourceMedia->size > 0) {
                     $sourceMedia->copy($audioSample, 'reference_transcript');
                 }
             }
