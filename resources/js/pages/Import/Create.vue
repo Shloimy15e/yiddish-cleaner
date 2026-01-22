@@ -18,6 +18,7 @@ import {
     LinkIcon,
     DocumentTextIcon,
     MagnifyingGlassIcon,
+    ClipboardDocumentIcon,
 } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
@@ -29,8 +30,8 @@ const props = defineProps<{
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Audio Samples', href: '/audio-samples' },
-    { title: 'Import', href: '/audio-samples/create' },
+    { title: 'Imports', href: '/imports' },
+    { title: 'New Import', href: '/imports/create' },
 ];
 
 // Toggle state for sheet input type (URL vs file upload)
@@ -55,13 +56,14 @@ const manualForm = useForm({
     audio_file: null as File | null,
     transcript_url: '',
     transcript_file: null as File | null,
+    transcript_text: '',
     base_transcription_id: null as number | null,
 });
 
 // Toggle state for audio and transcript input types
 // Default to file if no Google credentials
 const audioInputType = ref<'url' | 'file'>(props.hasGoogleCredentials ? 'url' : 'file');
-const transcriptInputType = ref<'url' | 'file' | 'link'>('file');
+const transcriptInputType = ref<'url' | 'file' | 'paste' | 'link'>('file');
 
 // State for linking existing transcription
 const showTranscriptionSearch = ref(false);
@@ -118,6 +120,14 @@ watch(transcriptInputType, (type) => {
     if (type === 'link') {
         manualForm.transcript_url = '';
         manualForm.transcript_file = null;
+        manualForm.transcript_text = '';
+    }
+    if (type === 'paste') {
+        manualForm.transcript_url = '';
+        manualForm.transcript_file = null;
+    }
+    if (type === 'file' || type === 'url') {
+        manualForm.transcript_text = '';
     }
 });
 
@@ -131,12 +141,14 @@ const isManualFormValid = computed(() => {
         ? !!manualForm.audio_url
         : !!manualForm.audio_file;
     
-    // Check for transcript (URL, file, or linked)
+    // Check for transcript (URL, file, paste, or linked)
     let hasTranscript = false;
     if (transcriptInputType.value === 'url') {
         hasTranscript = !!manualForm.transcript_url;
     } else if (transcriptInputType.value === 'file') {
         hasTranscript = !!manualForm.transcript_file;
+    } else if (transcriptInputType.value === 'paste') {
+        hasTranscript = !!manualForm.transcript_text?.trim();
     } else if (transcriptInputType.value === 'link') {
         hasTranscript = !!manualForm.base_transcription_id;
     }
@@ -165,7 +177,7 @@ const submitManual = () => {
 };
 
 const submitSheet = () => {
-    sheetForm.post('/audio-samples/import', {
+    sheetForm.post('/imports', {
         forceFormData: true,
         onSuccess: () => {
             sheetForm.reset('url', 'file', 'sheet_name');
@@ -184,15 +196,15 @@ const formatDate = (dateString: string | null) => {
 </script>
 
 <template>
-    <Head title="Import Audio Samples" />
+    <Head title="Import" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold">Import Audio Samples</h1>
+                    <h1 class="text-2xl font-bold">Import Data</h1>
                     <p class="text-sm text-muted-foreground mt-1">
-                        Import audio samples with reference transcripts. Cleaning can be done from the sample detail page.
+                        Import audio samples and base transcriptions from spreadsheets or manually upload files.
                     </p>
                 </div>
             </div>
@@ -208,10 +220,10 @@ const formatDate = (dateString: string | null) => {
                                     ? 'bg-background text-foreground shadow' 
                                     : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
                             ]"
-                            v-tippy="'Import from Google Sheets or upload a spreadsheet file'"
+                            v-tippy="'Batch import from Google Sheets or spreadsheet files'"
                         >
                             <TableCellsIcon class="w-5 h-5" />
-                            Spreadsheet
+                            Batch Import
                         </button>
                     </Tab>
                     <Tab v-slot="{ selected }" as="template">
@@ -222,10 +234,10 @@ const formatDate = (dateString: string | null) => {
                                     ? 'bg-background text-foreground shadow' 
                                     : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
                             ]"
-                            v-tippy="'Manually create an audio sample'"
+                            v-tippy="'Upload a single audio sample with optional transcript'"
                         >
                             <DocumentArrowUpIcon class="w-5 h-5" />
-                            Manual Create
+                            Single Upload
                         </button>
                     </Tab>
                 </TabList>
@@ -234,6 +246,13 @@ const formatDate = (dateString: string | null) => {
                     <!-- Spreadsheet Panel -->
                     <TabPanel>
                         <div class="rounded-xl border bg-card p-4 sm:p-6">
+                            <div class="mb-6">
+                                <h3 class="text-lg font-semibold mb-2">Batch Import from Spreadsheet</h3>
+                                <p class="text-sm text-muted-foreground">
+                                    Import multiple audio samples and transcriptions from a Google Sheet or spreadsheet file.
+                                    Each row creates an audio sample linked to a base transcription.
+                                </p>
+                            </div>
                             <form @submit.prevent="submitSheet" class="space-y-6">
                                 <!-- Sheet Source -->
                                 <div>
@@ -386,13 +405,15 @@ const formatDate = (dateString: string | null) => {
                                 <!-- Info Box -->
                                 <div class="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
                                     <div class="flex gap-3">
-                                        <InformationCircleIcon class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                                        <InformationCircleIcon class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                                         <div class="text-sm">
-                                            <p class="font-medium text-blue-500">Import Only</p>
-                                            <p class="text-muted-foreground mt-1">
-                                                This will import audio samples with their raw transcripts. 
-                                                After import, you can clean each sample from its detail page.
-                                            </p>
+                                            <p class="font-medium text-blue-500">How Batch Import Works</p>
+                                            <ul class="text-muted-foreground mt-1 space-y-1 list-disc list-inside">
+                                                <li>Each row creates an <strong>Audio Sample</strong> + linked <strong>Base Transcription</strong></li>
+                                                <li>Doc Link column should contain Google Doc URLs with transcript text</li>
+                                                <li>Audio URL column (optional) downloads and attaches audio files</li>
+                                                <li>After import, clean transcriptions from the Transcriptions page</li>
+                                            </ul>
                                         </div>
                                     </div>
                                 </div>
@@ -415,10 +436,10 @@ const formatDate = (dateString: string | null) => {
                     <TabPanel>
                         <div class="rounded-xl border bg-card p-4 sm:p-6">
                             <div class="mb-6">
-                                <h3 class="text-lg font-semibold mb-2">Create Audio Sample</h3>
+                                <h3 class="text-lg font-semibold mb-2">Single Upload</h3>
                                 <p class="text-sm text-muted-foreground">
-                                    Manually create an audio sample by entering the details below. 
-                                    The sample will be imported with status "Imported" and can be cleaned afterwards from the detail page.
+                                    Upload a single audio file with an optional base transcription.
+                                    You can also link to an existing orphan transcription.
                                 </p>
                             </div>
                             <form @submit.prevent="submitManual" class="space-y-6">
@@ -513,6 +534,15 @@ const formatDate = (dateString: string | null) => {
                                             >Upload</button>
                                             <button 
                                                 type="button"
+                                                @click="transcriptInputType = 'paste'"
+                                                :class="[
+                                                    'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                                                    transcriptInputType === 'paste' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                                                ]"
+                                                v-tippy="'Paste transcript text directly'"
+                                            >Paste</button>
+                                            <button 
+                                                type="button"
                                                 @click="transcriptInputType = 'url'"
                                                 :class="[
                                                     'px-3 py-1 text-xs font-medium rounded-md transition-colors',
@@ -544,6 +574,18 @@ const formatDate = (dateString: string | null) => {
                                         <p class="mt-1 text-xs text-muted-foreground">Upload a .txt, .docx, or .doc file with the transcript</p>
                                     </div>
 
+                                    <!-- Paste Input -->
+                                    <div v-else-if="transcriptInputType === 'paste'">
+                                        <textarea 
+                                            v-model="manualForm.transcript_text"
+                                            rows="6"
+                                            placeholder="Paste your transcript text here..."
+                                            class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-y min-h-[120px]"
+                                        ></textarea>
+                                        <p class="mt-1 text-xs text-muted-foreground">Paste the transcript text directly</p>
+                                        <p v-if="manualForm.errors.transcript_text" class="mt-1 text-sm text-destructive">{{ manualForm.errors.transcript_text }}</p>
+                                    </div>
+
                                     <!-- URL Input -->
                                     <div v-else-if="transcriptInputType === 'url'">
                                         <div v-if="!hasGoogleCredentials" class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-2">
@@ -564,7 +606,7 @@ const formatDate = (dateString: string | null) => {
                                     </div>
 
                                     <!-- Link Existing Transcription -->
-                                    <div v-else>
+                                    <div v-else-if="transcriptInputType === 'link'">
                                         <!-- Selected Transcription -->
                                         <div v-if="selectedTranscription" class="rounded-lg border bg-muted/30 p-4">
                                             <div class="flex items-start justify-between">
@@ -642,12 +684,15 @@ const formatDate = (dateString: string | null) => {
                                 <!-- Info about requirements -->
                                 <div class="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
                                     <div class="flex gap-3">
-                                        <InformationCircleIcon class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                                        <InformationCircleIcon class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                                         <div class="text-sm">
-                                            <p class="font-medium text-blue-500">Flexible Import</p>
-                                            <p class="text-muted-foreground mt-1">
-                                                Provide either audio, a base transcription, or both. You can add the missing component later from the sample detail page.
-                                            </p>
+                                            <p class="font-medium text-blue-500">Flexible Upload Options</p>
+                                            <ul class="text-muted-foreground mt-1 space-y-1 list-disc list-inside">
+                                                <li>Upload <strong>audio only</strong> — add transcription later</li>
+                                                <li>Upload <strong>transcription only</strong> — add audio later</li>
+                                                <li>Upload <strong>both together</strong> — ready for cleaning</li>
+                                                <li>Or <strong>link an existing</strong> orphan transcription to this sample</li>
+                                            </ul>
                                         </div>
                                     </div>
                                 </div>

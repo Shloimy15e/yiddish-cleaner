@@ -50,7 +50,7 @@ const fetchTranscriptions = async () => {
         
         const response = await fetch(`/transcriptions/orphan-list?${params.toString()}`);
         const data = await response.json();
-        transcriptions.value = data.transcriptions || [];
+        transcriptions.value = Array.isArray(data) ? data : (data.transcriptions || []);
     } catch (error) {
         console.error('Failed to fetch transcriptions:', error);
         transcriptions.value = [];

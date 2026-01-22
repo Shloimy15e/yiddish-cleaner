@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\LlmController;
 use App\Http\Controllers\AudioSampleController;
 use App\Http\Controllers\BenchmarkController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ImportController;
 use App\Http\Controllers\TrainingController;
 use App\Http\Controllers\ProcessingRunController;
 use App\Http\Controllers\TranscriptionController;
@@ -26,26 +27,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Audio Samples - CRUD
+    // ==================== Imports ====================
+    Route::get('/imports', [ImportController::class, 'index'])->name('imports.index');
+    Route::get('/imports/create', [ImportController::class, 'create'])->name('imports.create');
+    Route::post('/imports', [ImportController::class, 'store'])->name('imports.store');
+    Route::get('/imports/{run}', [ImportController::class, 'show'])->name('imports.show');
+
+    // ==================== Audio Samples ====================
     Route::get('/audio-samples', [AudioSampleController::class, 'index'])->name('audio-samples.index');
-    Route::get('/audio-samples/runs', [ProcessingRunController::class, 'index'])->name('audio-samples.runs');
-    Route::get('/audio-samples/create', [AudioSampleController::class, 'create'])->name('audio-samples.create');
     Route::post('/audio-samples', [AudioSampleController::class, 'store'])->name('audio-samples.store');
-    Route::post('/audio-samples/import', [AudioSampleController::class, 'importSheet'])->name('audio-samples.import');
-    Route::get('/audio-samples/runs/{run}', [ProcessingRunController::class, 'show'])->name('audio-samples.run');
     Route::get('/audio-samples/{audioSample}', [AudioSampleController::class, 'show'])->name('audio-samples.show');
-    Route::patch('/audio-samples/{audioSample}', [AudioSampleController::class, 'update'])->name('audio-samples.update');
-    Route::post('/audio-samples/{audioSample}/clean', [AudioSampleController::class, 'clean'])->name('audio-samples.clean');
-    Route::post('/audio-samples/bulk-clean', [AudioSampleController::class, 'bulkClean'])->name('audio-samples.bulk-clean');
     Route::delete('/audio-samples/bulk-delete', [AudioSampleController::class, 'bulkDelete'])->name('audio-samples.bulk-delete');
     Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');
     Route::post('/audio-samples/{audioSample}/transcript', [AudioSampleController::class, 'uploadTranscript'])->name('audio-samples.upload-transcript');
     Route::post('/audio-samples/{audioSample}/audio', [AudioSampleController::class, 'uploadAudio'])->name('audio-samples.upload-audio');
-    Route::get('/audio-samples/{audioSample}/download', [AudioSampleController::class, 'download'])->name('audio-samples.download');
-    Route::get('/audio-samples/{audioSample}/download/original', [AudioSampleController::class, 'downloadOriginal'])->name('audio-samples.download.original');
-    Route::get('/audio-samples/{audioSample}/download/text', [AudioSampleController::class, 'downloadText'])->name('audio-samples.download.text');
-    Route::post('/audio-samples/{audioSample}/validate', [AudioSampleController::class, 'validate'])->name('audio-samples.validate');
-    Route::delete('/audio-samples/{audioSample}/validate', [AudioSampleController::class, 'unvalidate'])->name('audio-samples.unvalidate');
 
     // ASR Transcription
     Route::post('/audio-samples/{audioSample}/transcribe', [AudioSampleController::class, 'transcribe'])->name('audio-samples.transcribe');
@@ -73,8 +68,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/audio-samples/{audioSample}/transcriptions/{transcription}/recalculate', [TranscriptionController::class, 'recalculate'])->name('transcriptions.recalculate');
 
     // Legacy redirects
-    Route::get('/process', fn () => redirect()->route('audio-samples.create'))->name('process.legacy');
-    Route::get('/import', fn () => redirect()->route('audio-samples.create'))->name('import.legacy');
+    Route::get('/process', fn () => redirect()->route('imports.create'))->name('process.legacy');
+    Route::get('/import', fn () => redirect()->route('imports.create'))->name('import.legacy');
+    Route::get('/audio-samples/runs', fn () => redirect()->route('imports.index'))->name('audio-samples.runs');
+    Route::get('/audio-samples/runs/{run}', fn ($run) => redirect()->route('imports.show', $run))->name('audio-samples.run');
+    Route::get('/audio-samples/create', fn () => redirect()->route('imports.create'))->name('audio-samples.create');
 
     // API - LLM Providers
     Route::get('/api/llm/providers', [LlmController::class, 'providers'])->name('api.llm.providers');

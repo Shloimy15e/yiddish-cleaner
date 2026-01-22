@@ -124,7 +124,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                         'processing_run_id' => $this->run->id,
                         'name' => $name,
                         'source_url' => $docUrl,
-                        'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
+                        'status' => AudioSample::STATUS_PENDING_BASE,
                     ]);
 
                     $fileId = DriveService::extractFileId($docUrl);
@@ -153,7 +153,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 } catch (Throwable $e) {
                     if (isset($audioSample)) {
                         $audioSample->update([
-                            'status' => AudioSample::STATUS_FAILED,
+                            'status' => AudioSample::STATUS_DRAFT,
                             'error_message' => $e->getMessage(),
                         ]);
                     }

@@ -87,7 +87,7 @@ class ProcessSheetBatchJob implements ShouldQueue
                         'processing_run_id' => $this->run->id,
                         'name' => $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}",
                         'source_url' => $docUrl,
-                        'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
+                        'status' => AudioSample::STATUS_PENDING_BASE,
                     ]);
 
                     $fileId = DriveService::extractFileId($docUrl);
@@ -125,7 +125,7 @@ class ProcessSheetBatchJob implements ShouldQueue
                 } catch (Throwable $e) {
                     if (isset($audioSample)) {
                         $audioSample->update([
-                            'status' => AudioSample::STATUS_FAILED,
+                            'status' => AudioSample::STATUS_DRAFT,
                             'error_message' => $e->getMessage(),
                         ]);
                     }

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\AudioSampleProcessed;
 use App\Models\AudioSample;
+use App\Models\Transcription;
 use App\Services\Document\ParserService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -16,7 +17,8 @@ use Throwable;
  * Import an audio sample - downloads files and extracts text.
  *
  * This job ONLY imports data (no cleaning).
- * After import, the sample status is 'imported' and ready for cleaning.
+ * After import, a base transcription is created and linked to the audio sample.
+ * The sample status becomes 'unclean' (has base transcription, needs cleaning).
  */
 class ImportAudioSampleJob implements ShouldQueue
 {
@@ -46,12 +48,12 @@ class ImportAudioSampleJob implements ShouldQueue
             // Extract text from the document
             $text = $this->filePath
                 ? $parser->extractText($this->filePath)
-                : $this->audioSample->reference_text_raw;
+                : null;
 
             if (! $text) {
-                // No transcript text - mark as pending transcript
+                // No transcript text - mark as pending base transcription
                 $this->audioSample->update([
-                    'status' => AudioSample::STATUS_PENDING_TRANSCRIPT,
+                    'status' => AudioSample::STATUS_PENDING_BASE,
                 ]);
                 $run->incrementCompleted();
 
@@ -67,11 +69,20 @@ class ImportAudioSampleJob implements ShouldQueue
             // Calculate hash for raw text
             $rawHash = hash('sha256', $text);
 
-            // Save raw text and mark as imported (ready for cleaning)
+            // Create a base transcription linked to this audio sample
+            Transcription::create([
+                'type' => Transcription::TYPE_BASE,
+                'audio_sample_id' => $this->audioSample->id,
+                'name' => $this->audioSample->name,
+                'source' => Transcription::SOURCE_IMPORTED,
+                'status' => Transcription::STATUS_COMPLETED,
+                'text_raw' => $text,
+                'hash_raw' => $rawHash,
+            ]);
+
+            // Update audio sample status (has base transcription now, needs cleaning)
             $this->audioSample->update([
-                'reference_text_raw' => $text,
-                'reference_hash_raw' => $rawHash,
-                'status' => AudioSample::STATUS_IMPORTED,
+                'status' => AudioSample::STATUS_UNCLEAN,
             ]);
 
             $run->incrementCompleted();
@@ -82,7 +93,7 @@ class ImportAudioSampleJob implements ShouldQueue
 
         } catch (Throwable $e) {
             $this->audioSample->update([
-                'status' => AudioSample::STATUS_FAILED,
+                'status' => AudioSample::STATUS_DRAFT,
                 'error_message' => $e->getMessage(),
             ]);
 
@@ -95,7 +106,7 @@ class ImportAudioSampleJob implements ShouldQueue
     public function failed(Throwable $exception): void
     {
         $this->audioSample->update([
-            'status' => AudioSample::STATUS_FAILED,
+            'status' => AudioSample::STATUS_DRAFT,
             'error_message' => $exception->getMessage(),
         ]);
 

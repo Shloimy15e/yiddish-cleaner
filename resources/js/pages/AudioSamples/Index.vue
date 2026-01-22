@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
-import { SparklesIcon, CpuChipIcon } from '@heroicons/vue/24/outline';
+import { CpuChipIcon } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
@@ -50,11 +50,11 @@ const getCleanRateCategoryFromValue = (rate: number | null | undefined): string 
 
 const statusOptions = [
     { value: '', label: 'All Status' },
-    { value: 'pending_transcript', label: 'Needs Transcript' },
-    { value: 'imported', label: 'Needs Cleaning' },
-    { value: 'cleaned', label: 'Ready for Review' },
-    { value: 'validated', label: 'Benchmark Ready' },
-    { value: 'failed', label: 'Failed' },
+    { value: 'pending_base', label: 'Needs Transcript' },
+    { value: 'unclean', label: 'Needs Cleaning' },
+    { value: 'ready', label: 'Benchmark Ready' },
+    { value: 'benchmarked', label: 'Benchmarked' },
+    { value: 'draft', label: 'Draft' },
 ];
 
 const categoryOptions = [
@@ -102,34 +102,10 @@ const updateSelectAll = () => {
 
 const selectedCount = computed(() => selectedIds.value.size);
 
-// Get samples that can be bulk cleaned (status = imported)
-const selectedForCleaning = computed(() =>
-    props.audioSamples.data.filter((s) => selectedIds.value.has(s.id)),
-);
-
 // Bulk actions
-const bulkCleanForm = useForm({
-    ids: [] as number[],
-    preset: 'titles_only',
-    mode: 'rule' as 'rule' | 'llm',
-    llm_provider: 'openrouter',
-    llm_model: 'anthropic/claude-sonnet-4',
-});
-
 const bulkDeleteForm = useForm({
     ids: [] as number[],
 });
-
-const submitBulkClean = () => {
-    bulkCleanForm.ids = Array.from(selectedIds.value);
-    bulkCleanForm.post(route('audio-samples.bulk-clean'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            selectedIds.value = new Set();
-            selectAll.value = false;
-        },
-    });
-};
 
 const submitBulkDelete = () => {
     if (!confirm(`Delete ${selectedCount.value} selected sample(s)? This cannot be undone.`)) {
@@ -342,18 +318,6 @@ watch(search, () => {
                     </button>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <span v-if="selectedForCleaning.length > 0" class="text-sm text-muted-foreground">
-                        {{ selectedForCleaning.length }} can be cleaned
-                    </span>
-                    <button 
-                        v-if="selectedForCleaning.length > 0"
-                        @click="submitBulkClean"
-                        :disabled="bulkCleanForm.processing"
-                        class="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        <SparklesIcon class="w-4 h-4" />
-                        {{ bulkCleanForm.processing ? 'Cleaning...' : 'Bulk Clean' }}
-                    </button>
                     <button 
                         @click="submitBulkDelete"
                         :disabled="bulkDeleteForm.processing"

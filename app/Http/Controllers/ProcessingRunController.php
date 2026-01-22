@@ -36,15 +36,16 @@ class ProcessingRunController extends Controller
 
         return Inertia::render('ProcessRuns/Show', [
             'run' => $run->load(['audioSamples' => function ($query) {
-                $query->latest()->select([
-                    'id',
-                    'processing_run_id',
-                    'name',
-                    'status',
-                    'clean_rate',
-                    'error_message',
-                    'created_at',
-                ]);
+                $query->with('baseTranscription:id,audio_sample_id,clean_rate')
+                    ->latest()
+                    ->select([
+                        'id',
+                        'processing_run_id',
+                        'name',
+                        'status',
+                        'error_message',
+                        'created_at',
+                    ]);
             }]),
         ]);
     }

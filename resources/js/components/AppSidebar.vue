@@ -29,7 +29,7 @@ const mainNavItems = computed<NavItem[]>(() => {
         },
         {
             title: 'Import',
-            href: 'audio-samples.create',
+            href: 'imports.create',
             icon: UploadCloud,
         },
         {
@@ -44,7 +44,7 @@ const mainNavItems = computed<NavItem[]>(() => {
         },
         {
             title: 'Import Runs',
-            href: 'audio-samples.runs',
+            href: 'imports.index',
             icon: Layers,
         },
         {
