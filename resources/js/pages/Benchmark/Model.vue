@@ -2,21 +2,8 @@
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
+import type { BenchmarkTranscription } from '@/types/transcriptions';
 import { ChartBarIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
-
-interface Transcription {
-    id: number;
-    wer: number;
-    cer: number;
-    hypothesis_text: string;
-    notes: string | null;
-    source: string;
-    created_at: string;
-    audio_sample: {
-        id: number;
-        name: string;
-    };
-}
 
 interface Stats {
     sample_count: number;
@@ -33,7 +20,7 @@ interface Stats {
 
 const props = defineProps<{
     modelName: string;
-    transcriptions: { data: Transcription[] };
+    transcriptions: { data: BenchmarkTranscription[] };
     stats: Stats;
     distribution: Record<number, number>;
 }>();

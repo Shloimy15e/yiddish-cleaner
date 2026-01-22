@@ -1,36 +1,16 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
+import type { AudioSampleReference } from '@/types/audio-samples';
+import type { TranscriptionWithStatus } from '@/types/transcriptions';
 import { Head } from '@inertiajs/vue3';
 import * as Diff from 'diff';
 import { computed, ref } from 'vue';
 import { InformationCircleIcon } from '@heroicons/vue/24/outline';
 
-interface AudioSample {
-    id: number;
-    name: string;
-    reference_text_clean: string | null;
-}
-
-interface Transcription {
-    id: number;
-    model_name: string;
-    model_version: string | null;
-    source: 'generated' | 'imported';
-    status: 'pending' | 'processing' | 'completed' | 'failed' | string;
-    hypothesis_text: string | null;
-    wer: number | null;
-    cer: number | null;
-    substitutions: number;
-    insertions: number;
-    deletions: number;
-    reference_words: number;
-    notes: string | null;
-}
-
 const props = defineProps<{
-    audioSample: AudioSample;
-    transcription: Transcription;
+    audioSample: AudioSampleReference;
+    transcription: TranscriptionWithStatus;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [

@@ -31,7 +31,7 @@ class ProcessSheetBatchJob implements ShouldQueue
     public function __construct(
         public ProcessingRun $run,
         public string $spreadsheetId,
-        public string $sheetName = 'Sheet1',
+        public string $sheetName = '',
         public string $docLinkColumn = 'Doc Link',
         public string $audioUrlColumn = '',
     ) {}
@@ -65,6 +65,11 @@ class ProcessSheetBatchJob implements ShouldQueue
 
             // Filter rows with doc links
             $rowsToProcess = array_filter($rows, fn ($row) => ! empty($row[$docLinkHeader] ?? ''));
+
+            $rowLimit = (int) ($this->run->options['row_limit'] ?? 0);
+            if ($rowLimit > 0) {
+                $rowsToProcess = array_slice($rowsToProcess, 0, $rowLimit);
+            }
 
             $this->run->update(['total' => count($rowsToProcess)]);
 
@@ -129,7 +134,7 @@ class ProcessSheetBatchJob implements ShouldQueue
 
                     try {
                         $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
-                            'Status' => 'Failed: '.$e->getMessage(),
+                            'Status' => '',
                         ]);
                     } catch (Throwable) {
                         // Ignore status update failures to keep batch running

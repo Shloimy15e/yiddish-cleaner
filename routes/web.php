@@ -6,6 +6,7 @@ use App\Http\Controllers\AudioSampleController;
 use App\Http\Controllers\BenchmarkController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TrainingController;
+use App\Http\Controllers\ProcessingRunController;
 use App\Http\Controllers\TranscriptionController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -27,11 +28,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Audio Samples - CRUD
     Route::get('/audio-samples', [AudioSampleController::class, 'index'])->name('audio-samples.index');
-    Route::get('/audio-samples/runs', [AudioSampleController::class, 'runsIndex'])->name('audio-samples.runs');
+    Route::get('/audio-samples/runs', [ProcessingRunController::class, 'index'])->name('audio-samples.runs');
     Route::get('/audio-samples/create', [AudioSampleController::class, 'create'])->name('audio-samples.create');
     Route::post('/audio-samples', [AudioSampleController::class, 'store'])->name('audio-samples.store');
     Route::post('/audio-samples/import', [AudioSampleController::class, 'importSheet'])->name('audio-samples.import');
-    Route::get('/audio-samples/runs/{run}', [AudioSampleController::class, 'showRun'])->name('audio-samples.run');
+    Route::get('/audio-samples/runs/{run}', [ProcessingRunController::class, 'show'])->name('audio-samples.run');
     Route::get('/audio-samples/{audioSample}', [AudioSampleController::class, 'show'])->name('audio-samples.show');
     Route::patch('/audio-samples/{audioSample}', [AudioSampleController::class, 'update'])->name('audio-samples.update');
     Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');

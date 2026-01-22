@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { type BreadcrumbItem } from '@/types';
+import type { AudioSampleSummary } from '@/types/audio-samples';
 
 interface Stats {
     total_audio_samples: number;
@@ -10,15 +12,6 @@ interface Stats {
     awaiting_review: number;
     benchmark_ready: number;
     average_clean_rate: number;
-}
-
-interface AudioSample {
-    id: number;
-    name: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-    status: string;
-    created_at: string;
 }
 
 interface Run {
@@ -33,27 +26,16 @@ interface Run {
 
 const props = defineProps<{
     stats: Stats;
-    recentAudioSamples: AudioSample[];
+    recentAudioSamples: AudioSampleSummary[];
     activeRuns: Run[];
-    needsCleaningQueue: AudioSample[];
-    needsReviewQueue: AudioSample[];
-    benchmarkReadyQueue: AudioSample[];
+    needsCleaningQueue: AudioSampleSummary[];
+    needsReviewQueue: AudioSampleSummary[];
+    benchmarkReadyQueue: AudioSampleSummary[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
 ];
-
-const getCategoryColor = (category: string | null) => {
-    const colors: Record<string, string> = {
-        excellent: 'clean-rate-excellent',
-        good: 'clean-rate-good',
-        moderate: 'clean-rate-moderate',
-        low: 'clean-rate-low',
-        poor: 'clean-rate-poor',
-    };
-    return colors[category ?? ''] ?? 'bg-muted text-muted-foreground';
-};
 
 const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -154,7 +136,7 @@ const getStatusLabel = (status: string) => {
                                     {{ sample.name }}
                                 </Link>
                             </div>
-                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCategoryColor(sample.clean_rate_category)]">
+                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCleanRateCategoryClass(sample.clean_rate_category)]">
                                 {{ sample.clean_rate }}%
                             </span>
                         </div>
@@ -180,7 +162,7 @@ const getStatusLabel = (status: string) => {
                                     {{ sample.name }}
                                 </Link>
                             </div>
-                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCategoryColor(sample.clean_rate_category)]">
+                            <span v-if="sample.clean_rate" :class="['rounded-full px-2 py-1 text-xs font-medium shrink-0 ml-2', getCleanRateCategoryClass(sample.clean_rate_category)]">
                                 {{ sample.clean_rate }}%
                             </span>
                         </div>

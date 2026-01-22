@@ -1,19 +1,18 @@
 <script setup lang="ts">
-interface AudioSample {
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-    removals: Array<{ type: string; count: number }> | null;
-}
+import { getCleanRateCategoryClass } from '@/lib/cleanRate';
+import type { AudioSampleDetail } from '@/types/audio-samples';
 
 const props = defineProps<{
     hasCleanedText: boolean;
-    audioSample: AudioSample;
+    audioSample: Pick<
+        AudioSampleDetail,
+        'clean_rate' | 'clean_rate_category' | 'removals'
+    >;
     cleanedWords: number;
     originalWords: number;
     removedWords: number;
     reductionPercentage: string | number;
     formattedMetrics: Array<{ name: string; value: string | number }>;
-    getCategoryColor: (cat: string | null) => string;
     canBeValidated: boolean;
     isValidated: boolean;
     isEditing: boolean;
@@ -36,7 +35,7 @@ const emit = defineEmits<{
                         v-if="audioSample.clean_rate_category"
                         :class="[
                             'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-                            getCategoryColor(audioSample.clean_rate_category),
+                            getCleanRateCategoryClass(audioSample.clean_rate_category),
                         ]"
                     >
                         {{ audioSample.clean_rate_category }}

@@ -2,6 +2,7 @@
 
 namespace App\Services\Document;
 
+use Illuminate\Support\Facades\Process;
 use PhpOffice\PhpWord\IOFactory;
 use RuntimeException;
 
@@ -28,12 +29,26 @@ class ParserService
     {
         $extension = strtolower($extension ?? pathinfo($filePath, PATHINFO_EXTENSION));
 
-        return match ($extension) {
-            'txt' => file_get_contents($filePath),
-            'docx' => $this->extractFromDocx($filePath),
-            'doc' => $this->extractFromDoc($filePath),
-            default => throw new RuntimeException("Unsupported file type: {$extension}"),
-        };
+        $convertedPath = null;
+
+        if ($extension === 'doc') {
+            $convertedPath = $this->convertDocToDocx($filePath);
+            $filePath = $convertedPath;
+            $extension = 'docx';
+        }
+
+        try {
+            return match ($extension) {
+                'txt' => file_get_contents($filePath),
+                'docx' => $this->extractFromDocx($filePath),
+                'doc' => $this->extractFromDoc($filePath),
+                default => throw new RuntimeException("Unsupported file type: {$extension}"),
+            };
+        } finally {
+            if ($convertedPath && file_exists($convertedPath)) {
+                @unlink($convertedPath);
+            }
+        }
     }
 
     /**
@@ -90,27 +105,46 @@ class ParserService
      */
     protected function extractFromDoc(string $filePath): string
     {
+        $convertedPath = $this->convertDocToDocx($filePath);
+
         try {
-            // Try MSDoc reader
-            $phpWord = IOFactory::load($filePath, 'MsDoc');
-            $text = [];
-
-            foreach ($phpWord->getSections() as $section) {
-                foreach ($section->getElements() as $element) {
-                    $text[] = $this->extractTextFromElement($element);
-                }
+            return $this->extractFromDocx($convertedPath);
+        } finally {
+            if (file_exists($convertedPath)) {
+                @unlink($convertedPath);
             }
-
-            return implode("\n", array_filter($text));
-        } catch (\Exception $e) {
-            // Fall back to raw text extraction for .doc
-            $content = file_get_contents($filePath);
-            // Extract visible text (rough extraction)
-            $text = preg_replace('/[\x00-\x1F\x7F-\xFF]/', ' ', $content);
-            $text = preg_replace('/\s+/', ' ', $text);
-
-            return trim($text);
         }
+    }
+
+    /**
+     * Convert .doc to .docx using LibreOffice.
+     */
+    protected function convertDocToDocx(string $filePath): string
+    {
+        $libreOfficePath = config('cleaning.libreoffice_path', 'soffice');
+        $outputDir = dirname($filePath);
+        $baseName = pathinfo($filePath, PATHINFO_FILENAME);
+        $outputPath = "{$outputDir}/{$baseName}.docx";
+
+        $command = [
+            $libreOfficePath,
+            '--headless',
+            '--convert-to', 'docx',
+            '--outdir', $outputDir,
+            $filePath,
+        ];
+
+        $process = Process::timeout(60)->run($command);
+
+        if (! $process->successful()) {
+            throw new RuntimeException('Failed to convert .doc to .docx: '.$process->errorOutput());
+        }
+
+        if (! file_exists($outputPath)) {
+            throw new RuntimeException("Converted file not found: {$outputPath}");
+        }
+
+        return $outputPath;
     }
 
     /**

@@ -9,13 +9,10 @@ use App\Jobs\TranscribeAudioSampleJob;
 use App\Models\AudioSample;
 use App\Models\AudioSampleStatusHistory;
 use App\Models\ProcessingRun;
-use App\Services\Cleaning\CleanerService;
-use App\Services\Cleaning\CleaningResult;
-use App\Services\Cleaning\CleanRateCalculator;
-use App\Services\DocxWriterService;
 use App\Services\Document\ParserService;
+use App\Services\DocxWriterService;
+use App\Services\Google\GoogleAuthService;
 use App\Services\Google\SheetsService;
-use App\Services\Llm\LlmManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -48,33 +45,15 @@ class AudioSampleController extends Controller
     }
 
     /**
-     * List import runs.
-     */
-    public function runsIndex(Request $request): InertiaResponse
-    {
-        $user = $request->user();
-
-        $runs = ProcessingRun::where('user_id', $user->id)
-            ->where('mode', 'import')
-            ->latest()
-            ->paginate(25)
-            ->withQueryString();
-
-        return Inertia::render('ProcessRuns/Index', [
-            'runs' => $runs,
-        ]);
-    }
-
-    /**
      * Show the form for creating audio samples (import page).
      * Import only - cleaning is done from the sample detail page.
      */
-    public function create(Request $request): InertiaResponse
+    public function create(Request $request, GoogleAuthService $auth): InertiaResponse
     {
         $user = $request->user();
 
         return Inertia::render('AudioSamples/Create', [
-            'hasGoogleCredentials' => $user->hasGoogleCredential(),
+            'hasGoogleCredentials' => $auth->hasValidCredentials($user),
         ]);
     }
 
@@ -115,7 +94,7 @@ class AudioSampleController extends Controller
         ]);
 
         // Ensure at least one transcript source is provided
-        if (!$request->transcript_url && !$request->hasFile('transcript_file')) {
+        if (! $request->transcript_url && ! $request->hasFile('transcript_file')) {
             return back()->withErrors(['transcript_url' => 'A transcript URL or file is required.']);
         }
 
@@ -378,7 +357,7 @@ class AudioSampleController extends Controller
         $this->authorize('update', $audioSample);
 
         $request->validate([
-            'transcript' => 'required|file|mimes:txt,docx,pdf|max:10240',
+            'transcript' => 'required|file|mimes:txt,docx,doc,pdf|max:10240',
         ]);
 
         // Extract text BEFORE adding to media collection (temp file gets deleted after)
@@ -414,8 +393,8 @@ class AudioSampleController extends Controller
         // Log status history
         AudioSampleStatusHistory::log(
             audioSample: $audioSample,
-            action: $hadTranscript 
-                ? AudioSampleStatusHistory::ACTION_TRANSCRIPT_REPLACED 
+            action: $hadTranscript
+                ? AudioSampleStatusHistory::ACTION_TRANSCRIPT_REPLACED
                 : AudioSampleStatusHistory::ACTION_TRANSCRIPT_UPLOADED,
             fromStatus: $previousStatus,
             toStatus: AudioSample::STATUS_IMPORTED,
@@ -671,28 +650,6 @@ class AudioSampleController extends Controller
 
         return redirect()->route('audio-samples.run', $run)
             ->with('success', 'Batch import started.');
-    }
-
-    /**
-     * Show a specific import/processing run.
-     */
-    public function showRun(ProcessingRun $run): InertiaResponse
-    {
-        $this->authorize('view', $run);
-
-        return Inertia::render('ProcessRuns/Show', [
-            'run' => $run->load(['audioSamples' => function ($query) {
-                $query->latest()->select([
-                    'id',
-                    'processing_run_id',
-                    'name',
-                    'status',
-                    'clean_rate',
-                    'error_message',
-                    'created_at',
-                ]);
-            }]),
-        ]);
     }
 
     /**

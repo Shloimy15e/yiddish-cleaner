@@ -2,42 +2,25 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
+import { formatDateTime } from '@/lib/date';
+import {
+    getProcessRunStatusClass,
+    getProcessRunStatusLabel,
+} from '@/lib/processRunStatus';
 import { type BreadcrumbItem } from '@/types';
-
-interface AudioSample {
-    id: number;
-    name: string;
-    status: string;
-    clean_rate: number | null;
-    error_message: string | null;
-    created_at: string;
-}
-
-interface ProcessingRun {
-    id: number;
-    preset: string | null;
-    mode: string | null;
-    source_type: string | null;
-    source_url: string | null;
-    status: string;
-    total: number;
-    completed: number;
-    failed: number;
-    error_message: string | null;
-    created_at: string;
-    options: Record<string, unknown> | null;
-    audio_samples: AudioSample[];
-}
+import type { AudioSampleRunItem } from '@/types/audio-samples';
+import type { ProcessingRunDetail } from '@/types/process-runs';
 
 const props = defineProps<{
-    run: ProcessingRun;
+    run: ProcessingRunDetail;
 }>();
 
 const run = ref({
     ...props.run,
     audio_samples: [...(props.run.audio_samples || [])],
 });
-const samples = ref<AudioSample[]>([...(props.run.audio_samples || [])]);
+const samples = ref<AudioSampleRunItem[]>([...(props.run.audio_samples || [])]);
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: route('dashboard') },
@@ -49,36 +32,6 @@ const progressPercent = computed(() => {
     if (!run.value.total) return 0;
     return Math.min(100, Math.round(((run.value.completed + run.value.failed) / run.value.total) * 100));
 });
-
-const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-        pending_transcript: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-        imported: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-        cleaning: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-        cleaned: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-        validated: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    };
-    return colors[status] ?? 'bg-muted text-muted-foreground';
-};
-
-const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-        pending: 'Pending',
-        processing: 'Processing',
-        completed: 'Completed',
-        completed_with_errors: 'Completed (Errors)',
-        failed: 'Failed',
-        pending_transcript: 'Needs Transcript',
-        imported: 'Needs Cleaning',
-        cleaning: 'Cleaning...',
-        cleaned: 'Ready for Review',
-        validated: 'Benchmark Ready',
-    };
-    return labels[status] ?? status;
-};
-
-const formatDate = (value: string) => new Date(value).toLocaleString();
 
 const updateSampleFromEvent = (payload: {
     audio_sample_id: number;
@@ -182,8 +135,8 @@ onBeforeUnmount(() => {
                                 {{ run.completed + run.failed }} / {{ run.total || 0 }} processed
                             </p>
                         </div>
-                        <span :class="['rounded-full px-3 py-1 text-xs font-medium', getStatusColor(run.status)]">
-                            {{ getStatusLabel(run.status) }}
+                        <span :class="['rounded-full px-3 py-1 text-xs font-medium', getProcessRunStatusClass(run.status)]">
+                            {{ getProcessRunStatusLabel(run.status) }}
                         </span>
                     </div>
 
@@ -231,7 +184,7 @@ onBeforeUnmount(() => {
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-muted-foreground">Started</span>
-                            <span class="font-medium">{{ formatDate(run.created_at) }}</span>
+                            <span class="font-medium">{{ formatDateTime(run.created_at) }}</span>
                         </div>
                         <div v-if="run.source_url" class="pt-2">
                             <div class="text-muted-foreground">Source URL</div>
@@ -260,7 +213,7 @@ onBeforeUnmount(() => {
                                 {{ sample.name }}
                             </Link>
                             <div class="text-xs text-muted-foreground">
-                                {{ formatDate(sample.created_at) }}
+                                {{ formatDateTime(sample.created_at) }}
                             </div>
                             <p v-if="sample.error_message" class="text-xs text-destructive mt-1">
                                 {{ sample.error_message }}
@@ -270,8 +223,8 @@ onBeforeUnmount(() => {
                             <span v-if="sample.clean_rate !== null" class="text-xs text-muted-foreground">
                                 {{ sample.clean_rate }}%
                             </span>
-                            <span :class="['rounded-full px-2 py-1 text-xs font-medium', getStatusColor(sample.status)]">
-                                {{ getStatusLabel(sample.status) }}
+                            <span :class="['rounded-full px-2 py-1 text-xs font-medium', getAudioSampleStatusClass(sample.status)]">
+                                {{ getAudioSampleStatusLabel(sample.status) }}
                             </span>
                         </div>
                     </div>

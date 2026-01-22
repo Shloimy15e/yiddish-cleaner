@@ -12,7 +12,7 @@ use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function credentials(Request $request, LlmManager $llm): Response
+    public function credentials(Request $request, LlmManager $llm, GoogleAuthService $auth): Response
     {
         $user = $request->user();
 
@@ -21,6 +21,7 @@ class SettingsController extends Controller
         return Inertia::render('settings/Credentials', [
             'apiCredentials' => $apiCredentials,
             'googleCredential' => $user->googleCredential,
+            'googleConnected' => $auth->hasValidCredentials($user),
             'llmProviders' => $llm->getProviders(),
             'asrProviders' => ['yiddishlabs', 'whisper', 'google_asr'],
         ]);
@@ -65,11 +66,20 @@ class SettingsController extends Controller
 
     public function googleRedirect(GoogleAuthService $auth): RedirectResponse
     {
+        if ($auth->usesServiceAccount()) {
+            return back()->with('success', 'Google service account configured for local development.');
+        }
+
         return redirect($auth->getAuthUrl());
     }
 
     public function googleCallback(Request $request, GoogleAuthService $auth): RedirectResponse
     {
+        if ($auth->usesServiceAccount()) {
+            return redirect()->route('settings.index')
+                ->with('success', 'Google service account configured for local development.');
+        }
+
         if ($request->has('error')) {
             return redirect()->route('settings.index')
                 ->withErrors(['google' => 'Google authorization failed.']);

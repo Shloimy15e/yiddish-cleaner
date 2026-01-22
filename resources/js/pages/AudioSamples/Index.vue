@@ -3,29 +3,17 @@ import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headless
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import { SparklesIcon, CpuChipIcon } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
+import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { type BreadcrumbItem } from '@/types';
-
-interface ProcessingRun {
-    preset: string;
-    mode: 'rule' | 'llm';
-    llm_provider: string | null;
-    llm_model: string | null;
-}
-
-interface AudioSample {
-    id: number;
-    name: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-    status: string;
-    validated_at: string | null;
-    created_at: string;
-    processing_run: ProcessingRun | null;
-}
+import type {
+    AudioSampleListItem,
+    AudioSampleProcessingRunSummary,
+} from '@/types/audio-samples';
 
 const props = defineProps<{
     audioSamples: {
-        data: AudioSample[];
+        data: AudioSampleListItem[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -69,8 +57,12 @@ const categoryOptions = [
     { value: 'poor', label: 'Poor (<25%)' },
 ];
 
-const selectedStatus = computed(() => statusOptions.find(o => o.value === statusFilter.value) || statusOptions[0]);
-const selectedCategory = computed(() => categoryOptions.find(o => o.value === category.value) || categoryOptions[0]);
+const selectedStatus = computed(
+    () => statusOptions.find((o) => o.value === statusFilter.value) || statusOptions[0],
+);
+const selectedCategory = computed(
+    () => categoryOptions.find((o) => o.value === category.value) || categoryOptions[0],
+);
 
 // Selection helpers
 const isSelected = (id: number) => selectedIds.value.has(id);
@@ -80,29 +72,31 @@ const toggleSelection = (id: number) => {
     } else {
         selectedIds.value.add(id);
     }
-    selectedIds.value = new Set(selectedIds.value); // Trigger reactivity
+    selectedIds.value = new Set(selectedIds.value);
     updateSelectAll();
 };
+
 const toggleSelectAll = () => {
     if (selectAll.value) {
         selectedIds.value = new Set();
     } else {
-        selectedIds.value = new Set(props.audioSamples.data.map(s => s.id));
+        selectedIds.value = new Set(props.audioSamples.data.map((s) => s.id));
     }
     selectAll.value = !selectAll.value;
 };
+
 const updateSelectAll = () => {
-    selectAll.value = props.audioSamples.data.length > 0 && 
-        props.audioSamples.data.every(s => selectedIds.value.has(s.id));
+    selectAll.value =
+        props.audioSamples.data.length > 0 &&
+        props.audioSamples.data.every((s) => selectedIds.value.has(s.id));
 };
+
 const selectedCount = computed(() => selectedIds.value.size);
 
 // Get samples that can be bulk cleaned (status = imported)
-const selectedForCleaning = computed(() => {
-    return props.audioSamples.data.filter(s => 
-        selectedIds.value.has(s.id)
-    );
-});
+const selectedForCleaning = computed(() =>
+    props.audioSamples.data.filter((s) => selectedIds.value.has(s.id)),
+);
 
 // Bulk actions
 const bulkCleanForm = useForm({
@@ -122,48 +116,12 @@ const submitBulkClean = () => {
             selectAll.value = false;
         },
     });
-};
-
-const getCategoryColor = (cat: string | null) => {
-    const colors: Record<string, string> = {
-        excellent: 'clean-rate-excellent',
-        good: 'clean-rate-good',
-        moderate: 'clean-rate-moderate',
-        low: 'clean-rate-low',
-        poor: 'clean-rate-poor',
-    };
-    return colors[cat ?? ''] ?? 'bg-muted text-muted-foreground';
-};
-
-const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-        pending_transcript: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-        imported: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-        cleaning: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-        cleaned: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-        validated: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    };
-    return colors[status] ?? 'bg-muted text-muted-foreground';
-};
-
-const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-        pending_transcript: 'Needs Transcript',
-        imported: 'Needs Cleaning',
-        cleaning: 'Cleaning...',
-        cleaned: 'Ready for Review',
-        validated: 'Benchmark Ready',
-        failed: 'Failed',
-    };
-    return labels[status] ?? status;
-};
+};      
 
 // Get display text for cleaning method
-const getMethodDisplay = (run: ProcessingRun | null) => {
+const getMethodDisplay = (run: AudioSampleProcessingRunSummary | null) => {
     if (!run) return null;
     if (run.mode === 'llm' && run.llm_model) {
-        // Extract model name from full path (e.g., "anthropic/claude-sonnet-4" -> "claude-sonnet-4")
         const modelName = run.llm_model.split('/').pop() || run.llm_model;
         return { mode: 'llm', text: modelName, provider: run.llm_provider };
     }
@@ -174,14 +132,18 @@ const getMethodDisplay = (run: ProcessingRun | null) => {
 };
 
 const applyFilters = () => {
-    router.get(route('audio-samples.index'), {
-        search: search.value || undefined,
-        status: statusFilter.value || undefined,
-        category: category.value || undefined,
-    }, {
-        preserveState: true,
-        replace: true,
-    });
+    router.get(
+        route('audio-samples.index'),
+        {
+            search: search.value || undefined,
+            status: statusFilter.value || undefined,
+            category: category.value || undefined,
+        },
+        {
+            preserveState: true,
+            replace: true,
+        },
+    );
 };
 
 const setStatus = (option: { value: string }) => {
@@ -195,48 +157,46 @@ const setCategory = (option: { value: string }) => {
 };
 
 const goToPage = (page: number) => {
-    router.get(route('audio-samples.index'), {
-        ...props.filters,
-        page,
-    }, {
-        preserveState: true,
-    });
+    router.get(
+        route('audio-samples.index'),
+        {
+            ...props.filters,
+            page,
+        },
+        {
+            preserveState: true,
+        },
+    );
 };
 
 // Smart pagination - show limited page numbers with ellipsis
 const visiblePages = computed(() => {
     const current = props.audioSamples.current_page;
     const last = props.audioSamples.last_page;
-    const delta = 2; // pages to show on each side of current
+    const delta = 2;
     const pages: (number | 'ellipsis')[] = [];
-    
-    // Always show first page
+
     pages.push(1);
-    
-    // Calculate range around current page
+
     const rangeStart = Math.max(2, current - delta);
     const rangeEnd = Math.min(last - 1, current + delta);
-    
-    // Add ellipsis if needed before range
+
     if (rangeStart > 2) {
         pages.push('ellipsis');
     }
-    
-    // Add pages in range
+
     for (let i = rangeStart; i <= rangeEnd; i++) {
         pages.push(i);
     }
-    
-    // Add ellipsis if needed after range
+
     if (rangeEnd < last - 1) {
         pages.push('ellipsis');
     }
-    
-    // Always show last page (if more than 1 page)
+
     if (last > 1) {
         pages.push(last);
     }
-    
+
     return pages;
 });
 
@@ -279,7 +239,7 @@ watch(search, () => {
                             </span>
                         </ListboxButton>
                         <transition
-                            leave-active-class="transition duration-100 ease-in"
+                            leave-active-class="transition ease-in duration-100"
                             leave-from-class="opacity-100"
                             leave-to-class="opacity-0"
                         >
@@ -315,7 +275,7 @@ watch(search, () => {
                             </span>
                         </ListboxButton>
                         <transition
-                            leave-active-class="transition duration-100 ease-in"
+                            leave-active-class="transition ease-in duration-100"
                             leave-from-class="opacity-100"
                             leave-to-class="opacity-0"
                         >
@@ -372,7 +332,7 @@ watch(search, () => {
             <!-- Audio Samples Table -->
             <div class="rounded-xl border border-border bg-card overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[720px]">
+                    <table class="w-full min-w-180">
                     <thead class="border-b border-border bg-muted/40">
                         <tr>
                             <th class="w-10 px-4 py-3 text-left text-sm font-medium text-muted-foreground">
@@ -415,8 +375,8 @@ watch(search, () => {
                                     </Link>
                                 </div>
                             </td>
-                            <td class="px-4 py-4">
-                                <span v-if="sample.clean_rate !== null" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCategoryColor(sample.clean_rate_category)]">
+                                <td class="px-4 py-4">
+                                <span v-if="sample.clean_rate !== null" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCleanRateCategoryClass(sample.clean_rate_category)]">
                                     {{ sample.clean_rate }}%
                                 </span>
                                 <span v-else class="text-muted-foreground">-</span>
@@ -440,8 +400,8 @@ watch(search, () => {
                                 <span v-else class="text-muted-foreground">-</span>
                             </td>
                             <td class="px-4 py-4">
-                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap', getStatusColor(sample.status)]">
-                                    {{ getStatusLabel(sample.status) }}
+                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap', getAudioSampleStatusClass(sample.status)]">
+                                    {{ getAudioSampleStatusLabel(sample.status) }}
                                 </span>
                             </td>
                             <td class="hidden px-4 py-4 text-sm text-muted-foreground md:table-cell whitespace-nowrap">

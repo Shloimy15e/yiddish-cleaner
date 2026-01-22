@@ -2,22 +2,17 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { formatDateTime } from '@/lib/date';
+import {
+    getProcessRunStatusClass,
+    getProcessRunStatusLabel,
+} from '@/lib/processRunStatus';
 import { type BreadcrumbItem } from '@/types';
-
-interface ProcessingRun {
-    id: number;
-    status: string;
-    source_type: string | null;
-    source_url: string | null;
-    total: number;
-    completed: number;
-    failed: number;
-    created_at: string;
-}
+import type { ProcessingRunListItem } from '@/types/process-runs';
 
 const props = defineProps<{
     runs: {
-        data: ProcessingRun[];
+        data: ProcessingRunListItem[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -30,34 +25,10 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Import Runs', href: route('audio-samples.runs') },
 ];
 
-const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-        pending: 'Pending',
-        processing: 'Processing',
-        completed: 'Completed',
-        completed_with_errors: 'Completed (Errors)',
-        failed: 'Failed',
-    };
-    return labels[status] ?? status;
-};
-
-const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-        pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-        processing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-        completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-        completed_with_errors: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    };
-    return colors[status] ?? 'bg-muted text-muted-foreground';
-};
-
-const progressPercent = (run: ProcessingRun) => {
+const progressPercent = (run: ProcessingRunListItem) => {
     if (!run.total) return 0;
     return Math.min(100, Math.round(((run.completed + run.failed) / run.total) * 100));
 };
-
-const formatDate = (value: string) => new Date(value).toLocaleString();
 
 const visiblePages = computed(() => {
     const current = props.runs.current_page;
@@ -131,7 +102,7 @@ const goToPage = (page: number) => {
                             </td>
                             <td class="px-4 py-3">
                                 <div class="text-sm capitalize">{{ run.source_type || 'sheet' }}</div>
-                                <div v-if="run.source_url" class="text-xs text-muted-foreground truncate max-w-[260px]">
+                                <div v-if="run.source_url" class="text-xs text-muted-foreground truncate max-w-65">
                                     {{ run.source_url }}
                                 </div>
                             </td>
@@ -145,12 +116,12 @@ const goToPage = (page: number) => {
                                 <div class="text-xs text-muted-foreground mt-1">{{ progressPercent(run) }}%</div>
                             </td>
                             <td class="px-4 py-3">
-                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', getStatusColor(run.status)]">
-                                    {{ getStatusLabel(run.status) }}
+                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', getProcessRunStatusClass(run.status)]">
+                                    {{ getProcessRunStatusLabel(run.status) }}
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-sm text-muted-foreground">
-                                {{ formatDate(run.created_at) }}
+                                {{ formatDateTime(run.created_at) }}
                             </td>
                             <td class="px-4 py-3">
                                 <Link :href="route('audio-samples.run', run.id)" class="text-sm text-primary hover:underline">

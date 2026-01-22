@@ -8,37 +8,15 @@ import {
     TrashIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
-
-interface Transcription {
-    id: number;
-    model_name: string;
-    model_version: string | null;
-    source: 'generated' | 'imported';
-    hypothesis_text: string;
-    wer: number | null;
-    cer: number | null;
-    status: string;
-    substitutions: number;
-    insertions: number;
-    deletions: number;
-    notes: string | null;
-}
-
-interface AsrProvider {
-    name: string;
-    default_model: string;
-    has_credential: boolean;
-    models: { id: string; name: string }[];
-    async: boolean;
-    description: string;
-}
+import type { AsrProvider } from '@/types/audio-samples';
+import type { TranscriptionWithStatus } from '@/types/transcriptions';
 
 const props = defineProps<{
     audioSampleId: number;
     isValidated: boolean;
     showTranscriptionForm: boolean;
     showManualEntryForm: boolean;
-    transcriptions: Transcription[];
+    transcriptions: TranscriptionWithStatus[];
     asrProviders: Record<string, AsrProvider>;
     asrProviderOptions: { id: string; name: string; hasCredential: boolean }[];
     asrProviderModels: { id: string; name: string }[];

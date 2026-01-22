@@ -1,28 +1,12 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { type BreadcrumbItem } from '@/types';
-
-interface Document {
-    id: number;
-    name: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-}
-
-interface Version {
-    id: number;
-    version: string;
-    name: string;
-    document_count: number;
-    is_active: boolean;
-    created_at: string;
-    criteria: Record<string, unknown> | null;
-    documents: Document[];
-}
+import type { TrainingVersionDetail } from '@/types/training';
 
 const props = defineProps<{
-    version: Version;
+    version: TrainingVersionDetail;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -30,17 +14,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Training', href: '/training' },
     { title: props.version.name, href: `/training/${props.version.id}` },
 ];
-
-const getCategoryColor = (cat: string | null) => {
-    const colors: Record<string, string> = {
-        excellent: 'clean-rate-excellent',
-        good: 'clean-rate-good',
-        moderate: 'clean-rate-moderate',
-        low: 'clean-rate-low',
-        poor: 'clean-rate-poor',
-    };
-    return colors[cat ?? ''] ?? 'bg-muted text-muted-foreground';
-};
 
 const deleteVersion = () => {
     if (confirm('Are you sure you want to delete this training version?')) {
@@ -122,7 +95,7 @@ const deleteVersion = () => {
                         <tr v-for="doc in version.documents" :key="doc.id" class="hover:bg-muted/30">
                             <td class="px-4 py-3 font-medium">{{ doc.name }}</td>
                             <td class="px-4 py-3">
-                                <span v-if="doc.clean_rate !== null" :class="['rounded-full px-2 py-0.5 text-xs font-medium', getCategoryColor(doc.clean_rate_category)]">
+                                <span v-if="doc.clean_rate !== null" :class="['rounded-full px-2 py-0.5 text-xs font-medium', getCleanRateCategoryClass(doc.clean_rate_category)]">
                                     {{ doc.clean_rate }}%
                                 </span>
                             </td>

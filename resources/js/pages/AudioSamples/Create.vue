@@ -7,9 +7,6 @@ import {
     Tab, 
     TabPanels, 
     TabPanel,
-    Disclosure,
-    DisclosureButton,
-    DisclosurePanel,
 } from '@headlessui/vue';
 import {
     TableCellsIcon,
@@ -222,7 +219,7 @@ const submitSheet = () => {
                                         <input 
                                             v-model="sheetForm.sheet_name"
                                             type="text" 
-                                            placeholder="Sheet1"
+                                            placeholder="Leave blank to use first sheet"
                                             class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                                         />
                                     </div>
@@ -266,47 +263,40 @@ const submitSheet = () => {
                                 </div>
 
                                 <!-- Advanced Options -->
-                                <Disclosure v-slot="{ open }">
-                                    <DisclosureButton class="flex w-full items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-left text-sm font-medium hover:bg-muted/50 transition-colors">
-                                        <span class="flex items-center gap-2">
-                                            <Cog6ToothIcon class="w-4 h-4" />
-                                            Advanced Options
-                                        </span>
-                                        <svg :class="['w-5 h-5 transition-transform', open && 'rotate-180']" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </DisclosureButton>
-                                    <DisclosurePanel class="space-y-4 px-4 pt-4 pb-2">
-                                        <div class="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label class="block text-sm font-medium mb-2">
-                                                    Row Limit
-                                                    <InformationCircleIcon 
-                                                        class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
-                                                        v-tippy="'Maximum number of rows to import'"
-                                                    />
-                                                </label>
-                                                <input 
-                                                    v-model.number="sheetForm.row_limit"
-                                                    type="number" 
-                                                    min="1" 
-                                                    max="1000"
-                                                    class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                <div class="rounded-lg border border-border bg-muted/30 px-4 py-4">
+                                    <div class="flex items-center gap-2 text-sm font-medium mb-4">
+                                        <Cog6ToothIcon class="w-4 h-4" />
+                                        Advanced Options
+                                    </div>
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="block text-sm font-medium mb-2">
+                                                Row Limit
+                                                <InformationCircleIcon 
+                                                    class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
+                                                    v-tippy="'Maximum number of rows to import'"
                                                 />
-                                            </div>
-                                            <div class="flex items-end">
-                                                <label class="flex items-center gap-2 cursor-pointer">
-                                                    <input 
-                                                        v-model="sheetForm.skip_completed"
-                                                        type="checkbox" 
-                                                        class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                                                    />
-                                                    <span class="text-sm font-medium">Skip already imported rows</span>
-                                                </label>
-                                            </div>
+                                            </label>
+                                            <input 
+                                                v-model.number="sheetForm.row_limit"
+                                                type="number" 
+                                                min="1" 
+                                                max="1000"
+                                                class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
                                         </div>
-                                    </DisclosurePanel>
-                                </Disclosure>
+                                        <div class="flex items-end">
+                                            <label class="flex items-center gap-2 cursor-pointer">
+                                                <input 
+                                                    v-model="sheetForm.skip_completed"
+                                                    type="checkbox" 
+                                                    class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
+                                                />
+                                                <span class="text-sm font-medium">Skip already imported rows</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 <!-- Info Box -->
                                 <div class="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">

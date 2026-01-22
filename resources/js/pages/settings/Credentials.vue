@@ -27,14 +27,9 @@ interface ApiCredential {
     created_at: string;
 }
 
-interface GoogleCredential {
-    id: number;
-    expires_at: string;
-}
-
 const props = defineProps<{
     apiCredentials: ApiCredential[];
-    googleCredential: GoogleCredential | null;
+    googleConnected: boolean;
     llmProviders: string[];
     asrProviders: string[];
 }>();
@@ -129,7 +124,7 @@ const getProviderLabel = (provider: string) => {
                             and Sheets
                         </p>
                     </div>
-                    <div v-if="googleCredential">
+                    <div v-if="googleConnected">
                         <div class="flex items-center gap-4">
                             <span class="text-sm text-green-600"
                                 >Connected</span

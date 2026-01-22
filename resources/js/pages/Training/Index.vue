@@ -1,29 +1,12 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
-
-interface Version {
-    id: number;
-    version: string;
-    name: string;
-    document_count: number;
-    is_active: boolean;
-    created_at: string;
-    criteria: Record<string, unknown> | null;
-}
-
-interface PaginatedVersion {
-    data: Version[];
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-}
+import type { PaginatedTrainingVersion } from '@/types/training';
 
 const props = withDefaults(defineProps<{
-    versions?: PaginatedVersion | null;
+    versions?: PaginatedTrainingVersion | null;
 }>(), {
-    versions: () => ({ data: [], current_page: 1, last_page: 1, per_page: 10, total: 0 } as PaginatedVersion),
+    versions: () => ({ data: [], current_page: 1, last_page: 1, per_page: 10, total: 0 } as PaginatedTrainingVersion),
 });
 
 const breadcrumbs: BreadcrumbItem[] = [

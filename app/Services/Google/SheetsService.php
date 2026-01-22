@@ -38,7 +38,10 @@ class SheetsService
     {
         $this->ensureService();
 
-        $response = $this->service->spreadsheets_values->get($spreadsheetId, $range);
+        $response = $this->service->spreadsheets_values->get(
+            $spreadsheetId,
+            $this->normalizeRange($range)
+        );
 
         return $response->getValues() ?? [];
     }
@@ -46,9 +49,13 @@ class SheetsService
     /**
      * Get all rows with headers as keys.
      */
-    public function getRowsWithHeaders(string $spreadsheetId, string $sheetName = 'Sheet1'): array
+    public function getRowsWithHeaders(string $spreadsheetId, string $sheetName = ''): array
     {
-        $values = $this->getValues($spreadsheetId, $sheetName);
+        $resolvedSheetName = $this->resolveSheetName($spreadsheetId, $sheetName);
+        $values = $this->getValues(
+            $spreadsheetId,
+            $this->buildRange($resolvedSheetName, 'A1:ZZ')
+        );
 
         if (empty($values)) {
             return [];
@@ -94,7 +101,8 @@ class SheetsService
     {
         $this->ensureService();
 
-        $range = "{$sheetName}!A{$rowIndex}";
+        $resolvedSheetName = $this->resolveSheetName($spreadsheetId, $sheetName);
+        $range = $this->buildRange($resolvedSheetName, "A{$rowIndex}");
 
         $body = new ValueRange([
             'values' => [array_values($values)],
@@ -113,14 +121,19 @@ class SheetsService
      */
     public function updateColumns(string $spreadsheetId, string $sheetName, int $rowIndex, array $columnValues): void
     {
+        $resolvedSheetName = $this->resolveSheetName($spreadsheetId, $sheetName);
         // Get headers to find column positions
-        $headers = $this->getValues($spreadsheetId, "{$sheetName}!1:1")[0] ?? [];
+        $headers = $this->getValues($spreadsheetId, $this->buildRange($resolvedSheetName, '1:1'))[0] ?? [];
 
         foreach ($columnValues as $column => $value) {
             $colIndex = array_search($column, $headers);
             if ($colIndex !== false) {
                 $colLetter = $this->columnIndexToLetter($colIndex);
-                $this->updateCell($spreadsheetId, "{$sheetName}!{$colLetter}{$rowIndex}", $value);
+                $this->updateCell(
+                    $spreadsheetId,
+                    $this->buildRange($resolvedSheetName, "{$colLetter}{$rowIndex}"),
+                    $value
+                );
             }
         }
     }
@@ -130,7 +143,8 @@ class SheetsService
      */
     public function findColumn(string $spreadsheetId, string $sheetName, string $headerName): ?int
     {
-        $headers = $this->getValues($spreadsheetId, "{$sheetName}!1:1")[0] ?? [];
+        $resolvedSheetName = $this->resolveSheetName($spreadsheetId, $sheetName);
+        $headers = $this->getValues($spreadsheetId, $this->buildRange($resolvedSheetName, '1:1'))[0] ?? [];
         $index = array_search($headerName, $headers);
 
         return $index !== false ? $index : null;
@@ -163,6 +177,71 @@ class SheetsService
         }
 
         return $letter;
+    }
+
+    protected function buildRange(string $sheetName, ?string $suffix = null): string
+    {
+        $escaped = str_replace("'", "''", $sheetName);
+        $quoted = "'{$escaped}'";
+
+        if (! $suffix) {
+            return $sheetName;
+        }
+
+        return "{$quoted}!{$suffix}";
+    }
+
+    protected function normalizeRange(string $range): string
+    {
+        $trimmed = trim($range);
+
+        if ($trimmed === '') {
+            return $trimmed;
+        }
+
+        if (str_contains($trimmed, '!')) {
+            return $trimmed;
+        }
+
+        if (str_starts_with($trimmed, "'") && str_ends_with($trimmed, "'")) {
+            return $trimmed;
+        }
+
+        return $this->buildRange($trimmed);
+    }
+
+    protected function resolveSheetName(string $spreadsheetId, string $sheetName): string
+    {
+        $name = trim($sheetName);
+
+        $this->ensureService();
+
+        $spreadsheet = $this->service->spreadsheets->get($spreadsheetId);
+        $sheets = $spreadsheet->getSheets();
+
+        $titles = [];
+        foreach ($sheets as $sheet) {
+            $title = $sheet?->getProperties()?->getTitle();
+            if ($title !== null && $title !== '') {
+                $titles[] = $title;
+            }
+        }
+
+        $firstTitle = $titles[0] ?? null;
+
+        if (! $firstTitle) {
+            throw new RuntimeException('Spreadsheet has no sheets to import.');
+        }
+
+        if ($name === '' || $name === 'Sheet1') {
+            return $firstTitle;
+        }
+
+        if (in_array($name, $titles, true)) {
+            return $name;
+        }
+
+        throw new RuntimeException("Sheet '{$name}' not found in spreadsheet.");
     }
 
     protected function ensureService(): void

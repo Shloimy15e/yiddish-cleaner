@@ -39,6 +39,7 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect_uri' => env('GOOGLE_REDIRECT_URI'), // For local dev with ngrok
+        'service_account_json' => env('GOOGLE_SERVICE_ACCOUNT_JSON'),
     ],
 
 ];

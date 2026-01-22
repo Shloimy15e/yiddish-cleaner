@@ -10,6 +10,14 @@ import AudioSampleTextReview from '@/components/audio-samples/AudioSampleTextRev
 import AudioSampleWorkflowCard from '@/components/audio-samples/AudioSampleWorkflowCard.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
+import type {
+    AsrProvider,
+    AudioMedia,
+    AudioSampleDetail,
+    LlmModel,
+    LlmProvider,
+    Preset,
+} from '@/types/audio-samples';
 import {
     CloudArrowUpIcon,
     MusicalNoteIcon,
@@ -18,80 +26,8 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import * as Diff from 'diff';
 import { computed, onMounted, ref, watch } from 'vue';
 
-interface Preset {
-    name: string;
-    description: string;
-    processors: string[];
-}
-
-interface LlmModel {
-    id: string;
-    name: string;
-    context_length?: number;
-}
-
-interface LlmProvider {
-    name: string;
-    default_model: string;
-    has_credential: boolean;
-    models: LlmModel[];
-}
-
-interface AudioMedia {
-    url: string;
-    name: string;
-    size: number;
-    mime_type: string;
-}
-
-interface AudioSample {
-    id: number;
-    name: string;
-    reference_text_raw: string;
-    reference_text_clean: string;
-    status: string;
-    error_message: string | null;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-    metrics: Record<string, number> | null;
-    removals: Array<{ type: string; original: string; count: number }> | null;
-    validated_at: string | null;
-    created_at: string;
-    processing_run: {
-        id: number;
-        preset: string;
-        mode: string;
-    } | null;
-    transcriptions?: Transcription[];
-}
-
-interface Transcription {
-    id: number;
-    model_name: string;
-    model_version: string | null;
-    source: 'generated' | 'imported';
-    hypothesis_text: string;
-    wer: number | null;
-    cer: number | null;
-    substitutions: number;
-    insertions: number;
-    deletions: number;
-    reference_words: number;
-    notes: string | null;
-    created_at: string;
-}
-
-interface AsrProvider {
-    name: string;
-    default_model: string;
-    has_credential: boolean;
-    models: { id: string; name: string }[];
-    async: boolean;
-    description: string;
-}
-
 const props = defineProps<{
-    audioSample: AudioSample;
+    audioSample: AudioSampleDetail;
     audioMedia: AudioMedia | null;
     presets: Record<string, Preset>;
 }>();
@@ -397,17 +333,6 @@ const deleteAudioSample = () => {
 };
 
 // Color helpers
-const getCategoryColor = (cat: string | null) => {
-    const colors: Record<string, string> = {
-        excellent: 'clean-rate-excellent',
-        good: 'clean-rate-good',
-        moderate: 'clean-rate-moderate',
-        low: 'clean-rate-low',
-        poor: 'clean-rate-poor',
-    };
-    return colors[cat ?? ''] ?? 'bg-muted text-muted-foreground';
-};
-
 
 // Model pricing per 1M tokens (input/output) - approximations based on typical prices
 const modelPricing: Record<string, { input: number; output: number }> = {
@@ -950,7 +875,7 @@ const getSourceColor = (source: string): string => {
                                         >
                                         <input
                                             type="file"
-                                            accept=".txt,.docx,.pdf"
+                                            accept=".txt,.docx,.doc,.pdf"
                                             @change="
                                                 (e: any) =>
                                                     (transcriptForm.transcript =
@@ -1033,7 +958,7 @@ const getSourceColor = (source: string): string => {
                                     >
                                     <input
                                         type="file"
-                                        accept=".txt,.docx,.pdf"
+                                        accept=".txt,.docx,.doc,.pdf"
                                         @change="
                                             (e: any) =>
                                                 (transcriptForm.transcript =
@@ -1124,7 +1049,6 @@ const getSourceColor = (source: string): string => {
                         :removed-words="removedWords"
                         :reduction-percentage="reductionPercentage"
                         :formatted-metrics="formattedMetrics"
-                        :get-category-color="getCategoryColor"
                         :can-be-validated="canBeValidated"
                         :is-validated="isValidated"
                         :is-editing="isEditing"

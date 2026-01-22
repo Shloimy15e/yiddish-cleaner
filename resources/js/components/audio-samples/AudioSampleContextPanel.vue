@@ -5,29 +5,15 @@ import {
     EllipsisHorizontalIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
-
-interface AudioMedia {
-    size: number;
-    mime_type: string;
-}
-
-interface AudioSample {
-    id: number;
-    name: string;
-    status: string;
-    created_at: string;
-    reference_text_raw: string;
-    reference_text_clean: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-    processing_run: {
-        preset: string;
-        mode: string;
-    } | null;
-}
+import {
+    getAudioSampleStatusClass,
+    getAudioSampleStatusLabel,
+} from '@/lib/audioSampleStatus';
+import { getCleanRateCategoryClass } from '@/lib/cleanRate';
+import type { AudioMedia, AudioSampleContext } from '@/types/audio-samples';
 
 const props = defineProps<{
-    audioSample: AudioSample;
+    audioSample: AudioSampleContext;
     audioMedia: AudioMedia | null;
     hasAudio: boolean;
     hasRawText: boolean;
@@ -35,46 +21,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ (e: 'delete'): void }>();
-
-const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-        pending_transcript:
-            'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-        imported:
-            'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-        cleaning:
-            'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-        cleaned:
-            'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-        validated:
-            'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    };
-    return colors[status] ?? 'bg-muted text-muted-foreground';
-};
-
-const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-        pending_transcript: 'Needs Transcript',
-        imported: 'Needs Cleaning',
-        cleaning: 'Cleaning...',
-        cleaned: 'Ready for Review',
-        validated: 'Benchmark Ready',
-        failed: 'Failed',
-    };
-    return labels[status] ?? status;
-};
-
-const getCategoryColor = (cat: string | null) => {
-    const colors: Record<string, string> = {
-        excellent: 'clean-rate-excellent',
-        good: 'clean-rate-good',
-        moderate: 'clean-rate-moderate',
-        low: 'clean-rate-low',
-        poor: 'clean-rate-poor',
-    };
-    return colors[cat ?? ''] ?? 'bg-muted text-muted-foreground';
-};
 
 const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -100,8 +46,12 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
 </script>
 
 <template>
-    <div class="shadow-glow-sm rounded-2xl border border-border bg-card/80 p-4 sm:p-6">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div
+        class="shadow-glow-sm rounded-2xl border border-border bg-card/80 p-4 sm:p-6"
+    >
+        <div
+            class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+        >
             <div class="min-w-0">
                 <div class="mb-2 flex flex-wrap items-center gap-3">
                     <h1 class="min-w-0 truncate text-2xl font-bold">
@@ -110,22 +60,30 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                     <span
                         :class="[
                             'rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap',
-                            getStatusColor(audioSample.status),
+                            getAudioSampleStatusClass(audioSample.status),
                         ]"
                     >
-                        {{ getStatusLabel(audioSample.status) }}
+                        {{ getAudioSampleStatusLabel(audioSample.status) }}
                     </span>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                    <span class="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1">
+                <div
+                    class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+                >
+                    <span
+                        class="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1"
+                    >
                         Created {{ audioSample.created_at }}
                     </span>
                     <span
                         v-if="audioSample.processing_run"
                         class="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1"
+                        :class="
+                            getCleanRateCategoryClass(audioSample.clean_rate_category)"
                     >
-                        {{ audioSample.processing_run.preset.replace(/_/g, ' ') }}
+                        {{
+                            audioSample.processing_run.preset.replace(/_/g, ' ')
+                        }}
                     </span>
                     <span
                         v-if="audioMedia"
@@ -165,7 +123,7 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                         v-if="cleanRateLabel"
                         :class="[
                             'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
-                            getCategoryColor(audioSample.clean_rate_category),
+                            getCleanRateCategoryClass(audioSample.clean_rate_category),
                         ]"
                     >
                         {{ cleanRateLabel }}
@@ -173,7 +131,9 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                 </div>
             </div>
 
-            <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <div
+                class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end"
+            >
                 <details class="group relative w-full sm:w-auto">
                     <summary
                         class="flex h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg border bg-card px-4 text-sm font-medium hover:bg-muted sm:w-auto"
@@ -190,15 +150,25 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                             class="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
                         >
                             Copy name
-                            <span v-if="copied === 'name'" class="text-xs text-emerald-600">Copied</span>
+                            <span
+                                v-if="copied === 'name'"
+                                class="text-xs text-emerald-600"
+                                >Copied</span
+                            >
                         </button>
                         <button
                             type="button"
-                            @click="copyToClipboard(String(audioSample.id), 'id')"
+                            @click="
+                                copyToClipboard(String(audioSample.id), 'id')
+                            "
                             class="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
                         >
                             Copy ID
-                            <span v-if="copied === 'id'" class="text-xs text-emerald-600">Copied</span>
+                            <span
+                                v-if="copied === 'id'"
+                                class="text-xs text-emerald-600"
+                                >Copied</span
+                            >
                         </button>
                     </div>
                 </details>
@@ -215,7 +185,7 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                     >
                         <div
                             v-if="hasCleanedText"
-                            class="px-2 pb-1 pt-2 text-xs font-semibold text-muted-foreground"
+                            class="px-2 pt-2 pb-1 text-xs font-semibold text-muted-foreground"
                         >
                             Downloads
                         </div>

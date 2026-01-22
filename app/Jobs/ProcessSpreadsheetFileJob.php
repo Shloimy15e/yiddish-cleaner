@@ -79,6 +79,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
 
             // Collect rows to process
             $rowsToProcess = [];
+            $rowLimit = (int) ($this->run->options['row_limit'] ?? 0);
             $rowIterator = $worksheet->getRowIterator(2); // Start from row 2 (skip headers)
 
             foreach ($rowIterator as $row) {
@@ -98,6 +99,10 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 if (! empty($rowData[$docLinkHeader] ?? '')) {
                     $rowData['_row_index'] = $row->getRowIndex();
                     $rowsToProcess[] = $rowData;
+
+                    if ($rowLimit > 0 && count($rowsToProcess) >= $rowLimit) {
+                        break;
+                    }
                 }
             }
 

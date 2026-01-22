@@ -5,6 +5,7 @@ namespace App\Services\Google;
 use App\Models\User;
 use Google\Service\Drive;
 use Google\Service\Drive\DriveFile;
+use Google\Service\Exception as GoogleServiceException;
 use RuntimeException;
 
 class DriveService
@@ -38,9 +39,14 @@ class DriveService
     {
         $this->ensureService();
 
-        $response = $this->service->files->get($fileId, [
-            'alt' => 'media',
-        ]);
+        try {
+            $response = $this->service->files->get($fileId, [
+                'alt' => 'media',
+                'supportsAllDrives' => true,
+            ]);
+        } catch (GoogleServiceException $e) {
+            throw $this->mapDriveException($e, $fileId);
+        }
 
         file_put_contents($destPath, $response->getBody()->getContents());
     }
@@ -52,9 +58,14 @@ class DriveService
     {
         $this->ensureService();
 
-        $response = $this->service->files->export($fileId, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', [
-            'alt' => 'media',
-        ]);
+        try {
+            $response = $this->service->files->export($fileId, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', [
+                'alt' => 'media',
+                'supportsAllDrives' => true,
+            ]);
+        } catch (GoogleServiceException $e) {
+            throw $this->mapDriveException($e, $fileId);
+        }
 
         file_put_contents($destPath, $response->getBody()->getContents());
     }
@@ -66,9 +77,14 @@ class DriveService
     {
         $this->ensureService();
 
-        return $this->service->files->get($fileId, [
-            'fields' => 'id,name,mimeType,size,webViewLink',
-        ]);
+        try {
+            return $this->service->files->get($fileId, [
+                'fields' => 'id,name,mimeType,size,webViewLink',
+                'supportsAllDrives' => true,
+            ]);
+        } catch (GoogleServiceException $e) {
+            throw $this->mapDriveException($e, $fileId);
+        }
     }
 
     /**
@@ -146,5 +162,29 @@ class DriveService
         if (! $this->service) {
             throw new RuntimeException('Drive service not initialized. Call forUser() first.');
         }
+    }
+
+    protected function mapDriveException(GoogleServiceException $exception, ?string $fileId = null): RuntimeException
+    {
+        $code = (int) $exception->getCode();
+        $suffix = $fileId ? " (File ID: {$fileId})" : '';
+
+        if ($code === 404) {
+            return new RuntimeException(
+                "Drive file not found or you don't have access to it. Share the file with the connected Google account and try again{$suffix}.",
+                $code,
+                $exception
+            );
+        }
+
+        if ($code === 403) {
+            return new RuntimeException(
+                "Access denied to Drive file. Share the file with the connected Google account and try again{$suffix}.",
+                $code,
+                $exception
+            );
+        }
+
+        return new RuntimeException('Google Drive error: '.$exception->getMessage(), $code, $exception);
     }
 }

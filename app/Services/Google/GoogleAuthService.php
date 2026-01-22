@@ -20,17 +20,21 @@ class GoogleAuthService
             Drive::DRIVE,
             Sheets::SPREADSHEETS,
         ]);
-        $this->client->setAccessType('offline');
-        $this->client->setPrompt('consent');
+        if ($this->shouldUseServiceAccount()) {
+            $this->configureServiceAccount();
+        } else {
+            $this->client->setAccessType('offline');
+            $this->client->setPrompt('consent');
 
-        // Set OAuth credentials from config
-        $this->client->setClientId(config('services.google.client_id'));
-        $this->client->setClientSecret(config('services.google.client_secret'));
+            // Set OAuth credentials from config
+            $this->client->setClientId(config('services.google.client_id'));
+            $this->client->setClientSecret(config('services.google.client_secret'));
 
-        // Use GOOGLE_REDIRECT_URI env var for local dev with ngrok, otherwise use route
-        $redirectUri = config('services.google.redirect_uri')
-            ?? route('settings.google.callback');
-        $this->client->setRedirectUri($redirectUri);
+            // Use GOOGLE_REDIRECT_URI env var for local dev with ngrok, otherwise use route
+            $redirectUri = config('services.google.redirect_uri')
+                ?? route('settings.google.callback');
+            $this->client->setRedirectUri($redirectUri);
+        }
     }
 
     /**
@@ -70,6 +74,10 @@ class GoogleAuthService
      */
     public function getClientForUser(User $user): ?GoogleClient
     {
+        if ($this->shouldUseServiceAccount()) {
+            return $this->client;
+        }
+
         $credential = $user->googleCredential;
 
         if (! $credential) {
@@ -103,6 +111,10 @@ class GoogleAuthService
      */
     public function hasValidCredentials(User $user): bool
     {
+        if ($this->shouldUseServiceAccount()) {
+            return true;
+        }
+
         return $this->getClientForUser($user) !== null;
     }
 
@@ -111,6 +123,10 @@ class GoogleAuthService
      */
     public function revokeCredentials(User $user): void
     {
+        if ($this->shouldUseServiceAccount()) {
+            return;
+        }
+
         $credential = $user->googleCredential;
 
         if ($credential) {
@@ -118,5 +134,28 @@ class GoogleAuthService
             $this->client->revokeToken();
             $credential->delete();
         }
+    }
+
+    public function usesServiceAccount(): bool
+    {
+        return $this->shouldUseServiceAccount();
+    }
+
+    protected function shouldUseServiceAccount(): bool
+    {
+        return app()->environment('local')
+            && (bool) config('services.google.service_account_json');
+    }
+
+    protected function configureServiceAccount(): void
+    {
+        $json = config('services.google.service_account_json');
+        $decoded = json_decode((string) $json, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+            throw new \RuntimeException('Invalid GOOGLE_SERVICE_ACCOUNT_JSON value.');
+        }
+
+        $this->client->setAuthConfig($decoded);
     }
 }
