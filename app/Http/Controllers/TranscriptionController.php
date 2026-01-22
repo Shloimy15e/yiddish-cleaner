@@ -33,6 +33,7 @@ class TranscriptionController extends Controller
         return Inertia::render('Transcriptions/Index', [
             'transcriptions' => $transcriptions,
             'filters' => $request->only(['search', 'status', 'linked']),
+            'presets' => config('cleaning.presets'),
         ]);
     }
 
@@ -259,6 +260,76 @@ class TranscriptionController extends Controller
         );
 
         return back()->with('success', 'Cleaning started. The page will update when complete.');
+    }
+
+    /**
+     * Bulk clean multiple base transcriptions.
+     */
+    public function bulkClean(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:transcriptions,id',
+            'preset' => 'required|string',
+            'mode' => 'required|in:rule,llm',
+            'llm_provider' => 'required_if:mode,llm|nullable|string',
+            'llm_model' => 'required_if:mode,llm|nullable|string',
+            'include_already_cleaned' => 'boolean',
+        ]);
+
+        // Validate LLM credentials if using LLM mode
+        if ($request->mode === 'llm') {
+            $llmManager = app(LlmManager::class);
+            if (! $llmManager->hasCredentials($request->llm_provider)) {
+                return back()->with('error', 'No credentials configured for the selected LLM provider.');
+            }
+        }
+
+        $includeAlreadyCleaned = $request->boolean('include_already_cleaned', false);
+        $transcriptions = Transcription::base()
+            ->whereIn('id', $request->ids)
+            ->get();
+
+        $queued = 0;
+        $skipped = 0;
+
+        foreach ($transcriptions as $transcription) {
+            // Skip if already cleaned and not re-cleaning
+            if ($transcription->isCleaned() && ! $includeAlreadyCleaned) {
+                $skipped++;
+                continue;
+            }
+
+            // Skip if cannot be cleaned (no raw text or already processing)
+            if (! $transcription->canBeCleaned()) {
+                $skipped++;
+                continue;
+            }
+
+            $transcription->update([
+                'status' => Transcription::STATUS_PROCESSING,
+                'cleaning_preset' => $request->preset,
+                'cleaning_mode' => $request->mode,
+            ]);
+
+            CleanTranscriptionJob::dispatch(
+                transcriptionId: $transcription->id,
+                preset: $request->preset,
+                mode: $request->mode,
+                llmProvider: $request->llm_provider,
+                llmModel: $request->llm_model,
+                userId: $request->user()->id,
+            );
+
+            $queued++;
+        }
+
+        $message = "Bulk cleaning started for {$queued} transcription(s).";
+        if ($skipped > 0) {
+            $message .= " {$skipped} skipped (already cleaned or cannot be cleaned).";
+        }
+
+        return back()->with('success', $message);
     }
 
     // ==================== Validation ====================

@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import {
+    Listbox,
+    ListboxButton,
+    ListboxOption,
+    ListboxOptions,
+} from '@headlessui/vue';
+import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
+import {
     DocumentTextIcon,
     ExclamationTriangleIcon,
     InformationCircleIcon,
@@ -246,19 +253,33 @@ const goToTranscription = (id: number) => {
                 <div class="grid gap-4 md:grid-cols-2">
                     <div>
                         <label class="mb-1 block text-sm font-medium">ASR Provider</label>
-                        <select
-                            v-model="transcribeForm.provider"
-                            class="w-full rounded-lg border bg-background px-3 py-2"
-                        >
-                            <option
-                                v-for="provider in asrProviderOptions"
-                                :key="provider.id"
-                                :value="provider.id"
-                            >
-                                {{ provider.name }}
-                                <span v-if="!provider.hasCredential">(No API Key)</span>
-                            </option>
-                        </select>
+                        <Listbox v-model="transcribeForm.provider">
+                            <div class="relative">
+                                <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
+                                    <span>{{ asrProviderOptions.find(p => p.id === transcribeForm.provider)?.name || transcribeForm.provider }}</span>
+                                    <span v-if="asrProviderOptions.find(p => p.id === transcribeForm.provider && !p.hasCredential)" class="text-muted-foreground"> (No API Key)</span>
+                                    <span class="absolute inset-y-0 right-0 flex items-center pr-2">
+                                        <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                    </span>
+                                </ListboxButton>
+                                <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                    <ListboxOption
+                                        v-for="provider in asrProviderOptions"
+                                        :key="provider.id"
+                                        :value="provider.id"
+                                        v-slot="{ active, selected }"
+                                    >
+                                        <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
+                                            <span :class="['block', selected ? 'font-medium' : '']">{{ provider.name }}</span>
+                                            <span v-if="!provider.hasCredential" class="text-xs text-amber-600">(No API Key)</span>
+                                            <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                <CheckIcon class="h-5 w-5" />
+                                            </span>
+                                        </li>
+                                    </ListboxOption>
+                                </ListboxOptions>
+                            </div>
+                        </Listbox>
                         <p
                             v-if="asrProviders[transcribeForm.provider]?.description"
                             class="mt-1 text-xs text-muted-foreground"
@@ -269,19 +290,31 @@ const goToTranscription = (id: number) => {
 
                     <div>
                         <label class="mb-1 block text-sm font-medium">Model</label>
-                        <select
-                            v-model="transcribeForm.model"
-                            :disabled="loadingAsrModels"
-                            class="w-full rounded-lg border bg-background px-3 py-2 disabled:opacity-50"
-                        >
-                            <option
-                                v-for="model in asrProviderModels"
-                                :key="model.id"
-                                :value="model.id"
-                            >
-                                {{ model.name }}
-                            </option>
-                        </select>
+                        <Listbox v-model="transcribeForm.model" :disabled="loadingAsrModels">
+                            <div class="relative">
+                                <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left disabled:opacity-50">
+                                    <span>{{ asrProviderModels.find(m => m.id === transcribeForm.model)?.name || transcribeForm.model }}</span>
+                                    <span class="absolute inset-y-0 right-0 flex items-center pr-2">
+                                        <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                    </span>
+                                </ListboxButton>
+                                <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                    <ListboxOption
+                                        v-for="model in asrProviderModels"
+                                        :key="model.id"
+                                        :value="model.id"
+                                        v-slot="{ active, selected }"
+                                    >
+                                        <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
+                                            <span :class="['block', selected ? 'font-medium' : '']">{{ model.name }}</span>
+                                            <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                <CheckIcon class="h-5 w-5" />
+                                            </span>
+                                        </li>
+                                    </ListboxOption>
+                                </ListboxOptions>
+                            </div>
+                        </Listbox>
                     </div>
                 </div>
 
@@ -345,20 +378,39 @@ const goToTranscription = (id: number) => {
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label class="mb-1 block text-sm font-medium">Provider *</label>
-                            <select
-                                v-model="manualProviderSelection"
-                                required
-                                class="w-full rounded-lg border bg-background px-3 py-2"
-                            >
-                                <option
-                                    v-for="provider in asrProviderOptions"
-                                    :key="provider.id"
-                                    :value="provider.id"
-                                >
-                                    {{ provider.name }}
-                                </option>
-                                <option value="custom">Custom...</option>
-                            </select>
+                            <Listbox v-model="manualProviderSelection">
+                                <div class="relative">
+                                    <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
+                                        <span>{{ manualProviderSelection === 'custom' ? 'Custom...' : (asrProviderOptions.find(p => p.id === manualProviderSelection)?.name || manualProviderSelection) }}</span>
+                                        <span class="absolute inset-y-0 right-0 flex items-center pr-2">
+                                            <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                        </span>
+                                    </ListboxButton>
+                                    <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                        <ListboxOption
+                                            v-for="provider in asrProviderOptions"
+                                            :key="provider.id"
+                                            :value="provider.id"
+                                            v-slot="{ active, selected }"
+                                        >
+                                            <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
+                                                <span :class="['block', selected ? 'font-medium' : '']">{{ provider.name }}</span>
+                                                <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                    <CheckIcon class="h-5 w-5" />
+                                                </span>
+                                            </li>
+                                        </ListboxOption>
+                                        <ListboxOption value="custom" v-slot="{ active, selected }">
+                                            <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
+                                                <span :class="['block', selected ? 'font-medium' : '']">Custom...</span>
+                                                <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                    <CheckIcon class="h-5 w-5" />
+                                                </span>
+                                            </li>
+                                        </ListboxOption>
+                                    </ListboxOptions>
+                                </div>
+                            </Listbox>
                             <input
                                 v-if="isManualProviderCustom"
                                 v-model="manualProviderCustom"
@@ -371,20 +423,39 @@ const goToTranscription = (id: number) => {
 
                         <div>
                             <label class="mb-1 block text-sm font-medium">Model *</label>
-                            <select
-                                v-model="manualModelSelection"
-                                required
-                                class="w-full rounded-lg border bg-background px-3 py-2"
-                            >
-                                <option
-                                    v-for="model in manualModelOptions"
-                                    :key="model.id"
-                                    :value="model.id"
-                                >
-                                    {{ model.name }}
-                                </option>
-                                <option value="custom">Custom...</option>
-                            </select>
+                            <Listbox v-model="manualModelSelection">
+                                <div class="relative">
+                                    <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
+                                        <span>{{ manualModelSelection === 'custom' ? 'Custom...' : (manualModelOptions.find(m => m.id === manualModelSelection)?.name || manualModelSelection) }}</span>
+                                        <span class="absolute inset-y-0 right-0 flex items-center pr-2">
+                                            <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                        </span>
+                                    </ListboxButton>
+                                    <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                        <ListboxOption
+                                            v-for="model in manualModelOptions"
+                                            :key="model.id"
+                                            :value="model.id"
+                                            v-slot="{ active, selected }"
+                                        >
+                                            <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
+                                                <span :class="['block', selected ? 'font-medium' : '']">{{ model.name }}</span>
+                                                <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                    <CheckIcon class="h-5 w-5" />
+                                                </span>
+                                            </li>
+                                        </ListboxOption>
+                                        <ListboxOption value="custom" v-slot="{ active, selected }">
+                                            <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
+                                                <span :class="['block', selected ? 'font-medium' : '']">Custom...</span>
+                                                <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                    <CheckIcon class="h-5 w-5" />
+                                                </span>
+                                            </li>
+                                        </ListboxOption>
+                                    </ListboxOptions>
+                                </div>
+                            </Listbox>
                             <input
                                 v-if="isManualModelCustom"
                                 v-model="manualModelCustom"

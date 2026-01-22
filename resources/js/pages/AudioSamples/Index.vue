@@ -219,7 +219,7 @@ watch(search, () => {
         <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h1 class="text-2xl font-bold">Audio Samples</h1>
-                <Link :href="route('audio-samples.create')" class="w-full rounded-lg bg-primary px-4 py-2 text-center font-medium text-primary-foreground hover:bg-primary/90 sm:w-auto">
+                <Link :href="route('imports.create')" class="w-full rounded-lg bg-primary px-4 py-2 text-center font-medium text-primary-foreground hover:bg-primary/90 sm:w-auto">
                     Import New
                 </Link>
             </div>

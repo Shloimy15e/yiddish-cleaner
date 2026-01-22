@@ -5,9 +5,14 @@ import {
     Dialog,
     DialogPanel,
     DialogTitle,
+    Listbox,
+    ListboxButton,
+    ListboxOption,
+    ListboxOptions,
     TransitionChild,
     TransitionRoot,
 } from '@headlessui/vue';
+import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import {
     MagnifyingGlassIcon,
     DocumentTextIcon,
@@ -173,14 +178,42 @@ const selectedTranscription = computed(() =>
                                             class="w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm"
                                         />
                                     </div>
-                                    <select
-                                        v-model="statusFilter"
-                                        class="rounded-lg border bg-background px-3 py-2 text-sm"
-                                    >
-                                        <option value="all">All Status</option>
-                                        <option value="validated">Validated</option>
-                                        <option value="unvalidated">Unvalidated</option>
-                                    </select>
+                                    <Listbox v-model="statusFilter">
+                                        <div class="relative w-40">
+                                            <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left text-sm">
+                                                <span>{{ statusFilter === 'all' ? 'All Status' : statusFilter === 'validated' ? 'Validated' : 'Unvalidated' }}</span>
+                                                <span class="absolute inset-y-0 right-0 flex items-center pr-2">
+                                                    <ChevronUpDownIcon class="h-4 w-4 text-muted-foreground" />
+                                                </span>
+                                            </ListboxButton>
+                                            <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                                <ListboxOption value="all" v-slot="{ active, selected }">
+                                                    <li :class="['relative cursor-pointer py-2 pl-10 pr-4 text-sm', active ? 'bg-muted' : '']">
+                                                        <span :class="['block', selected ? 'font-medium' : '']">All Status</span>
+                                                        <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                            <CheckIcon class="h-4 w-4" />
+                                                        </span>
+                                                    </li>
+                                                </ListboxOption>
+                                                <ListboxOption value="validated" v-slot="{ active, selected }">
+                                                    <li :class="['relative cursor-pointer py-2 pl-10 pr-4 text-sm', active ? 'bg-muted' : '']">
+                                                        <span :class="['block', selected ? 'font-medium' : '']">Validated</span>
+                                                        <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                            <CheckIcon class="h-4 w-4" />
+                                                        </span>
+                                                    </li>
+                                                </ListboxOption>
+                                                <ListboxOption value="unvalidated" v-slot="{ active, selected }">
+                                                    <li :class="['relative cursor-pointer py-2 pl-10 pr-4 text-sm', active ? 'bg-muted' : '']">
+                                                        <span :class="['block', selected ? 'font-medium' : '']">Unvalidated</span>
+                                                        <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                            <CheckIcon class="h-4 w-4" />
+                                                        </span>
+                                                    </li>
+                                                </ListboxOption>
+                                            </ListboxOptions>
+                                        </div>
+                                    </Listbox>
                                 </div>
 
                                 <!-- Transcription List -->
