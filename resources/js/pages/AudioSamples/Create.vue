@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { Head, useForm, router } from '@inertiajs/vue3';
+import { ref, computed, watch, onMounted } from 'vue';
 import { 
     TabGroup, 
     TabList, 
@@ -15,9 +15,13 @@ import {
     ArrowPathIcon,
     Cog6ToothIcon,
     ArrowUpTrayIcon,
+    LinkIcon,
+    DocumentTextIcon,
+    MagnifyingGlassIcon,
 } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
+import type { BaseTranscription } from '@/types/transcriptions';
 
 const props = defineProps<{
     hasGoogleCredentials: boolean;
@@ -44,30 +48,101 @@ const sheetForm = useForm({
     skip_completed: true,
 });
 
-// Manual create form (import only)
+// Manual create form (import only) - now with optional transcript
 const manualForm = useForm({
     name: '',
     audio_url: '',
     audio_file: null as File | null,
     transcript_url: '',
     transcript_file: null as File | null,
+    base_transcription_id: null as number | null,
 });
 
 // Toggle state for audio and transcript input types
 // Default to file if no Google credentials
 const audioInputType = ref<'url' | 'file'>(props.hasGoogleCredentials ? 'url' : 'file');
-const transcriptInputType = ref<'url' | 'file'>(props.hasGoogleCredentials ? 'url' : 'file');
+const transcriptInputType = ref<'url' | 'file' | 'link'>('file');
+
+// State for linking existing transcription
+const showTranscriptionSearch = ref(false);
+const searchQuery = ref('');
+const searchResults = ref<BaseTranscription[]>([]);
+const searchLoading = ref(false);
+const selectedTranscription = ref<BaseTranscription | null>(null);
+
+// Search for orphan transcriptions
+const searchTranscriptions = async () => {
+    if (!searchQuery.value.trim()) {
+        searchResults.value = [];
+        return;
+    }
+    searchLoading.value = true;
+    try {
+        const params = new URLSearchParams({ search: searchQuery.value });
+        const response = await fetch(`/transcriptions/orphan-list?${params}`);
+        const data = await response.json();
+        searchResults.value = data.transcriptions || [];
+    } catch (error) {
+        console.error('Failed to search transcriptions:', error);
+        searchResults.value = [];
+    } finally {
+        searchLoading.value = false;
+    }
+};
+
+// Debounce search
+let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+watch(searchQuery, () => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(searchTranscriptions, 300);
+});
+
+// Select a transcription
+const selectTranscription = (transcription: BaseTranscription) => {
+    selectedTranscription.value = transcription;
+    manualForm.base_transcription_id = transcription.id;
+    showTranscriptionSearch.value = false;
+};
+
+// Clear selected transcription
+const clearSelectedTranscription = () => {
+    selectedTranscription.value = null;
+    manualForm.base_transcription_id = null;
+};
+
+// Watch transcript input type changes
+watch(transcriptInputType, (type) => {
+    if (type !== 'link') {
+        clearSelectedTranscription();
+    }
+    if (type === 'link') {
+        manualForm.transcript_url = '';
+        manualForm.transcript_file = null;
+    }
+});
 
 // Computed to check if form is valid
+// Either audio OR transcript must be provided
 const isManualFormValid = computed(() => {
     if (!manualForm.name) return false;
     
-    // Transcript is required - either URL or file
-    const hasTranscript = transcriptInputType.value === 'url'
-        ? !!manualForm.transcript_url
-        : !!manualForm.transcript_file;
+    // Check for audio
+    const hasAudio = audioInputType.value === 'url'
+        ? !!manualForm.audio_url
+        : !!manualForm.audio_file;
     
-    return hasTranscript;
+    // Check for transcript (URL, file, or linked)
+    let hasTranscript = false;
+    if (transcriptInputType.value === 'url') {
+        hasTranscript = !!manualForm.transcript_url;
+    } else if (transcriptInputType.value === 'file') {
+        hasTranscript = !!manualForm.transcript_file;
+    } else if (transcriptInputType.value === 'link') {
+        hasTranscript = !!manualForm.base_transcription_id;
+    }
+    
+    // At least one must be provided
+    return hasAudio || hasTranscript;
 });
 
 // Check if sheet form is valid
@@ -84,6 +159,7 @@ const submitManual = () => {
         forceFormData: true,
         onSuccess: () => {
             manualForm.reset();
+            selectedTranscription.value = null;
         },
     });
 };
@@ -94,6 +170,15 @@ const submitSheet = () => {
         onSuccess: () => {
             sheetForm.reset('url', 'file', 'sheet_name');
         },
+    });
+};
+
+const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
     });
 };
 </script>
@@ -414,9 +499,18 @@ const submitSheet = () => {
                                 <div>
                                     <div class="flex items-center justify-between mb-2">
                                         <label class="text-sm font-medium">
-                                            Transcript <span class="text-destructive">*</span>
+                                            Base Transcription
+                                            <span class="text-muted-foreground font-normal">(optional if audio provided)</span>
                                         </label>
                                         <div class="flex rounded-lg border border-border p-0.5">
+                                            <button 
+                                                type="button"
+                                                @click="transcriptInputType = 'file'"
+                                                :class="[
+                                                    'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                                                    transcriptInputType === 'file' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                                                ]"
+                                            >Upload</button>
                                             <button 
                                                 type="button"
                                                 @click="transcriptInputType = 'url'"
@@ -429,44 +523,133 @@ const submitSheet = () => {
                                             >URL</button>
                                             <button 
                                                 type="button"
-                                                @click="transcriptInputType = 'file'"
+                                                @click="transcriptInputType = 'link'"
                                                 :class="[
                                                     'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-                                                    transcriptInputType === 'file' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                                                    transcriptInputType === 'link' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                                                 ]"
-                                            >Upload</button>
+                                                v-tippy="'Link an existing orphan transcription'"
+                                            >Link</button>
                                         </div>
                                     </div>
-                                    <div v-if="!hasGoogleCredentials" class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-2">
-                                        <p class="text-xs text-amber-600 dark:text-amber-400">
-                                            Connect your Google account to enable URL imports. 
-                                            <a href="/settings/credentials" class="inline-flex items-center font-medium text-primary hover:underline">
-                                                Connect in Settings →
-                                            </a>
-                                        </p>
-                                    </div>
-                                    <div v-if="transcriptInputType === 'url'">
-                                        <input 
-                                            v-model="manualForm.transcript_url"
-                                            type="url" 
-                                            placeholder="https://docs.google.com/document/d/... or direct document URL"
-                                            class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            :required="transcriptInputType === 'url'"
-                                        />
-                                        <p class="mt-1 text-xs text-muted-foreground">Link to a Google Doc or document URL</p>
-                                    </div>
-                                    <div v-else>
+
+                                    <!-- File Upload -->
+                                    <div v-if="transcriptInputType === 'file'">
                                         <input 
                                             type="file"
                                             accept=".txt,.docx,.doc"
                                             @change="(e: Event) => manualForm.transcript_file = (e.target as HTMLInputElement).files?.[0] || null"
                                             class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                                            :required="transcriptInputType === 'file'"
                                         />
                                         <p class="mt-1 text-xs text-muted-foreground">Upload a .txt, .docx, or .doc file with the transcript</p>
                                     </div>
+
+                                    <!-- URL Input -->
+                                    <div v-else-if="transcriptInputType === 'url'">
+                                        <div v-if="!hasGoogleCredentials" class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-2">
+                                            <p class="text-xs text-amber-600 dark:text-amber-400">
+                                                Connect your Google account to enable URL imports. 
+                                                <a href="/settings/credentials" class="inline-flex items-center font-medium text-primary hover:underline">
+                                                    Connect in Settings →
+                                                </a>
+                                            </p>
+                                        </div>
+                                        <input 
+                                            v-model="manualForm.transcript_url"
+                                            type="url" 
+                                            placeholder="https://docs.google.com/document/d/... or direct document URL"
+                                            class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                        />
+                                        <p class="mt-1 text-xs text-muted-foreground">Link to a Google Doc or document URL</p>
+                                    </div>
+
+                                    <!-- Link Existing Transcription -->
+                                    <div v-else>
+                                        <!-- Selected Transcription -->
+                                        <div v-if="selectedTranscription" class="rounded-lg border bg-muted/30 p-4">
+                                            <div class="flex items-start justify-between">
+                                                <div class="flex items-start gap-3">
+                                                    <DocumentTextIcon class="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                                                    <div>
+                                                        <p class="font-medium">{{ selectedTranscription.name || `Transcription #${selectedTranscription.id}` }}</p>
+                                                        <p class="text-xs text-muted-foreground mt-1">
+                                                            <span v-if="selectedTranscription.validated_at" class="text-emerald-600">✓ Validated</span>
+                                                            <span v-else-if="selectedTranscription.text_clean" class="text-amber-600">Cleaned</span>
+                                                            <span v-else>Pending</span>
+                                                            · Created {{ formatDate(selectedTranscription.created_at) }}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    type="button"
+                                                    @click="clearSelectedTranscription"
+                                                    class="text-sm text-muted-foreground hover:text-foreground"
+                                                >
+                                                    Change
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Search Input -->
+                                        <div v-else>
+                                            <div class="relative">
+                                                <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                                <input 
+                                                    v-model="searchQuery"
+                                                    type="text"
+                                                    placeholder="Search orphan transcriptions..."
+                                                    class="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                                    @focus="showTranscriptionSearch = true"
+                                                />
+                                            </div>
+
+                                            <!-- Search Results Dropdown -->
+                                            <div v-if="showTranscriptionSearch && searchQuery" class="mt-2 max-h-60 overflow-y-auto rounded-lg border bg-background shadow-lg">
+                                                <div v-if="searchLoading" class="p-4 text-center text-sm text-muted-foreground">
+                                                    Searching...
+                                                </div>
+                                                <div v-else-if="searchResults.length === 0" class="p-4 text-center text-sm text-muted-foreground">
+                                                    No orphan transcriptions found
+                                                </div>
+                                                <button
+                                                    v-else
+                                                    v-for="transcription in searchResults"
+                                                    :key="transcription.id"
+                                                    type="button"
+                                                    @click="selectTranscription(transcription)"
+                                                    class="w-full px-4 py-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
+                                                >
+                                                    <p class="font-medium">{{ transcription.name || `Transcription #${transcription.id}` }}</p>
+                                                    <p class="text-xs text-muted-foreground mt-1">
+                                                        <span v-if="transcription.validated_at" class="text-emerald-600">✓ Validated</span>
+                                                        <span v-else-if="transcription.text_clean" class="text-amber-600">Cleaned</span>
+                                                        <span v-else>Pending</span>
+                                                        · {{ formatDate(transcription.created_at) }}
+                                                    </p>
+                                                </button>
+                                            </div>
+                                            <p class="mt-1 text-xs text-muted-foreground">
+                                                Search for an existing orphan transcription to link
+                                            </p>
+                                        </div>
+                                    </div>
+
                                     <p v-if="manualForm.errors.transcript_url" class="mt-1 text-sm text-destructive">{{ manualForm.errors.transcript_url }}</p>
                                     <p v-if="manualForm.errors.transcript_file" class="mt-1 text-sm text-destructive">{{ manualForm.errors.transcript_file }}</p>
+                                    <p v-if="manualForm.errors.base_transcription_id" class="mt-1 text-sm text-destructive">{{ manualForm.errors.base_transcription_id }}</p>
+                                </div>
+
+                                <!-- Info about requirements -->
+                                <div class="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
+                                    <div class="flex gap-3">
+                                        <InformationCircleIcon class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                                        <div class="text-sm">
+                                            <p class="font-medium text-blue-500">Flexible Import</p>
+                                            <p class="text-muted-foreground mt-1">
+                                                Provide either audio, a base transcription, or both. You can add the missing component later from the sample detail page.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="flex items-center gap-4">
@@ -479,8 +662,8 @@ const submitSheet = () => {
                                         <DocumentArrowUpIcon v-else class="w-4 h-4" />
                                         {{ manualForm.processing ? 'Creating...' : 'Create Sample' }}
                                     </button>
-                                    <p class="text-sm text-muted-foreground">
-                                        After creation, you can clean the transcript from the sample detail page.
+                                    <p v-if="!isManualFormValid" class="text-sm text-muted-foreground">
+                                        Provide at least an audio file or a base transcription.
                                     </p>
                                 </div>
                             </form>

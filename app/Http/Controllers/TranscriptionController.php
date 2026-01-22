@@ -3,32 +3,374 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\CalculateTranscriptionMetricsJob;
+use App\Jobs\CleanTranscriptionJob;
 use App\Models\AudioSample;
 use App\Models\Transcription;
 use App\Services\Asr\WerCalculator;
+use App\Services\Document\ParserService;
+use App\Services\Llm\LlmManager;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class TranscriptionController extends Controller
 {
+    // ==================== Base Transcription CRUD ====================
+
     /**
-     * Display a single transcription.
+     * Display a listing of base transcriptions.
      */
-    public function show(AudioSample $audioSample, Transcription $transcription): Response
+    public function index(Request $request): Response
     {
+        $user = $request->user();
+
+        $transcriptions = Transcription::base()
+            ->with('audioSample')
+            ->orderByDesc('created_at')
+            ->paginate(20);
+
+        return Inertia::render('Transcriptions/Index', [
+            'transcriptions' => $transcriptions,
+            'filters' => $request->only(['search', 'status', 'linked']),
+        ]);
+    }
+
+    /**
+     * Show the form for creating a base transcription.
+     */
+    public function create(Request $request): Response
+    {
+        return Inertia::render('Transcriptions/Create', [
+            'presets' => config('cleaning.presets'),
+        ]);
+    }
+
+    /**
+     * Store a new base transcription.
+     */
+    public function storeBase(Request $request, ParserService $parser): RedirectResponse
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'source_type' => 'required|in:file,text,url',
+            'file' => 'required_if:source_type,file|nullable|file|mimes:txt,docx,doc,pdf|max:10240',
+            'text' => 'required_if:source_type,text|nullable|string',
+            'url' => 'required_if:source_type,url|nullable|url',
+            'audio_sample_id' => 'nullable|exists:audio_samples,id',
+        ]);
+
+        $text = null;
+        $source = Transcription::SOURCE_IMPORTED;
+
+        // Extract text based on source type
+        if ($request->source_type === 'file' && $request->hasFile('file')) {
+            $file = $request->file('file');
+            $text = $parser->extractText($file->getRealPath(), $file->getClientOriginalExtension());
+            $source = Transcription::SOURCE_IMPORTED;
+        } elseif ($request->source_type === 'text') {
+            $text = $request->text;
+            $source = Transcription::SOURCE_MANUAL;
+        } elseif ($request->source_type === 'url') {
+            // TODO: Handle URL-based import (Google Docs)
+            return back()->withErrors(['url' => 'URL import not yet implemented.']);
+        }
+
+        if (! $text) {
+            return back()->withErrors(['file' => 'Could not extract text from the provided source.']);
+        }
+
+        $transcription = Transcription::create([
+            'type' => Transcription::TYPE_BASE,
+            'name' => $request->name,
+            'audio_sample_id' => $request->audio_sample_id,
+            'text_raw' => $text,
+            'hash_raw' => hash('sha256', $text),
+            'source' => $source,
+            'status' => Transcription::STATUS_PENDING,
+        ]);
+
+        // Store the source file if uploaded
+        if ($request->hasFile('file')) {
+            $transcription->addMediaFromRequest('file')
+                ->usingFileName('source.' . $request->file('file')->getClientOriginalExtension())
+                ->toMediaCollection('source_file');
+        }
+
+        // Sync audio sample status if linked
+        if ($transcription->audio_sample_id) {
+            $transcription->audioSample->syncStatusFromBaseTranscription();
+        }
+
+        return redirect()->route('transcriptions.show', $transcription)
+            ->with('success', 'Base transcription created successfully.');
+    }
+
+    /**
+     * Display a single transcription (base or ASR).
+     */
+    public function show(Transcription $transcription): Response
+    {
+        $transcription->load('audioSample');
+
+        $viewData = [
+            'transcription' => $transcription,
+            'audioSample' => $transcription->audioSample,
+        ];
+
+        // Add cleaning presets for base transcriptions
+        if ($transcription->isBase()) {
+            $viewData['presets'] = config('cleaning.presets');
+        }
+
+        return Inertia::render('Transcriptions/Show', $viewData);
+    }
+
+    /**
+     * Show a transcription in the context of an audio sample (for ASR).
+     */
+    public function showForAudioSample(AudioSample $audioSample, Transcription $transcription): Response
+    {
+        if ($transcription->audio_sample_id !== $audioSample->id) {
+            abort(404);
+        }
+
         $transcription->load('audioSample');
 
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,
             'audioSample' => $audioSample,
+            'presets' => $transcription->isBase() ? config('cleaning.presets') : null,
         ]);
     }
 
     /**
-     * Store a manually entered transcription (benchmark).
+     * Update a base transcription's cleaned text (inline edit).
      */
-    public function store(Request $request, AudioSample $audioSample)
+    public function update(Request $request, Transcription $transcription): RedirectResponse
+    {
+        if (! $transcription->isBase()) {
+            abort(403, 'Only base transcriptions can be edited.');
+        }
+
+        $request->validate([
+            'text_clean' => 'required|string',
+        ]);
+
+        // Clear and re-save the cleaned file
+        $transcription->clearMediaCollection('cleaned_file');
+
+        $cleanedFilePath = storage_path('app/temp/cleaned_' . $transcription->id . '.txt');
+        if (! is_dir(dirname($cleanedFilePath))) {
+            mkdir(dirname($cleanedFilePath), 0755, true);
+        }
+        file_put_contents($cleanedFilePath, $request->text_clean);
+        $transcription->addMedia($cleanedFilePath)
+            ->usingFileName('cleaned.txt')
+            ->toMediaCollection('cleaned_file');
+
+        $previousHash = $transcription->hash_clean;
+        $newHash = hash('sha256', $request->text_clean);
+
+        $transcription->update([
+            'text_clean' => $request->text_clean,
+            'hash_clean' => $newHash,
+            'status' => Transcription::STATUS_COMPLETED,
+            // Reset validation if text changed
+            'validated_at' => $previousHash !== $newHash ? null : $transcription->validated_at,
+            'validated_by' => $previousHash !== $newHash ? null : $transcription->validated_by,
+        ]);
+
+        // Sync audio sample status
+        if ($transcription->isLinked()) {
+            $transcription->audioSample->syncStatusFromBaseTranscription();
+        }
+
+        return back()->with('success', 'Cleaned text updated.');
+    }
+
+    /**
+     * Delete a transcription.
+     */
+    public function destroy(Transcription $transcription): RedirectResponse
+    {
+        $audioSample = $transcription->audioSample;
+        $isBase = $transcription->isBase();
+
+        $transcription->delete();
+
+        // Sync audio sample status if it was a linked base transcription
+        if ($isBase && $audioSample) {
+            $audioSample->syncStatusFromBaseTranscription();
+        }
+
+        if ($audioSample) {
+            return redirect()->route('audio-samples.show', $audioSample)
+                ->with('success', 'Transcription deleted successfully.');
+        }
+
+        return redirect()->route('transcriptions.index')
+            ->with('success', 'Transcription deleted successfully.');
+    }
+
+    // ==================== Cleaning ====================
+
+    /**
+     * Clean a base transcription.
+     */
+    public function clean(Request $request, Transcription $transcription): RedirectResponse
+    {
+        if (! $transcription->isBase()) {
+            abort(403, 'Only base transcriptions can be cleaned.');
+        }
+
+        $request->validate([
+            'preset' => 'required|string',
+            'mode' => 'required|in:rule,llm',
+            'llm_provider' => 'required_if:mode,llm|nullable|string',
+            'llm_model' => 'required_if:mode,llm|nullable|string',
+        ]);
+
+        if (! $transcription->canBeCleaned()) {
+            return back()->with('error', 'This transcription cannot be cleaned in its current state.');
+        }
+
+        // Validate LLM credentials if using LLM mode
+        if ($request->mode === 'llm') {
+            $llmManager = app(LlmManager::class);
+            if (! $llmManager->hasCredentials($request->llm_provider)) {
+                return back()->with('error', 'No credentials configured for the selected LLM provider.');
+            }
+        }
+
+        $transcription->update([
+            'status' => Transcription::STATUS_PROCESSING,
+            'cleaning_preset' => $request->preset,
+            'cleaning_mode' => $request->mode,
+        ]);
+
+        // Dispatch cleaning job
+        CleanTranscriptionJob::dispatch(
+            transcriptionId: $transcription->id,
+            preset: $request->preset,
+            mode: $request->mode,
+            llmProvider: $request->llm_provider,
+            llmModel: $request->llm_model,
+        );
+
+        return back()->with('success', 'Cleaning started. The page will update when complete.');
+    }
+
+    // ==================== Validation ====================
+
+    /**
+     * Validate a base transcription (mark as ready for benchmarking).
+     */
+    public function validate(Request $request, Transcription $transcription): RedirectResponse
+    {
+        if (! $transcription->isBase()) {
+            abort(403, 'Only base transcriptions can be validated.');
+        }
+
+        if (! $transcription->canBeValidated()) {
+            return back()->with('error', 'This transcription cannot be validated. It must be cleaned first.');
+        }
+
+        $request->validate([
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $transcription->markValidated(
+            validatedBy: $request->user()?->name,
+            notes: $request->notes,
+        );
+
+        return back()->with('success', 'Transcription validated and ready for benchmarking.');
+    }
+
+    /**
+     * Remove validation from a base transcription.
+     */
+    public function unvalidate(Transcription $transcription): RedirectResponse
+    {
+        if (! $transcription->isBase()) {
+            abort(403, 'Only base transcriptions can be unvalidated.');
+        }
+
+        $transcription->unvalidate();
+
+        return back()->with('success', 'Validation removed.');
+    }
+
+    // ==================== Linking ====================
+
+    /**
+     * Link a base transcription to an audio sample.
+     */
+    public function linkToAudioSample(Request $request, Transcription $transcription): RedirectResponse
+    {
+        if (! $transcription->isBase()) {
+            abort(403, 'Only base transcriptions can be linked to audio samples.');
+        }
+
+        $request->validate([
+            'audio_sample_id' => 'required|exists:audio_samples,id',
+        ]);
+
+        $audioSample = AudioSample::findOrFail($request->audio_sample_id);
+
+        // Check if audio sample already has a base transcription
+        if ($audioSample->hasBaseTranscription()) {
+            return back()->with('error', 'This audio sample already has a base transcription linked.');
+        }
+
+        $transcription->linkToAudioSample($audioSample);
+
+        return back()->with('success', 'Transcription linked to audio sample.');
+    }
+
+    /**
+     * Unlink a base transcription from its audio sample.
+     */
+    public function unlinkFromAudioSample(Transcription $transcription): RedirectResponse
+    {
+        if (! $transcription->isBase()) {
+            abort(403, 'Only base transcriptions can be unlinked.');
+        }
+
+        if (! $transcription->isLinked()) {
+            return back()->with('error', 'This transcription is not linked to any audio sample.');
+        }
+
+        $transcription->unlinkFromAudioSample();
+
+        return back()->with('success', 'Transcription unlinked from audio sample.');
+    }
+
+    /**
+     * Get orphan base transcriptions for linking (API endpoint).
+     */
+    public function orphanList(Request $request)
+    {
+        $search = $request->input('search');
+
+        $transcriptions = Transcription::orphan()
+            ->when($search, function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%");
+            })
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get(['id', 'name', 'status', 'validated_at', 'created_at']);
+
+        return response()->json($transcriptions);
+    }
+
+    // ==================== ASR Transcription Methods ====================
+
+    /**
+     * Store a manually entered ASR transcription (benchmark).
+     */
+    public function storeAsr(Request $request, AudioSample $audioSample): RedirectResponse
     {
         $validated = $request->validate([
             'provider' => 'required|string|max:255',
@@ -37,14 +379,14 @@ class TranscriptionController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        // Create model name from provider/model
-        $modelName = $validated['provider'].'/'.$validated['model'];
+        $modelName = $validated['provider'] . '/' . $validated['model'];
 
         $transcription = Transcription::create([
+            'type' => Transcription::TYPE_ASR,
             'audio_sample_id' => $audioSample->id,
             'model_name' => $modelName,
             'model_version' => $validated['model'],
-            'source' => 'imported',
+            'source' => Transcription::SOURCE_IMPORTED,
             'status' => Transcription::STATUS_PROCESSING,
             'hypothesis_text' => $validated['hypothesis_text'],
             'hypothesis_hash' => hash('sha256', $validated['hypothesis_text']),
@@ -59,7 +401,7 @@ class TranscriptionController extends Controller
         ]);
 
         // Save transcript as media file
-        $tempPath = storage_path('app/temp/transcript_'.$transcription->id.'.txt');
+        $tempPath = storage_path('app/temp/transcript_' . $transcription->id . '.txt');
         if (! is_dir(dirname($tempPath))) {
             mkdir(dirname($tempPath), 0755, true);
         }
@@ -73,14 +415,17 @@ class TranscriptionController extends Controller
             transcriptionId: $transcription->id,
         );
 
+        // Update audio sample status to benchmarked
+        $audioSample->syncStatusFromBaseTranscription();
+
         return redirect()->route('audio-samples.show', $audioSample)
             ->with('success', 'Benchmark transcription added. Metrics are being calculated.');
     }
 
     /**
-     * Import a transcription from a text file.
+     * Import an ASR transcription from a text file.
      */
-    public function import(Request $request, AudioSample $audioSample)
+    public function importAsr(Request $request, AudioSample $audioSample): RedirectResponse
     {
         $validated = $request->validate([
             'provider' => 'required|string|max:255',
@@ -90,14 +435,14 @@ class TranscriptionController extends Controller
         ]);
 
         $hypothesisText = file_get_contents($request->file('file')->getRealPath());
-
-        $modelName = $validated['provider'].'/'.$validated['model'];
+        $modelName = $validated['provider'] . '/' . $validated['model'];
 
         $transcription = Transcription::create([
+            'type' => Transcription::TYPE_ASR,
             'audio_sample_id' => $audioSample->id,
             'model_name' => $modelName,
             'model_version' => $validated['model'],
-            'source' => 'imported',
+            'source' => Transcription::SOURCE_IMPORTED,
             'status' => Transcription::STATUS_PROCESSING,
             'hypothesis_text' => $hypothesisText,
             'hypothesis_hash' => hash('sha256', $hypothesisText),
@@ -120,14 +465,17 @@ class TranscriptionController extends Controller
             transcriptionId: $transcription->id,
         );
 
+        // Update audio sample status
+        $audioSample->syncStatusFromBaseTranscription();
+
         return redirect()->route('audio-samples.show', $audioSample)
             ->with('success', 'Transcription file imported. Metrics are being calculated.');
     }
 
     /**
-     * Delete a transcription.
+     * Delete an ASR transcription (context of audio sample).
      */
-    public function destroy(AudioSample $audioSample, Transcription $transcription)
+    public function destroyAsr(AudioSample $audioSample, Transcription $transcription): RedirectResponse
     {
         if ($transcription->audio_sample_id !== $audioSample->id) {
             abort(404);
@@ -135,20 +483,25 @@ class TranscriptionController extends Controller
 
         $transcription->delete();
 
+        // Update audio sample status
+        $audioSample->syncStatusFromBaseTranscription();
+
         return redirect()->route('audio-samples.show', $audioSample)
             ->with('success', 'Transcription deleted successfully.');
     }
 
     /**
-     * Recalculate WER/CER for a transcription.
+     * Recalculate WER/CER for an ASR transcription.
      */
-    public function recalculate(AudioSample $audioSample, Transcription $transcription, WerCalculator $werCalculator)
+    public function recalculate(AudioSample $audioSample, Transcription $transcription, WerCalculator $werCalculator): RedirectResponse
     {
         if ($transcription->audio_sample_id !== $audioSample->id) {
             abort(404);
         }
 
-        $referenceText = $audioSample->reference_text_clean;
+        // Get reference text from base transcription
+        $baseTranscription = $audioSample->baseTranscription;
+        $referenceText = $baseTranscription?->text_clean;
 
         if (! $referenceText || ! $transcription->hypothesis_text) {
             return redirect()->route('audio-samples.show', $audioSample)
@@ -169,5 +522,23 @@ class TranscriptionController extends Controller
 
         return redirect()->route('audio-samples.show', $audioSample)
             ->with('success', 'WER/CER recalculated successfully.');
+    }
+
+    // ==================== Legacy Methods (redirect to new) ====================
+
+    /**
+     * @deprecated Use storeAsr instead
+     */
+    public function store(Request $request, AudioSample $audioSample)
+    {
+        return $this->storeAsr($request, $audioSample);
+    }
+
+    /**
+     * @deprecated Use importAsr instead
+     */
+    public function import(Request $request, AudioSample $audioSample)
+    {
+        return $this->importAsr($request, $audioSample);
     }
 }

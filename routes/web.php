@@ -51,11 +51,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/audio-samples/{audioSample}/transcribe', [AudioSampleController::class, 'transcribe'])->name('audio-samples.transcribe');
     Route::post('/audio-samples/bulk-transcribe', [AudioSampleController::class, 'bulkTranscribe'])->name('audio-samples.bulk-transcribe');
 
-    // Transcriptions (nested under audio samples)
-    Route::post('/audio-samples/{audioSample}/transcriptions', [TranscriptionController::class, 'store'])->name('transcriptions.store');
-    Route::post('/audio-samples/{audioSample}/transcriptions/import', [TranscriptionController::class, 'import'])->name('transcriptions.import');
-    Route::get('/audio-samples/{audioSample}/transcriptions/{transcription}', [TranscriptionController::class, 'show'])->name('transcriptions.show');
-    Route::delete('/audio-samples/{audioSample}/transcriptions/{transcription}', [TranscriptionController::class, 'destroy'])->name('transcriptions.destroy');
+    // ==================== Base Transcriptions ====================
+    Route::get('/transcriptions', [TranscriptionController::class, 'index'])->name('transcriptions.index');
+    Route::get('/transcriptions/create', [TranscriptionController::class, 'create'])->name('transcriptions.create');
+    Route::post('/transcriptions', [TranscriptionController::class, 'storeBase'])->name('transcriptions.store-base');
+    Route::get('/transcriptions/orphan', [TranscriptionController::class, 'orphanList'])->name('transcriptions.orphan-list');
+    Route::get('/transcriptions/{transcription}', [TranscriptionController::class, 'show'])->name('transcriptions.show');
+    Route::patch('/transcriptions/{transcription}', [TranscriptionController::class, 'update'])->name('transcriptions.update');
+    Route::delete('/transcriptions/{transcription}', [TranscriptionController::class, 'destroy'])->name('transcriptions.destroy');
+    Route::post('/transcriptions/{transcription}/clean', [TranscriptionController::class, 'clean'])->name('transcriptions.clean');
+    Route::post('/transcriptions/{transcription}/validate', [TranscriptionController::class, 'validate'])->name('transcriptions.validate');
+    Route::delete('/transcriptions/{transcription}/validate', [TranscriptionController::class, 'unvalidate'])->name('transcriptions.unvalidate');
+    Route::post('/transcriptions/{transcription}/link', [TranscriptionController::class, 'linkToAudioSample'])->name('transcriptions.link');
+    Route::delete('/transcriptions/{transcription}/link', [TranscriptionController::class, 'unlinkFromAudioSample'])->name('transcriptions.unlink');
+
+    // ==================== ASR Transcriptions (nested under audio samples) ====================
+    Route::post('/audio-samples/{audioSample}/transcriptions', [TranscriptionController::class, 'storeAsr'])->name('transcriptions.store-asr');
+    Route::post('/audio-samples/{audioSample}/transcriptions/import', [TranscriptionController::class, 'importAsr'])->name('transcriptions.import-asr');
+    Route::get('/audio-samples/{audioSample}/transcriptions/{transcription}', [TranscriptionController::class, 'showForAudioSample'])->name('transcriptions.show-for-sample');
+    Route::delete('/audio-samples/{audioSample}/transcriptions/{transcription}', [TranscriptionController::class, 'destroyAsr'])->name('transcriptions.destroy-asr');
     Route::post('/audio-samples/{audioSample}/transcriptions/{transcription}/recalculate', [TranscriptionController::class, 'recalculate'])->name('transcriptions.recalculate');
 
     // Legacy redirects

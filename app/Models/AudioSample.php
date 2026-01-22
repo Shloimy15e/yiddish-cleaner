@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -15,56 +16,47 @@ class AudioSample extends Model implements HasMedia
 
     /**
      * Status constants for the workflow.
+     * 
+     * draft: Initial/incomplete sample
+     * pending_base: Has audio, no base transcription linked
+     * unclean: Base transcription linked but not validated
+     * ready: Base validated, can run ASR benchmarks
+     * benchmarked: Has completed ASR transcriptions
      */
-    public const STATUS_PENDING_TRANSCRIPT = 'pending_transcript';
-    public const STATUS_IMPORTED = 'imported';
-    public const STATUS_CLEANING = 'cleaning';
-    public const STATUS_CLEANED = 'cleaned';
-    public const STATUS_VALIDATED = 'validated';
-    public const STATUS_FAILED = 'failed';
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_PENDING_BASE = 'pending_base';
+    public const STATUS_UNCLEAN = 'unclean';
+    public const STATUS_READY = 'ready';
+    public const STATUS_BENCHMARKED = 'benchmarked';
 
     /**
      * All valid status values.
      */
     public const STATUSES = [
-        self::STATUS_PENDING_TRANSCRIPT,
-        self::STATUS_IMPORTED,
-        self::STATUS_CLEANING,
-        self::STATUS_CLEANED,
-        self::STATUS_VALIDATED,
-        self::STATUS_FAILED,
+        self::STATUS_DRAFT,
+        self::STATUS_PENDING_BASE,
+        self::STATUS_UNCLEAN,
+        self::STATUS_READY,
+        self::STATUS_BENCHMARKED,
     ];
 
     protected $fillable = [
         'processing_run_id',
         'name',
         'source_url',
-        'reference_hash_raw',
-        'reference_hash_clean',
-        'reference_text_raw',
-        'reference_text_clean',
         'audio_duration_seconds',
-        'clean_rate',
-        'clean_rate_category',
-        'metrics',
-        'removals',
         'status',
         'error_message',
-        'validated_at',
-        'validated_by',
-        'review_notes',
     ];
 
     protected function casts(): array
     {
         return [
-            'metrics' => 'array',
-            'removals' => 'array',
             'audio_duration_seconds' => 'float',
-            'clean_rate' => 'integer',
-            'validated_at' => 'datetime',
         ];
     }
+
+    // ==================== Relationships ====================
 
     public function processingRun(): BelongsTo
     {
@@ -77,6 +69,25 @@ class AudioSample extends Model implements HasMedia
             ->withTimestamps();
     }
 
+    /**
+     * Get the base transcription (reference/ground truth) for this audio sample.
+     */
+    public function baseTranscription(): HasOne
+    {
+        return $this->hasOne(Transcription::class)->where('type', Transcription::TYPE_BASE);
+    }
+
+    /**
+     * Get all ASR transcriptions (hypothesis) for this audio sample.
+     */
+    public function asrTranscriptions(): HasMany
+    {
+        return $this->hasMany(Transcription::class)->where('type', Transcription::TYPE_ASR);
+    }
+
+    /**
+     * Get all transcriptions (both base and ASR).
+     */
     public function transcriptions(): HasMany
     {
         return $this->hasMany(Transcription::class);
@@ -86,6 +97,8 @@ class AudioSample extends Model implements HasMedia
     {
         return $this->hasMany(AudioSampleStatusHistory::class)->orderByDesc('created_at');
     }
+
+    // ==================== Media Collections ====================
 
     public function registerMediaCollections(): void
     {
@@ -105,7 +118,8 @@ class AudioSample extends Model implements HasMedia
                 'video/mp4',       // .m4a detected as video/mp4
             ]);
 
-        // Original reference transcript (docx, txt, pdf, etc.)
+        // Legacy collection - kept for migration to copy media to Transcription model
+        // Can be removed after migration runs successfully
         $this->addMediaCollection('reference_transcript')
             ->singleFile()
             ->acceptsMimeTypes([
@@ -114,173 +128,149 @@ class AudioSample extends Model implements HasMedia
                 'application/msword', // .doc
                 'application/pdf',
             ]);
-
-        // Cleaned reference transcript (always .txt)
-        $this->addMediaCollection('cleaned_transcript')
-            ->singleFile()
-            ->acceptsMimeTypes(['text/plain']);
     }
 
+    // ==================== Status Helpers ====================
+
     /**
-     * Check if the sample has a raw transcript ready to clean.
+     * Check if the sample has audio uploaded.
      */
-    public function hasRawTranscript(): bool
+    public function hasAudio(): bool
     {
-        return ! empty($this->reference_text_raw);
+        return $this->hasMedia('audio');
     }
 
     /**
-     * Check if the sample has been cleaned.
+     * Check if the sample has a base transcription linked.
      */
-    public function isCleaned(): bool
+    public function hasBaseTranscription(): bool
     {
-        return ! empty($this->reference_text_clean);
+        return $this->baseTranscription()->exists();
     }
 
     /**
-     * Check if the sample is validated (benchmark ready).
+     * Check if the base transcription is validated (ready for benchmarking).
      */
-    public function isValidated(): bool
+    public function isBaseValidated(): bool
     {
-        return $this->validated_at !== null;
+        $base = $this->baseTranscription;
+        return $base && $base->isValidated();
     }
 
     /**
-     * Check if the sample can be cleaned.
+     * Check if the sample is ready for ASR benchmarking.
      */
-    public function canBeCleaned(): bool
+    public function isReadyForBenchmark(): bool
     {
-        return $this->hasRawTranscript() 
-            && ! in_array($this->status, [self::STATUS_CLEANING, self::STATUS_PENDING_TRANSCRIPT]);
+        return $this->hasAudio() && $this->isBaseValidated();
     }
 
     /**
-     * Check if the sample can be validated.
+     * Check if the sample has any completed ASR transcriptions.
      */
-    public function canBeValidated(): bool
+    public function hasBenchmarks(): bool
     {
-        return $this->isCleaned() && ! $this->isValidated();
+        return $this->asrTranscriptions()
+            ->where('status', Transcription::STATUS_COMPLETED)
+            ->exists();
     }
 
     /**
-     * Mark sample as validated (benchmark ready).
+     * Sync the status based on the current state of the base transcription.
+     * Called automatically when base transcription is linked/unlinked/validated.
      */
-    public function validate(?string $validatedBy = null, ?string $notes = null): void
-    {
-        $previousStatus = $this->status;
-
-        $this->update([
-            'status' => self::STATUS_VALIDATED,
-            'validated_at' => now(),
-            'validated_by' => $validatedBy,
-            'review_notes' => $notes,
-        ]);
-
-        // Log status history
-        AudioSampleStatusHistory::log(
-            audioSample: $this,
-            action: AudioSampleStatusHistory::ACTION_VALIDATED,
-            fromStatus: $previousStatus,
-            toStatus: self::STATUS_VALIDATED,
-            notes: $notes,
-            metadata: [
-                'validated_by' => $validatedBy,
-            ],
-        );
-    }
-
-    /**
-     * Remove validation status.
-     */
-    public function unvalidate(): void
+    public function syncStatusFromBaseTranscription(): void
     {
         $previousStatus = $this->status;
+        $newStatus = $this->calculateStatus();
 
-        $this->update([
-            'status' => self::STATUS_CLEANED,
-            'validated_at' => null,
-            'validated_by' => null,
-            'review_notes' => null,
-        ]);
+        if ($previousStatus !== $newStatus) {
+            $this->update(['status' => $newStatus]);
 
-        // Log status history
-        AudioSampleStatusHistory::log(
-            audioSample: $this,
-            action: AudioSampleStatusHistory::ACTION_UNVALIDATED,
-            fromStatus: $previousStatus,
-            toStatus: self::STATUS_CLEANED,
-        );
+            // Log status history
+            AudioSampleStatusHistory::log(
+                audioSample: $this,
+                action: AudioSampleStatusHistory::ACTION_STATUS_CHANGED,
+                fromStatus: $previousStatus,
+                toStatus: $newStatus,
+                notes: 'Auto-synced from base transcription state',
+            );
+        }
     }
 
     /**
-     * Reset cleaning data (for re-cleaning).
+     * Calculate the appropriate status based on current state.
      */
-    public function resetCleaning(): void
+    protected function calculateStatus(): string
     {
-        // Clear the cleaned transcript media
-        $this->clearMediaCollection('cleaned_transcript');
+        // Check for benchmarked status first
+        if ($this->hasBenchmarks()) {
+            return self::STATUS_BENCHMARKED;
+        }
 
-        $this->update([
-            'reference_text_clean' => null,
-            'reference_hash_clean' => null,
-            'clean_rate' => null,
-            'clean_rate_category' => null,
-            'metrics' => null,
-            'removals' => null,
-            'status' => self::STATUS_IMPORTED,
-            'validated_at' => null,
-            'validated_by' => null,
-            'review_notes' => null,
-        ]);
+        // Check base transcription state
+        $base = $this->baseTranscription;
+
+        if (! $base) {
+            return self::STATUS_PENDING_BASE;
+        }
+
+        if ($base->isValidated()) {
+            return self::STATUS_READY;
+        }
+
+        return self::STATUS_UNCLEAN;
     }
 
     // ==================== Scopes ====================
 
-    public function scopeValidated($query)
-    {
-        return $query->whereNotNull('validated_at');
-    }
-
     /**
-     * Samples that are cleaned but not yet validated.
+     * Samples without a base transcription.
      */
-    public function scopePendingValidation($query)
+    public function scopePendingBase($query)
     {
-        return $query->whereNull('validated_at')
-            ->where('status', self::STATUS_CLEANED);
+        return $query->where('status', self::STATUS_PENDING_BASE);
     }
 
     /**
-     * Samples that need cleaning (imported but not cleaned).
+     * Samples with unvalidated base transcription.
      */
-    public function scopeNeedsCleaning($query)
+    public function scopeUnclean($query)
     {
-        return $query->where('status', self::STATUS_IMPORTED);
+        return $query->where('status', self::STATUS_UNCLEAN);
     }
 
     /**
-     * Samples that need a transcript uploaded.
+     * Samples ready for ASR benchmarking.
      */
-    public function scopeNeedsTranscript($query)
+    public function scopeReady($query)
     {
-        return $query->where('status', self::STATUS_PENDING_TRANSCRIPT);
+        return $query->where('status', self::STATUS_READY);
     }
 
     /**
-     * Samples that are benchmark ready (validated).
+     * Samples that are benchmark ready (alias for ready).
      */
     public function scopeBenchmarkReady($query)
     {
-        return $query->where('status', self::STATUS_VALIDATED);
+        return $query->where('status', self::STATUS_READY);
     }
 
-    public function scopeWithMinCleanRate($query, int $minRate)
+    /**
+     * Samples that have been benchmarked.
+     */
+    public function scopeBenchmarked($query)
     {
-        return $query->where('clean_rate', '>=', $minRate);
+        return $query->where('status', self::STATUS_BENCHMARKED);
     }
 
-    public function getWordCountAttribute(): int
+    /**
+     * Samples with audio uploaded.
+     */
+    public function scopeWithAudio($query)
     {
-        return $this->metrics['word_count'] ?? 0;
+        return $query->whereHas('media', function ($q) {
+            $q->where('collection_name', 'audio');
+        });
     }
 }

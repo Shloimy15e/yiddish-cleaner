@@ -29,8 +29,21 @@ const formatFileSize = (bytes: number) => {
 };
 
 const cleanRateLabel = computed(() => {
-    if (props.audioSample.clean_rate === null) return null;
-    return `${props.audioSample.clean_rate.toFixed(1)}% clean`;
+    const bt = props.audioSample.base_transcription;
+    if (!bt || bt.clean_rate === null) return null;
+    return `${bt.clean_rate.toFixed(1)}% clean`;
+});
+
+const cleanRateCategory = computed(() => {
+    const bt = props.audioSample.base_transcription;
+    if (!bt) return null;
+    // Derive category from clean_rate
+    const rate = bt.clean_rate;
+    if (rate === null) return null;
+    if (rate >= 90) return 'excellent';
+    if (rate >= 70) return 'good';
+    if (rate >= 50) return 'fair';
+    return 'needs-work';
 });
 
 const copied = ref<'name' | 'id' | null>(null);
@@ -79,7 +92,7 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                         v-if="audioSample.processing_run"
                         class="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1"
                         :class="
-                            getCleanRateCategoryClass(audioSample.clean_rate_category)"
+                            cleanRateCategory ? getCleanRateCategoryClass(cleanRateCategory) : ''"
                     >
                         {{
                             audioSample.processing_run.preset.replace(/_/g, ' ')
@@ -123,7 +136,7 @@ const copyToClipboard = async (value: string, type: 'name' | 'id') => {
                         v-if="cleanRateLabel"
                         :class="[
                             'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
-                            getCleanRateCategoryClass(audioSample.clean_rate_category),
+                            cleanRateCategory ? getCleanRateCategoryClass(cleanRateCategory) : '',
                         ]"
                     >
                         {{ cleanRateLabel }}

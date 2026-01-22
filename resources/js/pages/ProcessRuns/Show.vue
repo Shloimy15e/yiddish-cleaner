@@ -49,7 +49,7 @@ const updateSampleFromEvent = (payload: {
     const existing = samples.value.find((s) => s.id === payload.audio_sample_id);
     if (existing) {
         existing.status = payload.status;
-        existing.clean_rate = payload.clean_rate;
+        existing.base_transcription = { clean_rate: payload.clean_rate };
         return;
     }
 
@@ -57,7 +57,7 @@ const updateSampleFromEvent = (payload: {
         id: payload.audio_sample_id,
         name: payload.audio_sample_name,
         status: payload.status,
-        clean_rate: payload.clean_rate,
+        base_transcription: { clean_rate: payload.clean_rate },
         error_message: null,
         created_at: new Date().toISOString(),
     });
@@ -220,8 +220,8 @@ onBeforeUnmount(() => {
                             </p>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span v-if="sample.clean_rate !== null" class="text-xs text-muted-foreground">
-                                {{ sample.clean_rate }}%
+                            <span v-if="sample.base_transcription?.clean_rate !== null && sample.base_transcription?.clean_rate !== undefined" class="text-xs text-muted-foreground">
+                                {{ sample.base_transcription.clean_rate }}%
                             </span>
                             <span :class="['rounded-full px-2 py-1 text-xs font-medium', getAudioSampleStatusClass(sample.status)]">
                                 {{ getAudioSampleStatusLabel(sample.status) }}

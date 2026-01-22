@@ -28,6 +28,7 @@ class AudioSampleStatusHistory extends Model
 
     // Action constants
     public const ACTION_CREATED = 'created';
+    public const ACTION_STATUS_CHANGED = 'status_changed';
     public const ACTION_CLEANING_STARTED = 'cleaning_started';
     public const ACTION_CLEANED = 'cleaned';
     public const ACTION_EDITED = 'edited';

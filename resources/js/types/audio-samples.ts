@@ -1,12 +1,12 @@
-import type { TranscriptionWithStatus } from './transcriptions';
+import type { AsrTranscription, BaseTranscription, TranscriptionWithStatus } from './transcriptions';
 
+// New status values
 export type AudioSampleStatus =
-    | 'pending_transcript'
-    | 'imported'
-    | 'cleaning'
-    | 'cleaned'
-    | 'validated'
-    | 'failed'
+    | 'draft'
+    | 'pending_base'
+    | 'unclean'
+    | 'ready'
+    | 'benchmarked'
     | string;
 
 export interface AudioMedia {
@@ -32,47 +32,60 @@ export interface AudioSampleProcessingRunSummary {
 export interface AudioSampleDetail {
     id: number;
     name: string;
-    reference_text_raw: string;
-    reference_text_clean: string;
+    source_url: string | null;
+    audio_duration_seconds: number | null;
     status: AudioSampleStatus;
     error_message: string | null;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
-    metrics: Record<string, number> | null;
-    removals: Array<{ type: string; original: string; count: number }> | null;
-    validated_at: string | null;
     created_at: string;
+    updated_at: string;
     processing_run: AudioSampleProcessingRun | null;
-    transcriptions?: TranscriptionWithStatus[];
+    
+    // Base transcription (reference/ground truth)
+    base_transcription: BaseTranscription | null;
+    
+    // ASR transcriptions (hypothesis/benchmark results)
+    asr_transcriptions?: AsrTranscription[];
 }
 
 export interface AudioSampleListItem {
     id: number;
     name: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
     status: AudioSampleStatus;
-    validated_at: string | null;
+    audio_duration_seconds: number | null;
     created_at: string;
     processing_run: AudioSampleProcessingRunSummary | null;
+    
+    // Base transcription summary
+    base_transcription?: {
+        id: number;
+        name: string;
+        status: string;
+        clean_rate: number | null;
+        validated_at: string | null;
+    } | null;
 }
 
 export interface AudioSampleSummary {
     id: number;
     name: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
     status: AudioSampleStatus;
     created_at: string;
+    base_transcription?: {
+        id: number;
+        clean_rate: number | null;
+        validated_at: string | null;
+    } | null;
 }
 
 export interface AudioSampleRunItem {
     id: number;
     name: string;
     status: AudioSampleStatus;
-    clean_rate: number | null;
     error_message: string | null;
     created_at: string;
+    base_transcription?: {
+        clean_rate: number | null;
+    } | null;
 }
 
 export interface AudioSampleContext {
@@ -80,10 +93,7 @@ export interface AudioSampleContext {
     name: string;
     status: AudioSampleStatus;
     created_at: string;
-    reference_text_raw: string;
-    reference_text_clean: string;
-    clean_rate: number | null;
-    clean_rate_category: string | null;
+    base_transcription: BaseTranscription | null;
     processing_run: {
         preset: string;
         mode: string;
@@ -93,7 +103,9 @@ export interface AudioSampleContext {
 export interface AudioSampleReference {
     id: number;
     name: string;
-    reference_text_clean: string | null;
+    base_transcription?: {
+        text_clean: string | null;
+    } | null;
 }
 
 export interface Preset {

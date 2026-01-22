@@ -31,12 +31,12 @@ class AudioSampleController extends Controller
         $user = $request->user();
 
         $audioSamples = AudioSample::whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id))
-            ->with('processingRun:id,preset,mode,llm_provider,llm_model,batch_id')
+            ->with(['processingRun:id,preset,mode,llm_provider,llm_model,batch_id', 'baseTranscription'])
             ->when($request->search, fn ($q, $search) => $q->where('name', 'like', "%{$search}%"))
             ->when($request->status, fn ($q, $status) => $q->where('status', $status))
-            ->when($request->validated === 'yes', fn ($q) => $q->whereNotNull('validated_at'))
-            ->when($request->validated === 'no', fn ($q) => $q->whereNull('validated_at'))
-            ->when($request->category, fn ($q, $category) => $q->where('clean_rate_category', $category))
+            ->when($request->validated === 'yes', fn ($q) => $q->whereHas('baseTranscription', fn ($q) => $q->whereNotNull('validated_at')))
+            ->when($request->validated === 'no', fn ($q) => $q->whereHas('baseTranscription', fn ($q) => $q->whereNull('validated_at')))
+            ->when($request->category, fn ($q, $category) => $q->whereHas('baseTranscription', fn ($q) => $q->where('clean_rate_category', $category)))
             ->latest()
             ->paginate(25)
             ->withQueryString();
@@ -76,7 +76,7 @@ class AudioSampleController extends Controller
         ] : null;
 
         return Inertia::render('AudioSamples/Show', [
-            'audioSample' => $audioSample->load('processingRun', 'transcriptions'),
+            'audioSample' => $audioSample->load('processingRun', 'baseTranscription', 'asrTranscriptions'),
             'audioMedia' => $audioInfo,
             'presets' => config('cleaning.presets'),
         ]);

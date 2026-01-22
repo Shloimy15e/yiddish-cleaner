@@ -39,6 +39,15 @@ const category = ref(props.filters.category || '');
 const selectedIds = ref<Set<number>>(new Set());
 const selectAll = ref(false);
 
+// Derive clean rate category from value
+const getCleanRateCategoryFromValue = (rate: number | null | undefined): string => {
+    if (rate === null || rate === undefined) return '';
+    if (rate >= 90) return getCleanRateCategoryClass('excellent');
+    if (rate >= 70) return getCleanRateCategoryClass('good');
+    if (rate >= 50) return getCleanRateCategoryClass('fair');
+    return getCleanRateCategoryClass('needs-work');
+};
+
 const statusOptions = [
     { value: '', label: 'All Status' },
     { value: 'pending_transcript', label: 'Needs Transcript' },
@@ -402,8 +411,8 @@ watch(search, () => {
                                 </div>
                             </td>
                                 <td class="px-4 py-4">
-                                <span v-if="sample.clean_rate !== null" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCleanRateCategoryClass(sample.clean_rate_category)]">
-                                    {{ sample.clean_rate }}%
+                                <span v-if="sample.base_transcription?.clean_rate !== null && sample.base_transcription?.clean_rate !== undefined" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCleanRateCategoryFromValue(sample.base_transcription?.clean_rate)]">
+                                    {{ sample.base_transcription?.clean_rate }}%
                                 </span>
                                 <span v-else class="text-muted-foreground">-</span>
                             </td>
