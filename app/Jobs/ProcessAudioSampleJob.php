@@ -116,7 +116,12 @@ class ProcessAudioSampleJob implements ShouldQueue
             ]);
 
             // Save cleaned transcript as a text file
-            $cleanedFilePath = storage_path('app/temp/cleaned_' . $this->audioSample->id . '.txt');
+            $tempDir = storage_path('app/temp');
+            if (! is_dir($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            $cleanedFilePath = $tempDir.'/cleaned_' . $this->audioSample->id . '.txt';
             file_put_contents($cleanedFilePath, $result->cleanedText);
             $baseTranscription->clearMediaCollection('cleaned_file');
             $baseTranscription->addMedia($cleanedFilePath)
