@@ -37,13 +37,13 @@ class ImportController extends Controller
             'url' => 'required_without:file|nullable|url',
             'file' => 'required_without:url|nullable|file|mimes:csv,xlsx,xls|max:10240',
             'sheet_name' => 'nullable|string',
-            'doc_link_column' => 'required|string',
-            'audio_url_column' => 'nullable|string',
+            'doc_link_column' => 'required_without:audio_url_column|nullable|string',
+            'audio_url_column' => 'required_without:doc_link_column|nullable|string',
             'row_limit' => 'nullable|integer|min:1|max:1000',
             'skip_completed' => 'nullable|boolean',
         ]);
 
-        $docLinkColumn = trim((string) $request->input('doc_link_column', 'Doc Link'));
+        $docLinkColumn = trim((string) $request->input('doc_link_column', ''));
         $audioUrlColumn = trim((string) $request->input('audio_url_column', ''));
         $sheetName = trim((string) $request->input('sheet_name', ''));
 

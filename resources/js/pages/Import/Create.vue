@@ -43,8 +43,8 @@ const sheetForm = useForm({
     url: '',
     file: null as File | null,
     sheet_name: '',
-    doc_link_column: 'Doc Link',
-    audio_url_column: 'Audio Link',
+    doc_link_column: '',
+    audio_url_column: '',
     row_limit: 100,
     skip_completed: true,
 });
@@ -159,11 +159,15 @@ const isManualFormValid = computed(() => {
 
 // Check if sheet form is valid
 const isSheetFormValid = computed(() => {
-    if (sheetInputType.value === 'url') {
-        // URL mode requires Google credentials and a URL
-        return props.hasGoogleCredentials && !!sheetForm.url;
-    }
-    return !!sheetForm.file;
+    // Must have source (URL or file)
+    const hasSource = sheetInputType.value === 'url'
+        ? (props.hasGoogleCredentials && !!sheetForm.url)
+        : !!sheetForm.file;
+    
+    // At least one column must be specified
+    const hasColumn = !!sheetForm.doc_link_column?.trim() || !!sheetForm.audio_url_column?.trim();
+    
+    return hasSource && hasColumn;
 });
 
 const submitManual = () => {
@@ -330,6 +334,7 @@ const formatDate = (dateString: string | null) => {
                                     <div>
                                         <label class="block text-sm font-medium mb-2">
                                             Doc Link Column
+                                            <span class="text-muted-foreground font-normal text-xs">(optional)</span>
                                             <InformationCircleIcon 
                                                 class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
                                                 v-tippy="'Column containing Google Doc links with transcripts'"
@@ -338,13 +343,14 @@ const formatDate = (dateString: string | null) => {
                                         <input 
                                             v-model="sheetForm.doc_link_column"
                                             type="text" 
-                                            placeholder="Doc Link"
+                                            placeholder="e.g. Doc Link"
                                             class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                                         />
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium mb-2">
                                             Audio URL Column
+                                            <span class="text-muted-foreground font-normal text-xs">(optional)</span>
                                             <InformationCircleIcon 
                                                 class="w-4 h-4 inline-block ml-1 text-muted-foreground cursor-help" 
                                                 v-tippy="'Column containing audio file URLs to download'"
@@ -353,7 +359,7 @@ const formatDate = (dateString: string | null) => {
                                         <input 
                                             v-model="sheetForm.audio_url_column"
                                             type="text" 
-                                            placeholder="Audio Link"
+                                            placeholder="e.g. Audio Link"
                                             class="w-full rounded-lg border border-border bg-background px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                                         />
                                     </div>
@@ -362,7 +368,7 @@ const formatDate = (dateString: string | null) => {
                                 <!-- Instructions -->
                                 <div class="rounded-lg border border-border bg-muted/30 p-4">
                                     <p class="text-sm text-muted-foreground">
-                                        Make sure the column names match the spreadsheet headers exactly. The importer uses these names to read the transcript and audio URL columns.
+                                        Specify at least one column name. You can import transcripts only, audio only, or both together. Column names are case-insensitive.
                                     </p>
                                 </div>
 

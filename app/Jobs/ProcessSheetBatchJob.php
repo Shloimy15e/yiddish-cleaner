@@ -53,18 +53,33 @@ class ProcessSheetBatchJob implements ShouldQueue
             $availableHeaders = array_keys($rows[0] ?? []);
             $availableHeaders = array_values(array_filter($availableHeaders, fn ($header) => $header !== '_row_index'));
 
-            $docLinkHeader = $this->resolveHeader($availableHeaders, $this->docLinkColumn);
-            if (! $docLinkHeader) {
-                throw new \RuntimeException("Column '{$this->docLinkColumn}' not found in spreadsheet.");
-            }
-
+            // Both columns are optional, but at least one should be provided
+            $docLinkHeader = ! empty($this->docLinkColumn)
+                ? $this->resolveHeader($availableHeaders, $this->docLinkColumn)
+                : null;
             $audioUrlHeader = ! empty($this->audioUrlColumn)
                 ? $this->resolveHeader($availableHeaders, $this->audioUrlColumn)
                 : null;
             $nameHeader = $this->resolveHeader($availableHeaders, 'Name');
 
-            // Filter rows with doc links
-            $rowsToProcess = array_filter($rows, fn ($row) => ! empty($row[$docLinkHeader] ?? ''));
+            // Validate that at least one column was found
+            if (! $docLinkHeader && ! $audioUrlHeader) {
+                $errorParts = [];
+                if (! empty($this->docLinkColumn)) {
+                    $errorParts[] = "Doc Link column '{$this->docLinkColumn}'";
+                }
+                if (! empty($this->audioUrlColumn)) {
+                    $errorParts[] = "Audio URL column '{$this->audioUrlColumn}'";
+                }
+                throw new \RuntimeException('Column(s) not found in spreadsheet: ' . implode(', ', $errorParts) . '. Available columns: ' . implode(', ', $availableHeaders));
+            }
+
+            // Filter rows - include if either doc link OR audio URL is present
+            $rowsToProcess = array_filter($rows, function ($row) use ($docLinkHeader, $audioUrlHeader) {
+                $hasDocLink = $docLinkHeader && ! empty($row[$docLinkHeader] ?? '');
+                $hasAudioUrl = $audioUrlHeader && ! empty($row[$audioUrlHeader] ?? '');
+                return $hasDocLink || $hasAudioUrl;
+            });
 
             $rowLimit = (int) ($this->run->options['row_limit'] ?? 0);
             if ($rowLimit > 0) {
@@ -77,41 +92,56 @@ class ProcessSheetBatchJob implements ShouldQueue
             $drive->forUser($user);
 
             foreach ($rowsToProcess as $row) {
-                $docUrl = $row[$docLinkHeader];
+                $docUrl = $docLinkHeader ? ($row[$docLinkHeader] ?? '') : '';
                 $rowIndex = $row['_row_index'];
                 $audioUrl = $audioUrlHeader ? ($row[$audioUrlHeader] ?? '') : '';
 
                 try {
-                    // Create audio sample record with pending status
+                    // Determine initial status based on what data we have
+                    $hasTranscript = ! empty($docUrl);
+                    $hasAudio = ! empty($audioUrl);
+                    $initialStatus = $hasTranscript ? AudioSample::STATUS_PENDING_BASE : AudioSample::STATUS_PENDING_BASE;
+
+                    // Create audio sample record
                     $audioSample = AudioSample::create([
                         'processing_run_id' => $this->run->id,
                         'name' => $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}",
-                        'source_url' => $docUrl,
-                        'status' => AudioSample::STATUS_PENDING_BASE,
+                        'source_url' => $docUrl ?: $audioUrl,
+                        'status' => $initialStatus,
                     ]);
 
-                    $fileId = DriveService::extractFileId($docUrl);
-                    if (! $fileId) {
-                        throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
-                    }
+                    $tempPath = null;
 
-                    $tempPath = storage_path("app/temp/{$fileId}.docx");
+                    // Download transcript document if provided
+                    if ($hasTranscript) {
+                        $fileId = DriveService::extractFileId($docUrl);
+                        if (! $fileId) {
+                            throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
+                        }
 
-                    // Download or export
-                    $file = $drive->getFile($fileId);
-                    if (str_contains($file->getMimeType(), 'google-apps.document')) {
-                        $drive->exportAsDocx($fileId, $tempPath);
-                    } else {
-                        $drive->downloadFile($fileId, $tempPath);
+                        $tempPath = storage_path("app/temp/{$fileId}.docx");
+
+                        // Download or export
+                        $file = $drive->getFile($fileId);
+                        if (str_contains($file->getMimeType(), 'google-apps.document')) {
+                            $drive->exportAsDocx($fileId, $tempPath);
+                        } else {
+                            $drive->downloadFile($fileId, $tempPath);
+                        }
                     }
 
                     // Download audio file if URL is provided
-                    if (! empty($audioUrl)) {
+                    if ($hasAudio) {
                         $this->downloadAndAttachAudio($audioSample, $audioUrl, $drive);
                     }
 
-                    // Dispatch import job (no cleaning)
-                    ImportAudioSampleJob::dispatch($audioSample, $tempPath);
+                    // Dispatch import job if we have a transcript, otherwise mark as ready
+                    if ($tempPath) {
+                        ImportAudioSampleJob::dispatch($audioSample, $tempPath);
+                    } else {
+                        // Audio-only: no transcript to import, just increment completed
+                        $this->run->incrementCompleted();
+                    }
 
                     // Update sheet status (best-effort)
                     try {

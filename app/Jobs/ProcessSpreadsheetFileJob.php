@@ -62,18 +62,28 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 $columnIndex++;
             }
 
-            // Find column indexes (case-insensitive, trimmed)
-            $docLinkColumnIndex = $this->findHeaderIndex($headers, $this->docLinkColumn);
+            // Find column indexes (case-insensitive, trimmed) - both are optional
+            $docLinkColumnIndex = ! empty($this->docLinkColumn)
+                ? $this->findHeaderIndex($headers, $this->docLinkColumn)
+                : null;
             $audioUrlColumnIndex = ! empty($this->audioUrlColumn)
                 ? $this->findHeaderIndex($headers, $this->audioUrlColumn)
                 : null;
             $nameColumnIndex = $this->findHeaderIndex($headers, 'Name');
 
-            if ($docLinkColumnIndex === null) {
-                throw new \RuntimeException("Column '{$this->docLinkColumn}' not found in spreadsheet. Available columns: ".implode(', ', $headers));
+            // Validate that at least one column was found
+            if ($docLinkColumnIndex === null && $audioUrlColumnIndex === null) {
+                $errorParts = [];
+                if (! empty($this->docLinkColumn)) {
+                    $errorParts[] = "Doc Link column '{$this->docLinkColumn}'";
+                }
+                if (! empty($this->audioUrlColumn)) {
+                    $errorParts[] = "Audio URL column '{$this->audioUrlColumn}'";
+                }
+                throw new \RuntimeException('Column(s) not found in spreadsheet: ' . implode(', ', $errorParts) . '. Available columns: ' . implode(', ', $headers));
             }
 
-            $docLinkHeader = $headers[$docLinkColumnIndex];
+            $docLinkHeader = $docLinkColumnIndex !== null ? $headers[$docLinkColumnIndex] : null;
             $audioUrlHeader = $audioUrlColumnIndex !== null ? $headers[$audioUrlColumnIndex] : null;
             $nameHeader = $nameColumnIndex !== null ? $headers[$nameColumnIndex] : null;
 
@@ -95,8 +105,11 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                     $colIndex++;
                 }
 
-                // Only include rows with doc links
-                if (! empty($rowData[$docLinkHeader] ?? '')) {
+                // Include rows that have either doc link OR audio URL
+                $hasDocLink = $docLinkHeader && ! empty($rowData[$docLinkHeader] ?? '');
+                $hasAudioUrl = $audioUrlHeader && ! empty($rowData[$audioUrlHeader] ?? '');
+                
+                if ($hasDocLink || $hasAudioUrl) {
                     $rowData['_row_index'] = $row->getRowIndex();
                     $rowsToProcess[] = $rowData;
 
@@ -113,42 +126,56 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
             $drive->forUser($user);
 
             foreach ($rowsToProcess as $row) {
-                $docUrl = $row[$docLinkHeader];
+                $docUrl = $docLinkHeader ? ($row[$docLinkHeader] ?? '') : '';
                 $rowIndex = $row['_row_index'];
                 $audioUrl = $audioUrlHeader ? ($row[$audioUrlHeader] ?? '') : '';
                 $name = $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}";
 
                 try {
-                    // Create audio sample record with pending status
+                    // Determine what data we have
+                    $hasTranscript = ! empty($docUrl);
+                    $hasAudio = ! empty($audioUrl);
+
+                    // Create audio sample record
                     $audioSample = AudioSample::create([
                         'processing_run_id' => $this->run->id,
                         'name' => $name,
-                        'source_url' => $docUrl,
+                        'source_url' => $docUrl ?: $audioUrl,
                         'status' => AudioSample::STATUS_PENDING_BASE,
                     ]);
 
-                    $fileId = DriveService::extractFileId($docUrl);
-                    if (! $fileId) {
-                        throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
-                    }
+                    $tempPath = null;
 
-                    $tempPath = storage_path("app/temp/{$fileId}.docx");
+                    // Download transcript document if provided
+                    if ($hasTranscript) {
+                        $fileId = DriveService::extractFileId($docUrl);
+                        if (! $fileId) {
+                            throw new \RuntimeException("Invalid Drive URL: {$docUrl}");
+                        }
 
-                    // Download or export
-                    $file = $drive->getFile($fileId);
-                    if (str_contains($file->getMimeType(), 'google-apps.document')) {
-                        $drive->exportAsDocx($fileId, $tempPath);
-                    } else {
-                        $drive->downloadFile($fileId, $tempPath);
+                        $tempPath = storage_path("app/temp/{$fileId}.docx");
+
+                        // Download or export
+                        $file = $drive->getFile($fileId);
+                        if (str_contains($file->getMimeType(), 'google-apps.document')) {
+                            $drive->exportAsDocx($fileId, $tempPath);
+                        } else {
+                            $drive->downloadFile($fileId, $tempPath);
+                        }
                     }
 
                     // Download audio file if URL is provided
-                    if (! empty($audioUrl)) {
+                    if ($hasAudio) {
                         $this->downloadAndAttachAudio($audioSample, $audioUrl, $drive);
                     }
 
-                    // Dispatch import job (no cleaning)
-                    ImportAudioSampleJob::dispatch($audioSample, $tempPath);
+                    // Dispatch import job if we have a transcript, otherwise mark as ready
+                    if ($tempPath) {
+                        ImportAudioSampleJob::dispatch($audioSample, $tempPath);
+                    } else {
+                        // Audio-only: no transcript to import, just increment completed
+                        $this->run->incrementCompleted();
+                    }
 
                 } catch (Throwable $e) {
                     if (isset($audioSample)) {
