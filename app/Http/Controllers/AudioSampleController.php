@@ -9,10 +9,14 @@ use App\Jobs\TranscribeAudioSampleJob;
 use App\Models\AudioSample;
 use App\Models\AudioSampleStatusHistory;
 use App\Models\ProcessingRun;
-use App\Services\Document\ParserService;
+use App\Services\Cleaning\CleanerService;
+use App\Services\Cleaning\CleaningResult;
+use App\Services\Cleaning\CleanRateCalculator;
 use App\Services\DocxWriterService;
+use App\Services\Document\ParserService;
 use App\Services\Google\GoogleAuthService;
 use App\Services\Google\SheetsService;
+use App\Services\Llm\LlmManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -43,6 +47,7 @@ class AudioSampleController extends Controller
             'statuses' => AudioSample::STATUSES,
         ]);
     }
+
 
     /**
      * Show the form for creating audio samples (import page).
@@ -94,7 +99,7 @@ class AudioSampleController extends Controller
         ]);
 
         // Ensure at least one transcript source is provided
-        if (! $request->transcript_url && ! $request->hasFile('transcript_file')) {
+        if (!$request->transcript_url && !$request->hasFile('transcript_file')) {
             return back()->withErrors(['transcript_url' => 'A transcript URL or file is required.']);
         }
 
@@ -302,6 +307,36 @@ class AudioSampleController extends Controller
     }
 
     /**
+     * Bulk delete audio samples.
+     */
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'exists:audio_samples,id',
+        ]);
+
+        $user = $request->user();
+
+        $samples = AudioSample::whereIn('id', $request->ids)
+            ->whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id))
+            ->get();
+
+        if ($samples->isEmpty()) {
+            return back()->withErrors(['error' => 'No samples available for deletion.']);
+        }
+
+        $count = 0;
+        foreach ($samples as $sample) {
+            $this->authorize('delete', $sample);
+            $sample->delete();
+            $count++;
+        }
+
+        return back()->with('success', "Deleted {$count} sample(s)." );
+    }
+
+    /**
      * Update an audio sample's cleaned text (inline edit).
      */
     public function update(Request $request, AudioSample $audioSample)
@@ -393,8 +428,8 @@ class AudioSampleController extends Controller
         // Log status history
         AudioSampleStatusHistory::log(
             audioSample: $audioSample,
-            action: $hadTranscript
-                ? AudioSampleStatusHistory::ACTION_TRANSCRIPT_REPLACED
+            action: $hadTranscript 
+                ? AudioSampleStatusHistory::ACTION_TRANSCRIPT_REPLACED 
                 : AudioSampleStatusHistory::ACTION_TRANSCRIPT_UPLOADED,
             fromStatus: $previousStatus,
             toStatus: AudioSample::STATUS_IMPORTED,
@@ -579,7 +614,7 @@ class AudioSampleController extends Controller
 
         $docLinkColumn = trim((string) $request->input('doc_link_column', 'Doc Link'));
         $audioUrlColumn = trim((string) $request->input('audio_url_column', ''));
-        $sheetName = trim((string) $request->input('sheet_name', 'Sheet1'));
+        $sheetName = trim((string) $request->input('sheet_name', ''));
 
         $user = $request->user();
         $isFileUpload = $request->hasFile('file');
@@ -624,6 +659,13 @@ class AudioSampleController extends Controller
             return back()->withErrors(['url' => 'Invalid Google Sheets URL']);
         }
 
+        logger()->info('Spreadsheet info:', [
+            'spreadsheet_id' => $spreadsheetId,
+            'sheet_name' => $sheetName,
+            'doc_link_column' => $docLinkColumn,
+            'audio_url_column' => $audioUrlColumn,
+        ]);
+
         // Create run (import only, no cleaning)
         $run = ProcessingRun::create([
             'user_id' => $user->id,
@@ -643,7 +685,7 @@ class AudioSampleController extends Controller
         ProcessSheetBatchJob::dispatch(
             $run,
             $spreadsheetId,
-            $sheetName ?: 'Sheet1',
+            $sheetName,
             $docLinkColumn,
             $audioUrlColumn,
         );
@@ -651,6 +693,7 @@ class AudioSampleController extends Controller
         return redirect()->route('audio-samples.run', $run)
             ->with('success', 'Batch import started.');
     }
+
 
     /**
      * Transcribe an audio sample using ASR.

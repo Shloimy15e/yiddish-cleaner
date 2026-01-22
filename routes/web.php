@@ -35,9 +35,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/audio-samples/runs/{run}', [ProcessingRunController::class, 'show'])->name('audio-samples.run');
     Route::get('/audio-samples/{audioSample}', [AudioSampleController::class, 'show'])->name('audio-samples.show');
     Route::patch('/audio-samples/{audioSample}', [AudioSampleController::class, 'update'])->name('audio-samples.update');
-    Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');
     Route::post('/audio-samples/{audioSample}/clean', [AudioSampleController::class, 'clean'])->name('audio-samples.clean');
     Route::post('/audio-samples/bulk-clean', [AudioSampleController::class, 'bulkClean'])->name('audio-samples.bulk-clean');
+    Route::delete('/audio-samples/bulk-delete', [AudioSampleController::class, 'bulkDelete'])->name('audio-samples.bulk-delete');
+    Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');
     Route::post('/audio-samples/{audioSample}/transcript', [AudioSampleController::class, 'uploadTranscript'])->name('audio-samples.upload-transcript');
     Route::post('/audio-samples/{audioSample}/audio', [AudioSampleController::class, 'uploadAudio'])->name('audio-samples.upload-audio');
     Route::get('/audio-samples/{audioSample}/download', [AudioSampleController::class, 'download'])->name('audio-samples.download');

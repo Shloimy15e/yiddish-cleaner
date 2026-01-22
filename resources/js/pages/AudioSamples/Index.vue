@@ -107,6 +107,10 @@ const bulkCleanForm = useForm({
     llm_model: 'anthropic/claude-sonnet-4',
 });
 
+const bulkDeleteForm = useForm({
+    ids: [] as number[],
+});
+
 const submitBulkClean = () => {
     bulkCleanForm.ids = Array.from(selectedIds.value);
     bulkCleanForm.post(route('audio-samples.bulk-clean'), {
@@ -116,7 +120,22 @@ const submitBulkClean = () => {
             selectAll.value = false;
         },
     });
-};      
+};
+
+const submitBulkDelete = () => {
+    if (!confirm(`Delete ${selectedCount.value} selected sample(s)? This cannot be undone.`)) {
+        return;
+    }
+
+    bulkDeleteForm.ids = Array.from(selectedIds.value);
+    bulkDeleteForm.delete(route('audio-samples.bulk-delete'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            selectedIds.value = new Set();
+            selectAll.value = false;
+        },
+    });
+};
 
 // Get display text for cleaning method
 const getMethodDisplay = (run: AudioSampleProcessingRunSummary | null) => {
@@ -325,6 +344,13 @@ watch(search, () => {
                     >
                         <SparklesIcon class="w-4 h-4" />
                         {{ bulkCleanForm.processing ? 'Cleaning...' : 'Bulk Clean' }}
+                    </button>
+                    <button 
+                        @click="submitBulkDelete"
+                        :disabled="bulkDeleteForm.processing"
+                        class="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white px-4 py-2 font-medium hover:bg-red-700 disabled:opacity-50"
+                    >
+                        {{ bulkDeleteForm.processing ? 'Deleting...' : 'Bulk Delete' }}
                     </button>
                 </div>
             </div>
