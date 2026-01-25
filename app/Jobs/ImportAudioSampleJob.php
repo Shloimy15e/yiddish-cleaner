@@ -6,6 +6,7 @@ use App\Events\AudioSampleProcessed;
 use App\Models\AudioSample;
 use App\Models\Transcription;
 use App\Services\Document\ParserService;
+use App\Services\Google\SheetsService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -31,9 +32,10 @@ class ImportAudioSampleJob implements ShouldQueue
     public function __construct(
         public AudioSample $audioSample,
         public ?string $filePath = null,
+        public ?array $sheetContext = null,
     ) {}
 
-    public function handle(ParserService $parser): void
+    public function handle(ParserService $parser, SheetsService $sheets): void
     {
         $run = $this->audioSample->processingRun;
 
@@ -57,6 +59,13 @@ class ImportAudioSampleJob implements ShouldQueue
                 ]);
                 $run->incrementCompleted();
 
+                $this->updateSheet($sheets, [
+                    'Processing Status' => 'Pending Base',
+                    'Audio Sample ID' => (string) $this->audioSample->id,
+                    'Transcription ID' => '',
+                    'Error Message' => '',
+                ]);
+
                 if ($this->filePath) {
                     $parser->cleanup($this->filePath);
                 }
@@ -70,10 +79,16 @@ class ImportAudioSampleJob implements ShouldQueue
             $rawHash = hash('sha256', $text);
 
             // Create a base transcription linked to this audio sample
-            Transcription::create([
+            $transcriptionFileName = $this->sheetContext['transcription_file_name'] ?? null;
+            $rowIndex = $this->sheetContext['row_index'] ?? null;
+            $transcriptionName = ($transcriptionFileName && $rowIndex)
+                ? "Row {$rowIndex} - {$transcriptionFileName}"
+                : $this->audioSample->name;
+
+            $transcription = Transcription::create([
                 'type' => Transcription::TYPE_BASE,
                 'audio_sample_id' => $this->audioSample->id,
-                'name' => $this->audioSample->name,
+                'name' => $transcriptionName,
                 'source' => Transcription::SOURCE_IMPORTED,
                 'status' => Transcription::STATUS_COMPLETED,
                 'text_raw' => $text,
@@ -87,6 +102,13 @@ class ImportAudioSampleJob implements ShouldQueue
 
             $run->incrementCompleted();
 
+            $this->updateSheet($sheets, [
+                'Processing Status' => 'Imported',
+                'Audio Sample ID' => (string) $this->audioSample->id,
+                'Transcription ID' => (string) $transcription->id,
+                'Error Message' => '',
+            ]);
+
             if ($this->filePath) {
                 $parser->cleanup($this->filePath);
             }
@@ -98,6 +120,13 @@ class ImportAudioSampleJob implements ShouldQueue
             ]);
 
             $run->incrementFailed();
+
+            $this->updateSheet($sheets, [
+                'Processing Status' => 'Failed',
+                'Audio Sample ID' => (string) $this->audioSample->id,
+                'Transcription ID' => '',
+                'Error Message' => $e->getMessage(),
+            ]);
         }
 
         event(new AudioSampleProcessed($run->fresh(), $this->audioSample->fresh()));
@@ -111,5 +140,34 @@ class ImportAudioSampleJob implements ShouldQueue
         ]);
 
         $this->audioSample->processingRun->incrementFailed();
+
+        $this->updateSheet(app(SheetsService::class), [
+            'Processing Status' => 'Failed',
+            'Audio Sample ID' => (string) $this->audioSample->id,
+            'Transcription ID' => '',
+            'Error Message' => $exception->getMessage(),
+        ]);
+    }
+
+    private function updateSheet(SheetsService $sheets, array $values): void
+    {
+        if (! $this->sheetContext) {
+            return;
+        }
+
+        $spreadsheetId = $this->sheetContext['spreadsheet_id'] ?? null;
+        $sheetName = $this->sheetContext['sheet_name'] ?? '';
+        $rowIndex = $this->sheetContext['row_index'] ?? null;
+
+        if (! $spreadsheetId || ! $rowIndex) {
+            return;
+        }
+
+        try {
+            $sheets->forUser($this->audioSample->processingRun->user);
+            $sheets->updateColumns($spreadsheetId, $sheetName, (int) $rowIndex, $values);
+        } catch (Throwable) {
+            // Ignore sheet update failures
+        }
     }
 }

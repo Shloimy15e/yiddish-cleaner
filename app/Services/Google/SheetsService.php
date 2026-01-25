@@ -139,6 +139,28 @@ class SheetsService
     }
 
     /**
+     * Ensure the sheet has the specified header columns, appending any missing ones.
+     *
+     * @return array<int, string> Updated headers
+     */
+    public function ensureColumns(string $spreadsheetId, string $sheetName, array $columnNames): array
+    {
+        $this->ensureService();
+
+        $resolvedSheetName = $this->resolveSheetName($spreadsheetId, $sheetName);
+        $headers = $this->getValues($spreadsheetId, $this->buildRange($resolvedSheetName, '1:1'))[0] ?? [];
+
+        $missing = array_values(array_filter($columnNames, fn ($name) => ! in_array($name, $headers, true)));
+
+        if (! empty($missing)) {
+            $headers = array_merge($headers, $missing);
+            $this->updateRow($spreadsheetId, $resolvedSheetName, 1, $headers);
+        }
+
+        return $headers;
+    }
+
+    /**
      * Find column index for a header name.
      */
     public function findColumn(string $spreadsheetId, string $sheetName, string $headerName): ?int

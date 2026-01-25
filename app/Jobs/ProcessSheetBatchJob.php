@@ -47,6 +47,12 @@ class ProcessSheetBatchJob implements ShouldQueue
 
             // Get rows from sheet
             $sheets->forUser($user);
+            $sheets->ensureColumns($this->spreadsheetId, $this->sheetName, [
+                'Processing Status',
+                'Audio Sample ID',
+                'Transcription ID',
+                'Error Message',
+            ]);
             $rows = $sheets->getRowsWithHeaders($this->spreadsheetId, $this->sheetName);
 
             // Resolve header names (case-insensitive, trimmed)
@@ -105,14 +111,27 @@ class ProcessSheetBatchJob implements ShouldQueue
                     // Create audio sample record
                     $audioSample = AudioSample::create([
                         'processing_run_id' => $this->run->id,
-                        'name' => $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}",
+                        'name' => "Row {$rowIndex}",
                         'source_url' => $docUrl ?: $audioUrl,
                         'status' => $initialStatus,
                     ]);
 
+                    // Update sheet with processing status and audio sample id
+                    try {
+                        $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
+                            'Processing Status' => 'Processing',
+                            'Audio Sample ID' => (string) $audioSample->id,
+                            'Transcription ID' => '',
+                            'Error Message' => '',
+                        ]);
+                    } catch (Throwable) {
+                        // Ignore status update failures to keep batch running
+                    }
+
                     $tempPath = null;
 
                     // Download transcript document if provided
+                    $transcriptFileName = null;
                     if ($hasTranscript) {
                         $fileId = DriveService::extractFileId($docUrl);
                         if (! $fileId) {
@@ -124,11 +143,14 @@ class ProcessSheetBatchJob implements ShouldQueue
                             mkdir($tempDir, 0755, true);
                         }
 
-                        $tempPath = $tempDir."/{$fileId}.docx";
-
                         // Download or export
                         $file = $drive->getFile($fileId);
-                        if (str_contains($file->getMimeType(), 'google-apps.document')) {
+                        $transcriptFileName = $file->getName();
+                        $isGoogleDoc = str_contains((string) $file->getMimeType(), 'google-apps.document');
+                        $extension = $this->resolveDocExtension($file->getName(), (string) $file->getMimeType(), $isGoogleDoc);
+                        $tempPath = $tempDir."/{$fileId}.{$extension}";
+
+                        if ($isGoogleDoc) {
                             $drive->exportAsDocx($fileId, $tempPath);
                         } else {
                             $drive->downloadFile($fileId, $tempPath);
@@ -136,16 +158,39 @@ class ProcessSheetBatchJob implements ShouldQueue
                     }
 
                     // Download audio file if URL is provided
+                    $audioFileName = null;
                     if ($hasAudio) {
-                        $this->downloadAndAttachAudio($audioSample, $audioUrl, $drive);
+                        $audioFileName = $this->downloadAndAttachAudio($audioSample, $audioUrl, $drive);
+                    }
+
+                    if ($audioFileName) {
+                        $audioSample->update([
+                            'name' => "Row {$rowIndex} - {$audioFileName}",
+                        ]);
                     }
 
                     // Dispatch import job if we have a transcript, otherwise mark as ready
                     if ($tempPath) {
-                        ImportAudioSampleJob::dispatch($audioSample, $tempPath);
+                        ImportAudioSampleJob::dispatch($audioSample, $tempPath, [
+                            'spreadsheet_id' => $this->spreadsheetId,
+                            'sheet_name' => $this->sheetName,
+                            'row_index' => $rowIndex,
+                            'transcription_file_name' => $transcriptFileName,
+                        ]);
                     } else {
                         // Audio-only: no transcript to import, just increment completed
                         $this->run->incrementCompleted();
+
+                        try {
+                            $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
+                                'Processing Status' => 'Imported (audio only)',
+                                'Audio Sample ID' => (string) $audioSample->id,
+                                'Transcription ID' => '',
+                                'Error Message' => '',
+                            ]);
+                        } catch (Throwable) {
+                            // Ignore status update failures to keep batch running
+                        }
                     }
 
                     // Update sheet status (best-effort)
@@ -170,6 +215,8 @@ class ProcessSheetBatchJob implements ShouldQueue
                     try {
                         $sheets->updateColumns($this->spreadsheetId, $this->sheetName, $rowIndex, [
                             'Status' => '',
+                            'Processing Status' => 'Failed',
+                            'Error Message' => $e->getMessage(),
                         ]);
                     } catch (Throwable) {
                         // Ignore status update failures to keep batch running
@@ -200,7 +247,7 @@ class ProcessSheetBatchJob implements ShouldQueue
     /**
      * Download audio file from URL and attach to AudioSample via Spatie Media Library.
      */
-    protected function downloadAndAttachAudio(AudioSample $audioSample, string $audioUrl, DriveService $drive): void
+    protected function downloadAndAttachAudio(AudioSample $audioSample, string $audioUrl, DriveService $drive): ?string
     {
         // Check if it's a Google Drive URL
         $fileId = DriveService::extractFileId($audioUrl);
@@ -225,10 +272,17 @@ class ProcessSheetBatchJob implements ShouldQueue
             if (file_exists($tempPath)) {
                 unlink($tempPath);
             }
+
+            return $fileName;
         } else {
             // Download from regular URL
             $audioSample->addMediaFromUrl($audioUrl)
                 ->toMediaCollection('audio');
+
+            $path = (string) parse_url($audioUrl, PHP_URL_PATH);
+            $base = $path !== '' ? basename($path) : '';
+
+            return $base !== '' ? $base : null;
         }
     }
 
@@ -246,6 +300,30 @@ class ProcessSheetBatchJob implements ShouldQueue
         }
 
         return null;
+    }
+
+    private function resolveDocExtension(string $fileName, string $mimeType, bool $isGoogleDoc): string
+    {
+        if ($isGoogleDoc) {
+            return 'docx';
+        }
+
+        $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        if ($extension !== '') {
+            return $extension;
+        }
+
+        return $this->mapMimeToExtension($mimeType) ?? 'docx';
+    }
+
+    private function mapMimeToExtension(string $mimeType): ?string
+    {
+        return match (strtolower($mimeType)) {
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'text/plain' => 'txt',
+            default => null,
+        };
     }
 
 }

@@ -129,7 +129,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                 $docUrl = $docLinkHeader ? ($row[$docLinkHeader] ?? '') : '';
                 $rowIndex = $row['_row_index'];
                 $audioUrl = $audioUrlHeader ? ($row[$audioUrlHeader] ?? '') : '';
-                $name = $nameHeader ? ($row[$nameHeader] ?? "Row {$rowIndex}") : "Row {$rowIndex}";
+                $name = "Row {$rowIndex}";
 
                 try {
                     // Determine what data we have
@@ -147,6 +147,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                     $tempPath = null;
 
                     // Download transcript document if provided
+                    $transcriptFileName = null;
                     if ($hasTranscript) {
                         $fileId = DriveService::extractFileId($docUrl);
                         if (! $fileId) {
@@ -158,11 +159,14 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                             mkdir($tempDir, 0755, true);
                         }
 
-                        $tempPath = $tempDir."/{$fileId}.docx";
-
                         // Download or export
                         $file = $drive->getFile($fileId);
-                        if (str_contains($file->getMimeType(), 'google-apps.document')) {
+                        $transcriptFileName = $file->getName();
+                        $isGoogleDoc = str_contains((string) $file->getMimeType(), 'google-apps.document');
+                        $extension = $this->resolveDocExtension($file->getName(), (string) $file->getMimeType(), $isGoogleDoc);
+                        $tempPath = $tempDir."/{$fileId}.{$extension}";
+
+                        if ($isGoogleDoc) {
                             $drive->exportAsDocx($fileId, $tempPath);
                         } else {
                             $drive->downloadFile($fileId, $tempPath);
@@ -170,13 +174,22 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
                     }
 
                     // Download audio file if URL is provided
+                    $audioFileName = null;
                     if ($hasAudio) {
-                        $this->downloadAndAttachAudio($audioSample, $audioUrl, $drive);
+                        $audioFileName = $this->downloadAndAttachAudio($audioSample, $audioUrl, $drive);
+                    }
+
+                    if ($audioFileName) {
+                        $audioSample->update([
+                            'name' => "Row {$rowIndex} - {$audioFileName}",
+                        ]);
                     }
 
                     // Dispatch import job if we have a transcript, otherwise mark as ready
                     if ($tempPath) {
-                        ImportAudioSampleJob::dispatch($audioSample, $tempPath);
+                        ImportAudioSampleJob::dispatch($audioSample, $tempPath, [
+                            'transcription_file_name' => $transcriptFileName,
+                        ]);
                     } else {
                         // Audio-only: no transcript to import, just increment completed
                         $this->run->incrementCompleted();
@@ -225,7 +238,7 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
     /**
      * Download audio file from URL and attach to AudioSample via Spatie Media Library.
      */
-    protected function downloadAndAttachAudio(AudioSample $audioSample, string $audioUrl, DriveService $drive): void
+    protected function downloadAndAttachAudio(AudioSample $audioSample, string $audioUrl, DriveService $drive): ?string
     {
         // Check if it's a Google Drive URL
         $fileId = DriveService::extractFileId($audioUrl);
@@ -250,11 +263,42 @@ class ProcessSpreadsheetFileJob implements ShouldQueue
             if (file_exists($tempPath)) {
                 unlink($tempPath);
             }
+
+            return $fileName;
         } else {
             // Download from regular URL
             $audioSample->addMediaFromUrl($audioUrl)
                 ->toMediaCollection('audio');
+
+            $path = (string) parse_url($audioUrl, PHP_URL_PATH);
+            $base = $path !== '' ? basename($path) : '';
+
+            return $base !== '' ? $base : null;
         }
+    }
+
+    private function resolveDocExtension(string $fileName, string $mimeType, bool $isGoogleDoc): string
+    {
+        if ($isGoogleDoc) {
+            return 'docx';
+        }
+
+        $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        if ($extension !== '') {
+            return $extension;
+        }
+
+        return $this->mapMimeToExtension($mimeType) ?? 'docx';
+    }
+
+    private function mapMimeToExtension(string $mimeType): ?string
+    {
+        return match (strtolower($mimeType)) {
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'text/plain' => 'txt',
+            default => null,
+        };
     }
 
     private function findHeaderIndex(array $headers, string $columnName): ?int
