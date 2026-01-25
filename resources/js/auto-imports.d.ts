@@ -6,13 +6,36 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const ArrowPathIcon: typeof import('@heroicons/vue/24/outline').ArrowPathIcon
+  const CheckCircleIcon: typeof import('@heroicons/vue/24/outline').CheckCircleIcon
+  const CheckIcon: typeof import('@heroicons/vue/20/solid').CheckIcon
+  const ChevronUpDownIcon: typeof import('@heroicons/vue/20/solid').ChevronUpDownIcon
+  const CpuChipIcon: typeof import('@heroicons/vue/24/outline').CpuChipIcon
+  const DocumentTextIcon: typeof import('@heroicons/vue/24/outline').DocumentTextIcon
   const EffectScope: typeof import('vue').EffectScope
+  const InformationCircleIcon: typeof import('@heroicons/vue/24/outline').InformationCircleIcon
   const Link: typeof import('@inertiajs/vue3').Link
+  const LinkIcon: typeof import('@heroicons/vue/24/outline').LinkIcon
+  const Listbox: typeof import('@headlessui/vue').Listbox
+  const ListboxButton: typeof import('@headlessui/vue').ListboxButton
+  const ListboxOption: typeof import('@headlessui/vue').ListboxOption
+  const ListboxOptions: typeof import('@headlessui/vue').ListboxOptions
+  const Loader: typeof import('lucide-vue-next').Loader
+  const PencilIcon: typeof import('@heroicons/vue/24/outline').PencilIcon
+  const SparklesIcon: typeof import('@heroicons/vue/24/outline').SparklesIcon
+  const TrashIcon: typeof import('@heroicons/vue/24/outline').TrashIcon
+  const XCircleIcon: typeof import('@heroicons/vue/24/outline').XCircleIcon
   const activate: typeof import('./routes/training/index').activate
   const api: typeof import('./routes/api/index').default
   const apiCredentials: typeof import('./routes/settings/api-credentials/index').default
   const appearance: typeof import('./routes/appearance/index').default
+  const audioSampleStatusClasses: typeof import('./lib/audioSampleStatus').audioSampleStatusClasses
+  const audioSampleStatusLabels: typeof import('./lib/audioSampleStatus').audioSampleStatusLabels
+  const buildAlignmentFromDiff: typeof import('./lib/transcriptionUtils').buildAlignmentFromDiff
+  const calculateDiffStats: typeof import('./lib/transcriptionUtils').calculateDiffStats
   const callback: typeof import('./routes/google/index').callback
+  const cleanRateCategoryClasses: typeof import('./lib/cleanRate').cleanRateCategoryClasses
+  const cn: typeof import('./lib/utils').cn
   const computed: typeof import('vue').computed
   const confirm: typeof import('./routes/two-factor/index').confirm
   const confirmation: typeof import('./routes/password/index').confirmation
@@ -20,6 +43,7 @@ declare global {
   const createApp: typeof import('vue').createApp
   const customRef: typeof import('vue').customRef
   const dashboard: typeof import('./routes/index').dashboard
+  const decodeHtmlEntities: typeof import('./lib/utils').decodeHtmlEntities
   const defineAsyncComponent: typeof import('vue').defineAsyncComponent
   const defineComponent: typeof import('vue').defineComponent
   const deleteMethod: typeof import('./routes/settings/api-credentials/index').deleteMethod
@@ -34,11 +58,24 @@ declare global {
   const email: typeof import('./routes/password/index').email
   const enable: typeof import('./routes/two-factor/index').enable
   const exportMethod: typeof import('./routes/training/index').exportMethod
+  const formatCreatedBy: typeof import('./lib/createdBy').formatCreatedBy
+  const formatDate: typeof import('./lib/date').formatDate
+  const formatDateTime: typeof import('./lib/date').formatDateTime
+  const formatErrorRate: typeof import('./lib/asrMetrics').formatErrorRate
+  const formatStatus: typeof import('./lib/transcriptionUtils').formatStatus
+  const formatTimeAgo: typeof import('./lib/date').formatTimeAgo
+  const generateDiff: typeof import('./lib/transcriptionUtils').generateDiff
+  const getAudioSampleStatusClass: typeof import('./lib/audioSampleStatus').getAudioSampleStatusClass
+  const getAudioSampleStatusLabel: typeof import('./lib/audioSampleStatus').getAudioSampleStatusLabel
+  const getCleanRateCategoryClass: typeof import('./lib/cleanRate').getCleanRateCategoryClass
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const getInitials: typeof import('./composables/useInitials').getInitials
+  const getProcessRunStatusClass: typeof import('./lib/processRunStatus').getProcessRunStatusClass
+  const getProcessRunStatusLabel: typeof import('./lib/processRunStatus').getProcessRunStatusLabel
   const getRouteNames: typeof import('./composables/useRoute').getRouteNames
+  const getWerColor: typeof import('./lib/asrMetrics').getWerColor
   const google: typeof import('./routes/google/index').default
   const h: typeof import('vue').h
   const home: typeof import('./routes/index').home
@@ -57,6 +94,7 @@ declare global {
   const markRaw: typeof import('vue').markRaw
   const models: typeof import('./routes/api/llm/index').models
   const nextTick: typeof import('vue').nextTick
+  const normalizeErrorRate: typeof import('./lib/asrMetrics').normalizeErrorRate
   const notice: typeof import('./routes/verification/index').notice
   const onActivated: typeof import('vue').onActivated
   const onBeforeMount: typeof import('vue').onBeforeMount
@@ -74,6 +112,8 @@ declare global {
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
   const password: typeof import('./routes/password/index').default
   const process: typeof import('./routes/process/index').default
+  const processRunStatusClasses: typeof import('./lib/processRunStatus').processRunStatusClasses
+  const processRunStatusLabels: typeof import('./lib/processRunStatus').processRunStatusLabels
   const profile: typeof import('./routes/profile/index').default
   const provide: typeof import('vue').provide
   const providers: typeof import('./routes/api/llm/index').providers
@@ -100,12 +140,15 @@ declare global {
   const shallowRef: typeof import('vue').shallowRef
   const sheet: typeof import('./routes/process/index').sheet
   const show: typeof import('./routes/two-factor/index').show
+  const statusClass: typeof import('./lib/transcriptionUtils').statusClass
   const storage: typeof import('./routes/storage/index').default
   const store: typeof import('./routes/two-factor/login/index').store
   const toRaw: typeof import('vue').toRaw
   const toRef: typeof import('vue').toRef
   const toRefs: typeof import('vue').toRefs
+  const toUrl: typeof import('./lib/utils').toUrl
   const toValue: typeof import('vue').toValue
+  const tokenize: typeof import('./lib/transcriptionUtils').tokenize
   const training: typeof import('./routes/training/index').default
   const triggerRef: typeof import('vue').triggerRef
   const twoFactor: typeof import('./routes/two-factor/index').default
@@ -145,6 +188,12 @@ declare global {
   // @ts-ignore
   export type { ResolvedAppearance } from './composables/useAppearance'
   import('./composables/useAppearance')
+  // @ts-ignore
+  export type { CleanRateCategory } from './lib/cleanRate'
+  import('./lib/cleanRate')
+  // @ts-ignore
+  export type { CreatorInfo } from './lib/createdBy'
+  import('./lib/createdBy')
 }
 
 // for vue template auto import
@@ -153,16 +202,36 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly audioSampleStatusClasses: UnwrapRef<typeof import('./lib/audioSampleStatus')['audioSampleStatusClasses']>
+    readonly audioSampleStatusLabels: UnwrapRef<typeof import('./lib/audioSampleStatus')['audioSampleStatusLabels']>
+    readonly buildAlignmentFromDiff: UnwrapRef<typeof import('./lib/transcriptionUtils')['buildAlignmentFromDiff']>
+    readonly calculateDiffStats: UnwrapRef<typeof import('./lib/transcriptionUtils')['calculateDiffStats']>
+    readonly cleanRateCategoryClasses: UnwrapRef<typeof import('./lib/cleanRate')['cleanRateCategoryClasses']>
+    readonly cn: UnwrapRef<typeof import('./lib/utils')['cn']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
+    readonly decodeHtmlEntities: UnwrapRef<typeof import('./lib/utils')['decodeHtmlEntities']>
     readonly defineAsyncComponent: UnwrapRef<typeof import('vue')['defineAsyncComponent']>
     readonly defineComponent: UnwrapRef<typeof import('vue')['defineComponent']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
+    readonly formatCreatedBy: UnwrapRef<typeof import('./lib/createdBy')['formatCreatedBy']>
+    readonly formatDate: UnwrapRef<typeof import('./lib/date')['formatDate']>
+    readonly formatDateTime: UnwrapRef<typeof import('./lib/date')['formatDateTime']>
+    readonly formatErrorRate: UnwrapRef<typeof import('./lib/asrMetrics')['formatErrorRate']>
+    readonly formatStatus: UnwrapRef<typeof import('./lib/transcriptionUtils')['formatStatus']>
+    readonly formatTimeAgo: UnwrapRef<typeof import('./lib/date')['formatTimeAgo']>
+    readonly generateDiff: UnwrapRef<typeof import('./lib/transcriptionUtils')['generateDiff']>
+    readonly getAudioSampleStatusClass: UnwrapRef<typeof import('./lib/audioSampleStatus')['getAudioSampleStatusClass']>
+    readonly getAudioSampleStatusLabel: UnwrapRef<typeof import('./lib/audioSampleStatus')['getAudioSampleStatusLabel']>
+    readonly getCleanRateCategoryClass: UnwrapRef<typeof import('./lib/cleanRate')['getCleanRateCategoryClass']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly getInitials: UnwrapRef<typeof import('./composables/useInitials')['getInitials']>
+    readonly getProcessRunStatusClass: UnwrapRef<typeof import('./lib/processRunStatus')['getProcessRunStatusClass']>
+    readonly getProcessRunStatusLabel: UnwrapRef<typeof import('./lib/processRunStatus')['getProcessRunStatusLabel']>
+    readonly getWerColor: UnwrapRef<typeof import('./lib/asrMetrics')['getWerColor']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly initializeTheme: UnwrapRef<typeof import('./composables/useAppearance')['initializeTheme']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
@@ -173,6 +242,7 @@ declare module 'vue' {
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
+    readonly normalizeErrorRate: UnwrapRef<typeof import('./lib/asrMetrics')['normalizeErrorRate']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
     readonly onBeforeUnmount: UnwrapRef<typeof import('vue')['onBeforeUnmount']>
@@ -187,6 +257,8 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly processRunStatusClasses: UnwrapRef<typeof import('./lib/processRunStatus')['processRunStatusClasses']>
+    readonly processRunStatusLabels: UnwrapRef<typeof import('./lib/processRunStatus')['processRunStatusLabels']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly reactive: UnwrapRef<typeof import('vue')['reactive']>
     readonly readonly: UnwrapRef<typeof import('vue')['readonly']>
@@ -197,10 +269,13 @@ declare module 'vue' {
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
+    readonly statusClass: UnwrapRef<typeof import('./lib/transcriptionUtils')['statusClass']>
     readonly toRaw: UnwrapRef<typeof import('vue')['toRaw']>
     readonly toRef: UnwrapRef<typeof import('vue')['toRef']>
     readonly toRefs: UnwrapRef<typeof import('vue')['toRefs']>
+    readonly toUrl: UnwrapRef<typeof import('./lib/utils')['toUrl']>
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
+    readonly tokenize: UnwrapRef<typeof import('./lib/transcriptionUtils')['tokenize']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly unref: UnwrapRef<typeof import('vue')['unref']>
     readonly updateTheme: UnwrapRef<typeof import('./composables/useAppearance')['updateTheme']>

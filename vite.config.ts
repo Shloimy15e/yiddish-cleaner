@@ -27,6 +27,7 @@ export default defineConfig({
             ],
             dirs: [
                 './resources/js/composables/**',
+                './resources/js/lib/**',
             ],
             dts: './resources/js/auto-imports.d.ts',
             vueTemplate: true,
