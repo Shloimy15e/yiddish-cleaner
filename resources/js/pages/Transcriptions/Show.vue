@@ -881,7 +881,7 @@ const chunkedAlignment = computed(() => {
 
                         <!-- Unified Diff View (Inline) - uses liveDiff when editing -->
                         <div v-if="diffViewMode === 'unified'" class="max-h-80 overflow-auto p-6">
-                            <div class="whitespace-pre-wrap font-mono text-sm leading-relaxed" dir="auto">
+                            <div class="whitespace-pre-wrap font-sans text-base leading-loose" dir="auto">
                                 <template v-for="(segment, i) in (isDiffEditing ? liveDiff : charDiff)" :key="'unified-' + i">
                                     <span v-if="segment.type === 'removed'" class="rounded bg-red-200 px-0.5 line-through decoration-red-500/70 text-red-900 dark:bg-red-900/50 dark:text-red-200">{{ segment.text }}</span><span v-else-if="segment.type === 'added'" class="rounded bg-emerald-200 px-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">{{ segment.text }}</span><span v-else>{{ segment.text }}</span>
                                 </template>
@@ -897,7 +897,7 @@ const chunkedAlignment = computed(() => {
                                     <span class="text-sm font-medium text-red-700 dark:text-red-400">Original</span>
                                 </div>
                                 <div class="h-80 overflow-auto p-4">
-                                    <div class="whitespace-pre-wrap font-mono text-sm" dir="auto">
+                                    <div class="whitespace-pre-wrap font-sans text-base leading-loose" dir="auto">
                                         <template v-for="(segment, i) in liveDiff" :key="'orig-' + i">
                                             <span v-if="segment.type === 'removed'" class="rounded bg-red-200 px-0.5 line-through decoration-red-500/70 text-red-900 dark:bg-red-900/50 dark:text-red-200">{{ segment.text }}</span><span v-else-if="segment.type === 'added'" class="rounded bg-emerald-200 px-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">{{ segment.text }}</span><span v-else>{{ segment.text }}</span>
                                         </template>
@@ -913,10 +913,10 @@ const chunkedAlignment = computed(() => {
                                     </span>
                                 </div>
                                 <!-- Editable textarea when editing in split mode -->
-                                <textarea v-if="isDiffEditing" v-model="diffEditedText" class="h-80 flex-1 resize-none border-0 bg-emerald-50/30 p-4 font-mono text-sm focus:ring-0 dark:bg-emerald-950/10" dir="auto" placeholder="Edit the cleaned text here..."></textarea>
+                                <textarea v-if="isDiffEditing" v-model="diffEditedText" class="h-80 flex-1 resize-none border-0 bg-emerald-50/30 p-4 font-sans text-base leading-loose focus:ring-0 dark:bg-emerald-950/10" dir="auto" placeholder="Edit the cleaned text here..."></textarea>
                                 <!-- Read-only diff display when not editing -->
                                 <div v-else class="h-80 overflow-auto p-4">
-                                    <div class="whitespace-pre-wrap font-mono text-sm" dir="auto">
+                                    <div class="whitespace-pre-wrap font-sans text-base leading-loose" dir="auto">
                                         <template v-for="(segment, i) in charDiff" :key="'clean-' + i">
                                             <span v-if="segment.type === 'added'" class="rounded bg-emerald-200 px-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">{{ segment.text }}</span>
                                             <span v-else-if="segment.type === 'same'">{{ segment.text }}</span>
@@ -932,7 +932,7 @@ const chunkedAlignment = computed(() => {
                                 <PencilIcon class="h-4 w-4" />
                                 Edit cleaned text below — diff updates live as you type
                             </div>
-                            <textarea v-model="diffEditedText" rows="8" class="w-full resize-y rounded-lg border border-border bg-background p-4 font-mono text-sm focus:border-primary focus:ring-2 focus:ring-primary/20" dir="auto" placeholder="Edit the cleaned text here..."></textarea>
+                            <textarea v-model="diffEditedText" rows="8" class="w-full resize-y rounded-lg border border-border bg-background p-4 font-sans text-base leading-loose focus:border-primary focus:ring-2 focus:ring-primary/20" dir="auto" placeholder="Edit the cleaned text here..."></textarea>
                         </div>
 
                         <!-- Diff Legend -->
