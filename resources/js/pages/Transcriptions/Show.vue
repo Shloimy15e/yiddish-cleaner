@@ -5,6 +5,9 @@ import { type BreadcrumbItem } from '@/types';
 import type { Preset } from '@/types/audio-samples';
 import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { decodeHtmlEntities } from '@/lib/utils';
+import { formatErrorRate } from '@/lib/asrMetrics';
+import { formatDate } from '@/lib/date';
 import * as Diff from 'diff';
 import { computed, ref, watch, onMounted } from 'vue';
 import {
@@ -26,6 +29,7 @@ import {
     ListboxOptions,
 } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
+import { Loader } from 'lucide-vue-next';
 
 interface LlmModel {
     id: string;
@@ -163,22 +167,21 @@ const fetchModelsForProvider = async (provider: string) => {
     loadingModels.value = true;
     try {
         const response = await fetch(`/api/llm/providers/${provider}/models`);
-        providerModels.value = await response.json();
+        const payload = await response.json();
+        const models = (payload?.models ?? []) as LlmModel[];
+        const defaultModel = payload?.default as string | undefined;
+
+        providerModels.value = models;
+        cleanForm.llm_model =
+            (defaultModel && models.some((model) => model.id === defaultModel)
+                ? defaultModel
+                : models[0]?.id) ?? '';
     } catch (error) {
         console.error('Failed to fetch models:', error);
-        providerModels.value = llmProviders.value[provider]?.models || [];
+        providerModels.value = [];
+        cleanForm.llm_model = '';
     } finally {
         loadingModels.value = false;
-    }
-
-    const modelIds = providerModels.value.map((model) => model.id);
-    const defaultModel = llmProviders.value[provider]?.default_model;
-    if (!modelIds.includes(cleanForm.llm_model)) {
-        if (defaultModel && modelIds.includes(defaultModel)) {
-            cleanForm.llm_model = defaultModel;
-        } else {
-            cleanForm.llm_model = modelIds[0] ?? '';
-        }
     }
 };
 
@@ -210,7 +213,7 @@ const updateForm = useForm({
 });
 
 const startEditing = () => {
-    editedText.value = baseTranscription.value?.text_clean || '';
+    editedText.value = decodedCleanText.value || '';
     isEditing.value = true;
 };
 
@@ -272,6 +275,18 @@ const deleteTranscription = () => {
     router.delete(`/transcriptions/${props.transcription.id}`);
 };
 
+const decodedRawText = computed(() =>
+    baseTranscription.value?.text_raw
+        ? decodeHtmlEntities(baseTranscription.value.text_raw)
+        : ''
+);
+
+const decodedCleanText = computed(() =>
+    baseTranscription.value?.text_clean
+        ? decodeHtmlEntities(baseTranscription.value.text_clean)
+        : ''
+);
+
 // Diff for base transcription
 type DiffSegment = { type: 'same' | 'removed' | 'added'; text: string };
 
@@ -280,8 +295,8 @@ const charDiff = computed(() => {
         return [];
     }
     const parts = Diff.diffWords(
-        baseTranscription.value.text_raw,
-        baseTranscription.value.text_clean
+        decodedRawText.value,
+        decodedCleanText.value
     );
     const segments: DiffSegment[] = [];
     for (const part of parts) {
@@ -303,7 +318,7 @@ const viewMode = ref<'alignment' | 'side-by-side'>('alignment');
 // Get reference text for ASR comparison
 const referenceText = computed(() => {
     if (isAsr.value && props.audioSample?.base_transcription?.text_clean) {
-        return props.audioSample.base_transcription.text_clean;
+        return decodeHtmlEntities(props.audioSample.base_transcription.text_clean);
     }
     return '';
 });
@@ -397,12 +412,6 @@ const chunkedAlignment = computed(() => {
 
 // ==================== SHARED HELPERS ====================
 
-const formatErrorRate = (rate: number | null): string => {
-    if (rate === null) return 'N/A';
-    const percent = rate > 1 ? rate : rate * 100;
-    return `${percent.toFixed(2)}%`;
-};
-
 const formatStatus = (status: string) => {
     const map: Record<string, string> = {
         pending: 'Pending',
@@ -421,17 +430,6 @@ const statusClass = (status: string) => {
         failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
     };
     return map[status] ?? 'bg-muted text-muted-foreground';
-};
-
-const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
 };
 </script>
 
@@ -588,7 +586,11 @@ const formatDate = (dateString: string | null) => {
                         <div v-if="cleanForm.mode === 'llm'" class="space-y-4">
                             <div>
                                 <label class="mb-1 block text-sm font-medium">LLM Provider</label>
-                                <Listbox v-model="cleanForm.llm_provider">
+                                <div v-if="providerOptions.length === 0" class="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700">
+                                    No connected providers. Add credentials in
+                                    <Link href="/settings/credentials" class="text-primary hover:underline">Settings</Link>.
+                                </div>
+                                <Listbox v-else v-model="cleanForm.llm_provider">
                                     <div class="relative">
                                         <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
                                             <span>{{ providerOptions.find(p => p.id === cleanForm.llm_provider)?.name || cleanForm.llm_provider }}</span>
@@ -605,7 +607,6 @@ const formatDate = (dateString: string | null) => {
                                             >
                                                 <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
                                                     <span :class="['block', selected ? 'font-medium' : '']">{{ provider.name }}</span>
-                                                    <span v-if="!provider.hasCredential" class="text-xs text-amber-600">No API key</span>
                                                     <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
                                                         <CheckIcon class="h-5 w-5" />
                                                     </span>
@@ -614,16 +615,20 @@ const formatDate = (dateString: string | null) => {
                                         </ListboxOptions>
                                     </div>
                                 </Listbox>
-                                <p v-if="providerOptions.length === 0" class="mt-2 text-sm text-amber-700">
-                                    No connected providers. Add credentials in
-                                    <Link href="/settings/credentials" class="text-primary hover:underline">Settings</Link>.
-                                </p>
                             </div>
                             <div>
                                 <label class="mb-1 block text-sm font-medium">Model</label>
-                                <Listbox v-model="cleanForm.llm_model" :disabled="loadingModels">
+                                <div v-if="loadingModels" class="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground shadow-glow-sm flex items-center">
+                                    <Loader class="h-5 w-5 animate-spin inline-block" />
+                                    Loading models...
+                                </div>
+                                <div v-else-if="providerModels.length === 0" class="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700">
+                                    No models available. Check provider credentials in
+                                    <Link href="/settings/credentials" class="text-primary hover:underline">Settings</Link>.
+                                </div>
+                                <Listbox v-else v-model="cleanForm.llm_model">
                                     <div class="relative">
-                                        <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left disabled:opacity-50">
+                                        <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
                                             <span>{{ providerModels.find(m => m.id === cleanForm.llm_model)?.name || cleanForm.llm_model }}</span>
                                             <span class="absolute inset-y-0 right-0 flex items-center pr-2">
                                                 <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
@@ -646,10 +651,6 @@ const formatDate = (dateString: string | null) => {
                                         </ListboxOptions>
                                     </div>
                                 </Listbox>
-                                <p v-if="!loadingModels && providerModels.length === 0" class="mt-2 text-sm text-amber-700">
-                                    No models available. Check provider credentials in
-                                    <Link href="/settings/credentials" class="text-primary hover:underline">Settings</Link>.
-                                </p>
                             </div>
                         </div>
 
@@ -733,13 +734,13 @@ const formatDate = (dateString: string | null) => {
                                 </button>
                             </div>
                         </div>
-                        <p v-else class="whitespace-pre-wrap text-sm" dir="auto">{{ baseTranscription.text_clean }}</p>
+                        <p v-else class="whitespace-pre-wrap text-sm" dir="auto">{{ decodedCleanText }}</p>
                     </div>
 
                     <!-- Original Text -->
                     <div v-if="activeView === 'original'" class="rounded-xl border bg-card p-6">
                         <h3 class="font-semibold mb-4">Original Text</h3>
-                        <p class="whitespace-pre-wrap text-sm" dir="auto">{{ baseTranscription.text_raw }}</p>
+                        <p class="whitespace-pre-wrap text-sm" dir="auto">{{ decodedRawText }}</p>
                     </div>
 
                     <!-- Diff View -->

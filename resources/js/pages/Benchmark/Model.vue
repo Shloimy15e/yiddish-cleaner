@@ -4,6 +4,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { BenchmarkTranscription } from '@/types/transcriptions';
 import { ChartBarIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { getWerColor } from '@/lib/asrMetrics';
 
 interface Stats {
     sample_count: number;
@@ -29,13 +30,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Benchmarks', href: '/benchmark' },
     { title: props.modelName, href: `/benchmark/models/${encodeURIComponent(props.modelName)}` },
 ];
-
-const getWerColor = (wer: number) => {
-    if (wer < 10) return 'text-green-600 dark:text-green-400';
-    if (wer < 20) return 'text-yellow-600 dark:text-yellow-400';
-    if (wer < 30) return 'text-orange-600 dark:text-orange-400';
-    return 'text-red-600 dark:text-red-400';
-};
 
 const getSourceBadge = (source: string) => {
     if (source === 'generated') {
@@ -71,11 +65,11 @@ const getSourceBadge = (source: string) => {
             <div class="grid gap-4 md:grid-cols-5">
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Average WER</div>
-                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_wer)]">{{ stats.avg_wer }}%</div>
+                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_wer, 'benchmark')]">{{ stats.avg_wer }}%</div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Average CER</div>
-                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_cer)]">{{ stats.avg_cer }}%</div>
+                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_cer, 'benchmark')]">{{ stats.avg_cer }}%</div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Best WER</div>
@@ -139,10 +133,10 @@ const getSourceBadge = (source: string) => {
                                     </Link>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span :class="['font-bold', getWerColor(t.wer)]">{{ t.wer }}%</span>
+                                    <span :class="['font-bold', getWerColor(t.wer, 'benchmark')]">{{ t.wer }}%</span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span :class="['font-medium', getWerColor(t.cer)]">{{ t.cer }}%</span>
+                                    <span :class="['font-medium', getWerColor(t.cer, 'benchmark')]">{{ t.cer }}%</span>
                                 </td>
                                 <td class="px-4 py-3">
                                     <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', getSourceBadge(t.source).class]">

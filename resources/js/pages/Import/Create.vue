@@ -23,6 +23,7 @@ import {
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { BaseTranscription } from '@/types/transcriptions';
+import { formatDate } from '@/lib/date';
 
 const props = defineProps<{
     hasGoogleCredentials: boolean;
@@ -189,14 +190,6 @@ const submitSheet = () => {
     });
 };
 
-const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    });
-};
 </script>
 
 <template>

@@ -12,6 +12,9 @@ import type {
     AudioSampleDetail,
 } from '@/types/audio-samples';
 import type { BaseTranscription } from '@/types/transcriptions';
+import { decodeHtmlEntities } from '@/lib/utils';
+import { formatErrorRate, getWerColor } from '@/lib/asrMetrics';
+import { formatDate } from '@/lib/date';
 import {
     MusicalNoteIcon,
     DocumentTextIcon,
@@ -55,6 +58,12 @@ const baseTranscription = computed(() => props.audioSample.base_transcription);
 const hasBaseTranscription = computed(() => !!baseTranscription.value);
 const baseIsValidated = computed(() => !!baseTranscription.value?.validated_at);
 const baseIsCleaned = computed(() => !!baseTranscription.value?.text_clean);
+
+const decodedBaseCleanText = computed(() =>
+    baseTranscription.value?.text_clean
+        ? decodeHtmlEntities(baseTranscription.value.text_clean)
+        : ''
+);
 
 // ASR transcriptions
 const asrTranscriptions = computed(() => props.audioSample.asr_transcriptions || []);
@@ -301,41 +310,11 @@ const deleteTranscription = (transcriptionId: number) => {
     }
 };
 
-const normalizeErrorRate = (rate: number | null): number | null => {
-    if (rate === null) return null;
-    return rate > 1 ? rate / 100 : rate;
-};
-
-const formatErrorRate = (rate: number | null): string => {
-    if (rate === null) return 'N/A';
-    const percent = rate > 1 ? rate : rate * 100;
-    return `${percent.toFixed(2)}%`;
-};
-
-const getWerColor = (wer: number | null): string => {
-    const normalized = normalizeErrorRate(wer);
-    if (normalized === null) return 'text-muted-foreground';
-    if (normalized <= 0.1) return 'text-emerald-600 dark:text-emerald-400';
-    if (normalized <= 0.2) return 'text-green-600 dark:text-green-400';
-    if (normalized <= 0.3) return 'text-yellow-600 dark:text-yellow-400';
-    if (normalized <= 0.5) return 'text-orange-600 dark:text-orange-400';
-    return 'text-red-600 dark:text-red-400';
-};
-
 const getSourceColor = (source: string): string => {
     if (source === 'generated') {
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
     }
     return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
-};
-
-const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    });
 };
 </script>
 
@@ -496,7 +475,7 @@ const formatDate = (dateString: string | null) => {
                                         <span>Created {{ formatDate(baseTranscription!.created_at) }}</span>
                                     </div>
                                     <p class="text-sm line-clamp-3" dir="auto">
-                                        {{ baseTranscription!.text_clean?.slice(0, 300) }}{{ (baseTranscription!.text_clean?.length || 0) > 300 ? '...' : '' }}
+                                        {{ decodedBaseCleanText.slice(0, 300) }}{{ decodedBaseCleanText.length > 300 ? '...' : '' }}
                                     </p>
                                 </div>
                                 <div v-else class="text-sm text-muted-foreground">

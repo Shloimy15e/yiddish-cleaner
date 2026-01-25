@@ -30,7 +30,7 @@ class LlmController extends Controller
                 'name' => ucfirst($name),
                 'default_model' => $config['default_model'],
                 'has_credential' => $hasCredential,
-                'models' => $this->getStaticModels($name),
+                'models' => $hasCredential ? $this->getStaticModels($name) : [],
             ];
         }
 
@@ -55,11 +55,11 @@ class LlmController extends Controller
             ->first();
 
         if (! $credential) {
-            // Return static list if no credential
+            // No models available without credentials
             return response()->json([
-                'models' => $this->getStaticModels($provider),
-                'default' => $config['default_model'],
-                'source' => 'static',
+                'models' => [],
+                'default' => null,
+                'source' => 'none',
             ]);
         }
 

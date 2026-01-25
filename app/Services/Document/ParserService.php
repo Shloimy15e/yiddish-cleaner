@@ -38,17 +38,31 @@ class ParserService
         }
 
         try {
-            return match ($extension) {
+            $text = match ($extension) {
                 'txt' => file_get_contents($filePath),
                 'docx' => $this->extractFromDocx($filePath),
                 'doc' => $this->extractFromDoc($filePath),
                 default => throw new RuntimeException("Unsupported file type: {$extension}"),
             };
+
+            return $this->normalizeExtractedText($text);
         } finally {
             if ($convertedPath && file_exists($convertedPath)) {
                 @unlink($convertedPath);
             }
         }
+    }
+
+    /**
+     * Normalize extracted text so HTML entities aren't persisted.
+     */
+    protected function normalizeExtractedText(string $text): string
+    {
+        if ($text === '') {
+            return $text;
+        }
+
+        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     /**

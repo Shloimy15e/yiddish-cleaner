@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { TrophyIcon, ArrowUpIcon, ArrowDownIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline';
+import { getWerColor } from '@/lib/asrMetrics';
 
 interface ModelStats {
     rank: number;
@@ -38,13 +39,6 @@ const breadcrumbs: BreadcrumbItem[] = [
 const sortBy = (column: string) => {
     const newDir = props.sort === column && props.dir === 'asc' ? 'desc' : 'asc';
     router.get('/benchmark', { sort: column, dir: newDir }, { preserveState: true });
-};
-
-const getWerColor = (wer: number) => {
-    if (wer < 10) return 'text-green-600 dark:text-green-400';
-    if (wer < 20) return 'text-yellow-600 dark:text-yellow-400';
-    if (wer < 30) return 'text-orange-600 dark:text-orange-400';
-    return 'text-red-600 dark:text-red-400';
 };
 
 const getRankBadge = (rank: number) => {
@@ -92,11 +86,11 @@ const getRankBadge = (rank: number) => {
                 </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Average WER</div>
-                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_wer)]">{{ stats.avg_wer }}%</div>
+                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_wer, 'benchmark')]">{{ stats.avg_wer }}%</div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Average CER</div>
-                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_cer)]">{{ stats.avg_cer }}%</div>
+                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_cer, 'benchmark')]">{{ stats.avg_cer }}%</div>
                 </div>
             </div>
 
@@ -142,10 +136,10 @@ const getRankBadge = (rank: number) => {
                                     </Link>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span :class="['font-bold', getWerColor(model.avg_wer)]">{{ model.avg_wer }}%</span>
+                                    <span :class="['font-bold', getWerColor(model.avg_wer, 'benchmark')]">{{ model.avg_wer }}%</span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <span :class="['font-medium', getWerColor(model.avg_cer)]">{{ model.avg_cer }}%</span>
+                                    <span :class="['font-medium', getWerColor(model.avg_cer, 'benchmark')]">{{ model.avg_cer }}%</span>
                                 </td>
                                 <td class="px-4 py-3 text-sm">
                                     <span class="text-green-600">{{ model.best_wer }}%</span>

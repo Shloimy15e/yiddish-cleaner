@@ -17,6 +17,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { TranscriptionListItem } from '@/types/transcriptions';
+import { formatDate } from '@/lib/date';
 
 interface CleaningPreset {
     name: string;
@@ -255,14 +256,6 @@ const getStatusLabel = (status: string) => {
     }
 };
 
-// Format date
-const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    });
-};
 </script>
 
 <template>

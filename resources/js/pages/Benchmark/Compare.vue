@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { ArrowsRightLeftIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { getWerColor } from '@/lib/asrMetrics';
 
 interface ModelResult {
     wer: number;
@@ -41,13 +42,6 @@ const updateComparison = () => {
     if (selected.value.length >= 2) {
         router.get('/benchmark/compare', { models: selected.value.join(',') }, { preserveState: true });
     }
-};
-
-const getWerColor = (wer: number) => {
-    if (wer < 10) return 'text-green-600 dark:text-green-400';
-    if (wer < 20) return 'text-yellow-600 dark:text-yellow-400';
-    if (wer < 30) return 'text-orange-600 dark:text-orange-400';
-    return 'text-red-600 dark:text-red-400';
 };
 
 const getBestModel = (row: ComparisonRow): string | null => {
@@ -123,7 +117,7 @@ const getBestModel = (row: ComparisonRow): string | null => {
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div>
                             <span class="text-muted-foreground">Avg WER:</span>
-                            <span :class="['ml-1 font-bold', getWerColor(modelStats[model]?.avg_wer ?? 0)]">
+                                <span :class="['ml-1 font-bold', getWerColor(modelStats[model]?.avg_wer ?? 0, 'benchmark')]">
                                 {{ modelStats[model]?.avg_wer ?? '-' }}%
                             </span>
                         </div>
@@ -161,7 +155,7 @@ const getBestModel = (row: ComparisonRow): string | null => {
                                     :class="{ 'bg-green-50 dark:bg-green-900/20': getBestModel(row) === model }"
                                 >
                                     <template v-if="row.models[model]">
-                                        <span :class="['font-bold', getWerColor(row.models[model]!.wer)]">
+                                            <span :class="['font-bold', getWerColor(row.models[model]!.wer, 'benchmark')]">
                                             {{ row.models[model]!.wer }}%
                                         </span>
                                         <span class="text-xs text-muted-foreground ml-1">

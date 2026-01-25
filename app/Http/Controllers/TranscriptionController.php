@@ -26,7 +26,16 @@ class TranscriptionController extends Controller
         $user = $request->user();
 
         $transcriptions = Transcription::base()
-            ->with('audioSample')
+            ->select([
+                'id',
+                'name',
+                'audio_sample_id',
+                'status',
+                'clean_rate',
+                'validated_at',
+                'created_at',
+            ])
+            ->with('audioSample:id,name')
             ->orderByDesc('created_at')
             ->paginate(20);
 

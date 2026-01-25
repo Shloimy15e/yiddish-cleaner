@@ -23,7 +23,11 @@ class AudioSampleController extends Controller
         $user = $request->user();
 
         $audioSamples = AudioSample::whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id))
-            ->with(['processingRun:id,preset,mode,llm_provider,llm_model,batch_id', 'baseTranscription'])
+            ->select(['id', 'processing_run_id', 'name', 'status', 'created_at'])
+            ->with([
+                'processingRun:id,preset,mode,llm_provider,llm_model,batch_id',
+                'baseTranscription:id,audio_sample_id,clean_rate',
+            ])
             ->when($request->search, fn ($q, $search) => $q->where('name', 'like', "%{$search}%"))
             ->when($request->status, fn ($q, $status) => $q->where('status', $status))
             ->when($request->validated === 'yes', fn ($q) => $q->whereHas('baseTranscription', fn ($q) => $q->whereNotNull('validated_at')))
