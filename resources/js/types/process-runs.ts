@@ -9,6 +9,11 @@ export interface ProcessingRunListItem {
     completed: number;
     failed: number;
     created_at: string;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
 }
 
 export interface ProcessingRunDetail {
@@ -24,5 +29,10 @@ export interface ProcessingRunDetail {
     error_message: string | null;
     created_at: string;
     options: Record<string, unknown> | null;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     audio_samples: AudioSampleRunItem[];
 }

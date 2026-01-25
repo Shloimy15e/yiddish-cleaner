@@ -41,6 +41,7 @@ class AudioSample extends Model implements HasMedia
     ];
 
     protected $fillable = [
+        'user_id',
         'processing_run_id',
         'name',
         'source_url',
@@ -61,6 +62,11 @@ class AudioSample extends Model implements HasMedia
     public function processingRun(): BelongsTo
     {
         return $this->belongsTo(ProcessingRun::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function trainingVersions(): BelongsToMany

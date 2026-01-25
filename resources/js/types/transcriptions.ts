@@ -34,6 +34,11 @@ export interface BaseTranscription {
     audio_sample_id: number | null;
     source: TranscriptionSource;
     status: TranscriptionStatus;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     
     // Text content
     text_raw: string | null;
@@ -75,6 +80,11 @@ export interface AsrTranscription extends AsrMetrics {
     model_version: string | null;
     source: TranscriptionSource;
     status: TranscriptionStatus;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     error_message?: string | null;
     hypothesis_text: string | null;
     hypothesis_hash: string | null;
@@ -133,6 +143,11 @@ export interface TranscriptionListItem {
     status: TranscriptionStatus;
     source: TranscriptionSource;
     audio_sample_id: number | null;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     validated_at: string | null;
     clean_rate: number | null;
     created_at: string;

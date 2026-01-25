@@ -14,6 +14,11 @@ export interface TrainingVersionBase {
     is_active: boolean;
     created_at: string;
     criteria: Record<string, unknown> | null;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
 }
 
 export interface TrainingVersionDetail extends TrainingVersionBase {

@@ -5,6 +5,7 @@ import { CpuChipIcon } from '@heroicons/vue/24/outline';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
+import { formatCreatedBy } from '@/lib/createdBy';
 import { type BreadcrumbItem } from '@/types';
 import type {
     AudioSampleListItem,
@@ -346,6 +347,7 @@ watch(search, () => {
                             <th class="px-4 py-3 text-left text-sm font-medium">Clean Rate</th>
                             <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Method</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
+                            <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Created By</th>
                             <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Date</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
                         </tr>
@@ -404,6 +406,9 @@ watch(search, () => {
                                 </span>
                             </td>
                             <td class="hidden px-4 py-4 text-sm text-muted-foreground md:table-cell whitespace-nowrap">
+                                {{ formatCreatedBy(sample.user, undefined) }}
+                            </td>
+                            <td class="hidden px-4 py-4 text-sm text-muted-foreground md:table-cell whitespace-nowrap">
                                 {{ sample.created_at }}
                             </td>
                             <td class="px-4 py-4">
@@ -413,7 +418,7 @@ watch(search, () => {
                             </td>
                         </tr>
                         <tr v-if="audioSamples.data.length === 0">
-                            <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">
+                            <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">
                                 No audio samples found
                             </td>
                         </tr>

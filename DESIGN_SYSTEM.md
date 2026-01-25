@@ -8,7 +8,7 @@ Based on Finko-AI's "Midnight Neon Studio" aesthetic - a premium dark interface 
 
 **Principles:**
 - Dark elegance as foundation, neon accents for hierarchy
-- Cinematic gradients for hero moments
+- Solid accent colors for visual impact
 - Bold typography paired with technical precision
 - Visual impact without sacrificing data clarity
 - RTL-friendly for Yiddish text display
@@ -130,21 +130,7 @@ Based on Finko-AI's "Midnight Neon Studio" aesthetic - a premium dark interface 
 
 ---
 
-## Gradients
-
-### Hero Gradient
-```css
-background: linear-gradient(135deg, #00d4ff 0%, #ff006e 100%);
-```
-
-### Gradient Text
-```css
-.gradient-text {
-  background: linear-gradient(135deg, #00d4ff 0%, #ff006e 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-```
+## Effects
 
 ### Glow Effects
 ```css
