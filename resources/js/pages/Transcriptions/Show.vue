@@ -1,16 +1,8 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
-import LinkAudioSampleModal from '@/components/transcriptions/LinkAudioSampleModal.vue';
-import { type BreadcrumbItem } from '@/types';
+import type { BreadcrumbItem } from '@/types';
 import type { Preset } from '@/types/audio-samples';
 import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
-import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { decodeHtmlEntities } from '@/lib/utils';
-import { formatErrorRate } from '@/lib/asrMetrics';
-import { formatDate } from '@/lib/date';
-import { formatCreatedBy } from '@/lib/createdBy';
-import * as Diff from 'diff';
-import { computed, ref, watch, onMounted } from 'vue';
+import type { LlmModel, LlmProvider, DiffSegment, AlignmentItem } from '@/types/transcription-show';
 import {
     InformationCircleIcon,
     SparklesIcon,
@@ -23,27 +15,14 @@ import {
     PencilIcon,
     TrashIcon,
 } from '@heroicons/vue/24/outline';
+import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
+import { Loader } from 'lucide-vue-next';
 import {
     Listbox,
     ListboxButton,
     ListboxOption,
     ListboxOptions,
 } from '@headlessui/vue';
-import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
-import { Loader } from 'lucide-vue-next';
-
-interface LlmModel {
-    id: string;
-    name: string;
-    context_length?: number;
-}
-
-interface LlmProvider {
-    name: string;
-    default_model: string;
-    has_credential: boolean;
-    models: LlmModel[];
-}
 
 const props = defineProps<{
     transcription: Transcription;
@@ -62,10 +41,10 @@ const isBase = computed(() => props.transcription.type === 'base');
 const isAsr = computed(() => props.transcription.type === 'asr');
 
 // Cast to specific types
-const baseTranscription = computed(() => 
+const baseTranscription = computed(() =>
     isBase.value ? props.transcription as BaseTranscription : null
 );
-const asrTranscription = computed(() => 
+const asrTranscription = computed(() =>
     isAsr.value ? props.transcription as AsrTranscription : null
 );
 
@@ -92,6 +71,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
 
 // View state for base transcription
 const activeView = ref<'cleaned' | 'original' | 'side-by-side' | 'diff'>('cleaned');
+const diffViewMode = ref<'split' | 'unified'>('unified');
 const isEditing = ref(false);
 const editedText = ref('');
 const showCleanForm = ref(false);
@@ -113,10 +93,10 @@ const providerModels = ref<LlmModel[]>([]);
 const presetOptions = computed(() =>
     props.presets
         ? Object.entries(props.presets).map(([key, value]) => ({
-              id: key,
-              name: value.name,
-              description: value.description,
-          }))
+            id: key,
+            name: value.name,
+            description: value.description,
+        }))
         : []
 );
 
@@ -288,29 +268,79 @@ const decodedCleanText = computed(() =>
         : ''
 );
 
-// Diff for base transcription
-type DiffSegment = { type: 'same' | 'removed' | 'added'; text: string };
+// Editable diff state
+const isDiffEditing = ref(false);
+const diffEditedText = ref('');
+const debouncedEditedText = ref('');
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Debounce the edited text to avoid recomputing diff on every keystroke
+watch(diffEditedText, (newValue) => {
+    console.log('Diff edited text changed, starting debounce');
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+        debouncedEditedText.value = newValue;
+    }, 300);
+});
+
+// Live diff - compares original with debounced edited text when editing
+const liveDiff = computed(() => {
+    if (!baseTranscription.value?.text_raw) {
+        return [];
+    }
+    const compareText = isDiffEditing.value
+        ? debouncedEditedText.value
+        : decodedCleanText.value;
+
+    if (!compareText) {
+        return [];
+    }
+
+    return generateDiff(decodedRawText.value, compareText);
+});
+
+// Static diff for display (uses saved clean text)
 const charDiff = computed(() => {
     if (!baseTranscription.value?.text_raw || !baseTranscription.value?.text_clean) {
         return [];
     }
-    const parts = Diff.diffWords(
-        decodedRawText.value,
-        decodedCleanText.value
-    );
-    const segments: DiffSegment[] = [];
-    for (const part of parts) {
-        if (part.added) {
-            segments.push({ type: 'added', text: part.value });
-        } else if (part.removed) {
-            segments.push({ type: 'removed', text: part.value });
-        } else {
-            segments.push({ type: 'same', text: part.value });
-        }
-    }
-    return segments;
+    return generateDiff(decodedRawText.value, decodedCleanText.value);
 });
+
+// Diff statistics - uses live diff when editing
+const diffStats = computed(() => {
+    const diffToUse = isDiffEditing.value ? liveDiff.value : charDiff.value;
+    return calculateDiffStats(diffToUse);
+});
+
+const startDiffEditing = () => {
+    diffEditedText.value = decodedCleanText.value || '';
+    debouncedEditedText.value = decodedCleanText.value || '';
+    isDiffEditing.value = true;
+};
+
+const cancelDiffEditing = () => {
+    isDiffEditing.value = false;
+    diffEditedText.value = '';
+    debouncedEditedText.value = '';
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+    }
+};
+
+const saveDiffEdit = () => {
+    updateForm.text_clean = diffEditedText.value;
+    updateForm.patch(`/transcriptions/${props.transcription.id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isDiffEditing.value = false;
+            diffEditedText.value = '';
+        },
+    });
+};
 
 // ==================== ASR TRANSCRIPTION STATE ====================
 
@@ -325,62 +355,6 @@ const referenceText = computed(() => {
 });
 
 const hypothesisText = computed(() => asrTranscription.value?.hypothesis_text ?? '');
-
-type AlignmentItem = {
-    type: 'correct' | 'sub' | 'ins' | 'del';
-    ref: string | null;
-    hyp: string | null;
-};
-
-const tokenize = (value: string) =>
-    (value.match(/[^\s]+/g) || []).filter(Boolean);
-
-const buildAlignmentFromDiff = (refText: string, hypText: string) => {
-    const refTokens = tokenize(refText);
-    const hypTokens = tokenize(hypText);
-    const parts = Diff.diffArrays(refTokens, hypTokens);
-    const alignment: AlignmentItem[] = [];
-
-    let i = 0;
-    while (i < parts.length) {
-        const part = parts[i];
-        const next = parts[i + 1];
-
-        if (part.removed && next?.added) {
-            const removedWords = part.value as string[];
-            const addedWords = next.value as string[];
-            const pairCount = Math.min(removedWords.length, addedWords.length);
-
-            for (let idx = 0; idx < pairCount; idx++) {
-                alignment.push({ type: 'sub', ref: removedWords[idx], hyp: addedWords[idx] });
-            }
-            for (let idx = pairCount; idx < removedWords.length; idx++) {
-                alignment.push({ type: 'del', ref: removedWords[idx], hyp: null });
-            }
-            for (let idx = pairCount; idx < addedWords.length; idx++) {
-                alignment.push({ type: 'ins', ref: null, hyp: addedWords[idx] });
-            }
-            i += 2;
-            continue;
-        }
-
-        if (part.added) {
-            (part.value as string[]).forEach((word) => {
-                alignment.push({ type: 'ins', ref: null, hyp: word });
-            });
-        } else if (part.removed) {
-            (part.value as string[]).forEach((word) => {
-                alignment.push({ type: 'del', ref: word, hyp: null });
-            });
-        } else {
-            (part.value as string[]).forEach((word) => {
-                alignment.push({ type: 'correct', ref: word, hyp: word });
-            });
-        }
-        i += 1;
-    }
-    return alignment;
-};
 
 const alignment = computed(() => {
     if (!referenceText.value.trim() || !hypothesisText.value.trim()) return [];
@@ -412,34 +386,16 @@ const chunkedAlignment = computed(() => {
 });
 
 // ==================== SHARED HELPERS ====================
-
-const formatStatus = (status: string) => {
-    const map: Record<string, string> = {
-        pending: 'Pending',
-        processing: 'Processing',
-        completed: 'Completed',
-        failed: 'Failed',
-    };
-    return map[status] ?? status;
-};
-
-const statusClass = (status: string) => {
-    const map: Record<string, string> = {
-        pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-        processing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-        completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-        failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    };
-    return map[status] ?? 'bg-muted text-muted-foreground';
-};
+// formatStatus and statusClass are imported from @/lib/transcriptionUtils
 </script>
 
 <template>
+
     <Head :title="isBase ? (baseTranscription?.name || 'Base Transcription') : 'ASR Transcription'" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-            
+
             <!-- ==================== BASE TRANSCRIPTION VIEW ==================== -->
             <template v-if="isBase && baseTranscription">
                 <!-- Header -->
@@ -476,8 +432,8 @@ const statusClass = (status: string) => {
                             <div class="text-xs uppercase text-muted-foreground">Linked Audio</div>
                             <div v-if="baseTranscription.audio_sample">
                                 <Link :href="`/audio-samples/${baseTranscription.audio_sample.id}`" class="flex items-center gap-1 text-primary hover:underline">
-                                    <LinkIcon class="h-4 w-4" />
-                                    {{ baseTranscription.audio_sample.name }}
+                                <LinkIcon class="h-4 w-4" />
+                                {{ baseTranscription.audio_sample.name }}
                                 </Link>
                             </div>
                             <div v-else class="text-muted-foreground">Not linked</div>
@@ -496,26 +452,15 @@ const statusClass = (status: string) => {
 
                     <!-- Actions -->
                     <div class="flex flex-wrap gap-2 pt-2 border-t">
-                        <button
-                            v-if="!baseTranscription.audio_sample_id"
-                            @click="showLinkModal = true"
-                            class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
-                        >
+                        <button v-if="!baseTranscription.audio_sample_id" @click="showLinkModal = true" class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">
                             <LinkIcon class="h-4 w-4" />
                             Link to Audio Sample
                         </button>
-                        <button
-                            v-if="baseTranscription.audio_sample_id"
-                            @click="submitUnlink"
-                            class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
-                        >
+                        <button v-if="baseTranscription.audio_sample_id" @click="submitUnlink" class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">
                             <XCircleIcon class="h-4 w-4" />
                             Unlink
                         </button>
-                        <button
-                            @click="deleteTranscription"
-                            class="flex items-center gap-1 rounded-lg border border-destructive text-destructive px-3 py-1.5 text-sm hover:bg-destructive/10"
-                        >
+                        <button @click="deleteTranscription" class="flex items-center gap-1 rounded-lg border border-destructive text-destructive px-3 py-1.5 text-sm hover:bg-destructive/10">
                             <TrashIcon class="h-4 w-4" />
                             Delete
                         </button>
@@ -523,10 +468,7 @@ const statusClass = (status: string) => {
                 </div>
 
                 <!-- Cleaning Section (if needs cleaning) -->
-                <div
-                    v-if="baseTranscription.text_raw && !baseTranscription.text_clean && baseTranscription.status !== 'processing'"
-                    class="rounded-xl border-2 border-blue-200 bg-blue-50 p-6 dark:border-blue-800 dark:bg-blue-900/20"
-                >
+                <div v-if="baseTranscription.text_raw && !baseTranscription.text_clean && baseTranscription.status !== 'processing'" class="rounded-xl border-2 border-blue-200 bg-blue-50 p-6 dark:border-blue-800 dark:bg-blue-900/20">
                     <h2 class="mb-4 flex items-center gap-2 text-lg font-semibold">
                         <SparklesIcon class="h-5 w-5 text-blue-600" />
                         Clean This Transcript
@@ -535,25 +477,17 @@ const statusClass = (status: string) => {
                         <div>
                             <label class="mb-1 block text-sm font-medium">Cleaning Mode</label>
                             <div class="flex gap-2">
-                                <button
-                                    type="button"
-                                    @click="cleanForm.mode = 'rule'"
-                                    :class="[
-                                        'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 font-medium transition-colors',
-                                        cleanForm.mode === 'rule' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                                    ]"
-                                >
+                                <button type="button" @click="cleanForm.mode = 'rule'" :class="[
+                                    'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 font-medium transition-colors',
+                                    cleanForm.mode === 'rule' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                                ]">
                                     <CpuChipIcon class="h-4 w-4" />
                                     Rule-based
                                 </button>
-                                <button
-                                    type="button"
-                                    @click="cleanForm.mode = 'llm'"
-                                    :class="[
-                                        'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 font-medium transition-colors',
-                                        cleanForm.mode === 'llm' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                                    ]"
-                                >
+                                <button type="button" @click="cleanForm.mode = 'llm'" :class="[
+                                    'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 font-medium transition-colors',
+                                    cleanForm.mode === 'llm' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                                ]">
                                     <SparklesIcon class="h-4 w-4" />
                                     AI (LLM)
                                 </button>
@@ -565,18 +499,13 @@ const statusClass = (status: string) => {
                             <Listbox v-model="cleanForm.preset">
                                 <div class="relative">
                                     <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
-                                        <span>{{ presetOptions.find(p => p.id === cleanForm.preset)?.name || cleanForm.preset }}</span>
+                                        <span>{{presetOptions.find(p => p.id === cleanForm.preset)?.name || cleanForm.preset}}</span>
                                         <span class="absolute inset-y-0 right-0 flex items-center pr-2">
                                             <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
                                         </span>
                                     </ListboxButton>
                                     <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
-                                        <ListboxOption
-                                            v-for="preset in presetOptions"
-                                            :key="preset.id"
-                                            :value="preset.id"
-                                            v-slot="{ active, selected }"
-                                        >
+                                        <ListboxOption v-for="preset in presetOptions" :key="preset.id" :value="preset.id" v-slot="{ active, selected }">
                                             <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
                                                 <span :class="['block', selected ? 'font-medium' : '']">{{ preset.name }}</span>
                                                 <span class="block text-xs text-muted-foreground">{{ preset.description }}</span>
@@ -600,18 +529,13 @@ const statusClass = (status: string) => {
                                 <Listbox v-else v-model="cleanForm.llm_provider">
                                     <div class="relative">
                                         <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
-                                            <span>{{ providerOptions.find(p => p.id === cleanForm.llm_provider)?.name || cleanForm.llm_provider }}</span>
+                                            <span>{{providerOptions.find(p => p.id === cleanForm.llm_provider)?.name || cleanForm.llm_provider}}</span>
                                             <span class="absolute inset-y-0 right-0 flex items-center pr-2">
                                                 <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
                                             </span>
                                         </ListboxButton>
                                         <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
-                                            <ListboxOption
-                                                v-for="provider in providerOptions"
-                                                :key="provider.id"
-                                                :value="provider.id"
-                                                v-slot="{ active, selected }"
-                                            >
+                                            <ListboxOption v-for="provider in providerOptions" :key="provider.id" :value="provider.id" v-slot="{ active, selected }">
                                                 <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
                                                     <span :class="['block', selected ? 'font-medium' : '']">{{ provider.name }}</span>
                                                     <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
@@ -636,18 +560,13 @@ const statusClass = (status: string) => {
                                 <Listbox v-else v-model="cleanForm.llm_model">
                                     <div class="relative">
                                         <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left">
-                                            <span>{{ providerModels.find(m => m.id === cleanForm.llm_model)?.name || cleanForm.llm_model }}</span>
+                                            <span>{{providerModels.find(m => m.id === cleanForm.llm_model)?.name || cleanForm.llm_model}}</span>
                                             <span class="absolute inset-y-0 right-0 flex items-center pr-2">
                                                 <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
                                             </span>
                                         </ListboxButton>
                                         <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
-                                            <ListboxOption
-                                                v-for="model in providerModels"
-                                                :key="model.id"
-                                                :value="model.id"
-                                                v-slot="{ active, selected }"
-                                            >
+                                            <ListboxOption v-for="model in providerModels" :key="model.id" :value="model.id" v-slot="{ active, selected }">
                                                 <li :class="['relative cursor-pointer py-2 pl-10 pr-4', active ? 'bg-muted' : '']">
                                                     <span :class="['block', selected ? 'font-medium' : '']">{{ model.name }}</span>
                                                     <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
@@ -661,11 +580,7 @@ const statusClass = (status: string) => {
                             </div>
                         </div>
 
-                        <button
-                            type="submit"
-                            :disabled="cleanForm.processing || (cleanForm.mode === 'llm' && (!providerOptions.length || !providerModels.length))"
-                            class="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                        >
+                        <button type="submit" :disabled="cleanForm.processing || (cleanForm.mode === 'llm' && (!providerOptions.length || !providerModels.length))" class="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                             <ArrowPathIcon v-if="cleanForm.processing" class="h-4 w-4 animate-spin" />
                             <SparklesIcon v-else class="h-4 w-4" />
                             {{ cleanForm.processing ? 'Cleaning...' : 'Start Cleaning' }}
@@ -674,34 +589,209 @@ const statusClass = (status: string) => {
                 </div>
 
                 <!-- Processing indicator -->
-                <div v-if="baseTranscription.status === 'processing'" class="rounded-xl border bg-blue-50 dark:bg-blue-900/20 p-6 text-center">
-                    <ArrowPathIcon class="h-8 w-8 animate-spin mx-auto text-blue-600 mb-2" />
-                    <p class="font-medium">Cleaning in progress...</p>
-                    <p class="text-sm text-muted-foreground">This page will refresh when complete.</p>
+                <div v-if="baseTranscription.status === 'processing'" class="overflow-hidden rounded-xl border border-border bg-card">
+                    <div class="bg-blue-500/10 px-6 py-8 text-center">
+                        <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/20">
+                            <ArrowPathIcon class="h-7 w-7 animate-spin text-blue-600" />
+                        </div>
+                        <p class="text-lg font-semibold text-foreground">Cleaning in progress...</p>
+                        <p class="mt-1 text-sm text-muted-foreground">This page will refresh when complete.</p>
+                    </div>
+                </div>
+
+                <!-- Re-clean Section (if already cleaned) -->
+                <div v-if="baseTranscription.text_clean && baseTranscription.status !== 'processing'" class="overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-amber-500/50">
+                    <div class="border-b border-border px-6 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/15">
+                                    <ArrowPathIcon class="h-5 w-5 text-warning" />
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold text-foreground">Re-clean Transcript</h3>
+                                    <p class="text-xs text-muted-foreground">Try different settings or AI model</p>
+                                </div>
+                            </div>
+                            <button type="button" @click="showCleanForm = !showCleanForm" class="rounded-lg border px-4 py-2 text-sm font-medium transition-all" :class="showCleanForm
+                                ? 'border-warning bg-warning/10 text-warning'
+                                : 'border-border text-muted-foreground hover:border-warning hover:bg-warning/10 hover:text-warning'">
+                                {{ showCleanForm ? 'Hide Options' : 'Show Options' }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="p-6">
+                        <div v-if="!showCleanForm" class="py-4 text-center">
+                            <p class="text-sm text-muted-foreground">
+                                Not satisfied with the results? Click "Show Options" to try a different cleaning method or AI model.
+                            </p>
+                        </div>
+
+                        <form v-else @submit.prevent="submitClean" class="space-y-5">
+                            <div>
+                                <label class="mb-2 block text-sm font-medium">Cleaning Mode</label>
+                                <div class="flex gap-2">
+                                    <button type="button" @click="cleanForm.mode = 'rule'" :class="[
+                                        'flex-1 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all',
+                                        cleanForm.mode === 'rule'
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-border hover:border-primary/50 hover:bg-muted',
+                                    ]">
+                                        <span class="block">Rule-based</span>
+                                        <span class="mt-0.5 block text-xs font-normal opacity-70">Fast & predictable</span>
+                                    </button>
+                                    <button type="button" @click="cleanForm.mode = 'llm'" :class="[
+                                        'flex-1 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all',
+                                        cleanForm.mode === 'llm'
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-border hover:border-primary/50 hover:bg-muted',
+                                    ]">
+                                        <span class="block">AI (LLM)</span>
+                                        <span class="mt-0.5 block text-xs font-normal opacity-70">Smart & flexible</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="mb-2 block text-sm font-medium">Cleaning Preset</label>
+                                <Listbox v-model="cleanForm.preset">
+                                    <div class="relative">
+                                        <ListboxButton class="relative w-full cursor-pointer rounded-lg border border-border bg-background px-4 py-2.5 text-left transition-colors hover:border-primary/50">
+                                            <span class="block truncate">{{
+                                                presetOptions.find((p) => p.id === cleanForm.preset)?.name || 'Select preset'
+                                                }}</span>
+                                            <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                                <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                            </span>
+                                        </ListboxButton>
+                                        <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg">
+                                            <ListboxOption v-for="preset in presetOptions" :key="preset.id" :value="preset.id" v-slot="{ active, selected }">
+                                                <li :class="[
+                                                    'relative cursor-pointer select-none px-4 py-2.5',
+                                                    active ? 'bg-muted' : '',
+                                                ]">
+                                                    <span :class="['block truncate', selected ? 'font-medium' : '']">
+                                                        {{ preset.name }}
+                                                    </span>
+                                                    <span v-if="selected" class="absolute inset-y-0 right-0 flex items-center pr-3 text-primary">
+                                                        <CheckIcon class="h-4 w-4" />
+                                                    </span>
+                                                </li>
+                                            </ListboxOption>
+                                        </ListboxOptions>
+                                    </div>
+                                </Listbox>
+                                <p class="mt-1.5 text-xs text-muted-foreground">
+                                    {{presetOptions.find((p) => p.id === cleanForm.preset)?.description}}
+                                </p>
+                            </div>
+
+                            <!-- LLM options -->
+                            <div v-if="cleanForm.mode === 'llm'" class="space-y-5">
+                                <div v-if="!providerOptions.length" class="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
+                                    <p class="text-sm text-amber-800 dark:text-amber-200">
+                                        No LLM providers configured. Please add API credentials in
+                                        <a href="/settings/credentials" class="font-medium underline hover:no-underline">Settings → API Credentials</a>.
+                                    </p>
+                                </div>
+
+                                <template v-else>
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium">Provider</label>
+                                        <Listbox v-model="cleanForm.llm_provider">
+                                            <div class="relative">
+                                                <ListboxButton class="relative w-full cursor-pointer rounded-lg border border-border bg-background px-4 py-2.5 text-left transition-colors hover:border-primary/50">
+                                                    <span class="block truncate">{{
+                                                        providerOptions.find((p) => p.id === cleanForm.llm_provider)?.name || 'Select provider'
+                                                        }}</span>
+                                                    <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                                        <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                                    </span>
+                                                </ListboxButton>
+                                                <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg">
+                                                    <ListboxOption v-for="provider in providerOptions" :key="provider.id" :value="provider.id" v-slot="{ active, selected }">
+                                                        <li :class="[
+                                                            'relative cursor-pointer select-none px-4 py-2.5',
+                                                            active ? 'bg-muted' : '',
+                                                        ]">
+                                                            <span :class="['block truncate', selected ? 'font-medium' : '']">
+                                                                {{ provider.name }}
+                                                            </span>
+                                                            <span v-if="selected" class="absolute inset-y-0 right-0 flex items-center pr-3 text-primary">
+                                                                <CheckIcon class="h-4 w-4" />
+                                                            </span>
+                                                        </li>
+                                                    </ListboxOption>
+                                                </ListboxOptions>
+                                            </div>
+                                        </Listbox>
+                                    </div>
+
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium">Model</label>
+                                        <Listbox v-model="cleanForm.llm_model" :disabled="loadingModels || !providerModels.length">
+                                            <div class="relative">
+                                                <ListboxButton class="relative w-full cursor-pointer rounded-lg border border-border bg-background px-4 py-2.5 text-left transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50">
+                                                    <span v-if="loadingModels" class="flex items-center gap-2">
+                                                        <Loader class="h-4 w-4 animate-spin" />
+                                                        Loading models...
+                                                    </span>
+                                                    <span v-else-if="!providerModels.length" class="text-muted-foreground">
+                                                        No models available
+                                                    </span>
+                                                    <span v-else class="block truncate">{{
+                                                        providerModels.find((m) => m.id === cleanForm.llm_model)?.name || cleanForm.llm_model || 'Select model'
+                                                        }}</span>
+                                                    <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                                        <ChevronUpDownIcon class="h-5 w-5 text-muted-foreground" />
+                                                    </span>
+                                                </ListboxButton>
+                                                <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg">
+                                                    <ListboxOption v-for="model in providerModels" :key="model.id" :value="model.id" v-slot="{ active, selected }">
+                                                        <li :class="[
+                                                            'relative cursor-pointer select-none px-4 py-2.5',
+                                                            active ? 'bg-muted' : '',
+                                                        ]">
+                                                            <span :class="['block truncate', selected ? 'font-medium' : '']">
+                                                                {{ model.name }}
+                                                            </span>
+                                                            <span v-if="selected" class="absolute inset-y-0 right-0 flex items-center pr-3 text-primary">
+                                                                <CheckIcon class="h-4 w-4" />
+                                                            </span>
+                                                        </li>
+                                                    </ListboxOption>
+                                                </ListboxOptions>
+                                            </div>
+                                        </Listbox>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/20">
+                                <p class="text-sm text-amber-700 dark:text-amber-300">
+                                    ⚠️ Re-cleaning will overwrite current text and remove validation.
+                                </p>
+                                <button type="submit" :disabled="cleanForm.processing || (cleanForm.mode === 'llm' && (!providerOptions.length || !providerModels.length))" class="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-amber-700 hover:shadow disabled:opacity-50">
+                                    <ArrowPathIcon v-if="cleanForm.processing" class="h-4 w-4 animate-spin" />
+                                    <SparklesIcon v-else class="h-4 w-4" />
+                                    {{ cleanForm.processing ? 'Cleaning...' : 'Re-clean' }}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
 
                 <!-- Text Content -->
                 <div v-if="baseTranscription.text_clean || baseTranscription.text_raw" class="space-y-4">
                     <!-- View Toggle -->
                     <div class="flex flex-wrap gap-2">
-                        <button
-                            v-if="baseTranscription.text_clean"
-                            @click="activeView = 'cleaned'"
-                            :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', activeView === 'cleaned' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']"
-                        >
+                        <button v-if="baseTranscription.text_clean" @click="activeView = 'cleaned'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', activeView === 'cleaned' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
                             Cleaned
                         </button>
-                        <button
-                            @click="activeView = 'original'"
-                            :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', activeView === 'original' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']"
-                        >
+                        <button @click="activeView = 'original'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', activeView === 'original' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
                             Original
                         </button>
-                        <button
-                            v-if="baseTranscription.text_clean && baseTranscription.text_raw"
-                            @click="activeView = 'diff'"
-                            :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', activeView === 'diff' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']"
-                        >
+                        <button v-if="baseTranscription.text_clean && baseTranscription.text_raw" @click="activeView = 'diff'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', activeView === 'diff' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
                             Diff
                         </button>
                     </div>
@@ -711,29 +801,16 @@ const statusClass = (status: string) => {
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="font-semibold">Cleaned Text</h3>
                             <div class="flex gap-2">
-                                <button
-                                    v-if="!isEditing"
-                                    @click="startEditing"
-                                    class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
-                                >
+                                <button v-if="!isEditing" @click="startEditing" class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">
                                     <PencilIcon class="h-4 w-4" />
                                     Edit
                                 </button>
                             </div>
                         </div>
                         <div v-if="isEditing">
-                            <textarea
-                                v-model="editedText"
-                                rows="12"
-                                class="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                                dir="auto"
-                            ></textarea>
+                            <textarea v-model="editedText" rows="12" class="w-full rounded-lg border bg-background px-3 py-2 text-sm" dir="auto"></textarea>
                             <div class="flex gap-2 mt-4">
-                                <button
-                                    @click="saveEdit"
-                                    :disabled="updateForm.processing"
-                                    class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                                >
+                                <button @click="saveEdit" :disabled="updateForm.processing" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                                     {{ updateForm.processing ? 'Saving...' : 'Save' }}
                                 </button>
                                 <button @click="cancelEditing" class="rounded-lg border px-4 py-2 text-sm hover:bg-muted">
@@ -751,17 +828,125 @@ const statusClass = (status: string) => {
                     </div>
 
                     <!-- Diff View -->
-                    <div v-if="activeView === 'diff' && charDiff.length" class="rounded-xl border bg-card p-6">
-                        <h3 class="font-semibold mb-4">Changes (Diff)</h3>
-                        <div class="whitespace-pre-wrap text-sm" dir="auto">
-                            <span
-                                v-for="(segment, i) in charDiff"
-                                :key="i"
-                                :class="{
-                                    'bg-red-200 line-through': segment.type === 'removed',
-                                    'bg-green-200': segment.type === 'added',
-                                }"
-                            >{{ segment.text }}</span>
+                    <div v-if="activeView === 'diff' && charDiff.length" class="overflow-hidden rounded-xl border border-border bg-card">
+                        <!-- Diff Header -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/50 px-6 py-3">
+                            <div class="flex items-center gap-4">
+                                <h3 class="font-semibold">Changes</h3>
+                                <div class="flex items-center gap-3 text-sm">
+                                    <span class="flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                                        <span class="inline-block h-2.5 w-2.5 rounded-full bg-red-500"></span>
+                                        {{ diffStats.deletions }} removed
+                                    </span>
+                                    <span class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                        <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                                        {{ diffStats.additions }} added
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <!-- View Mode Toggle -->
+                                <div class="flex rounded-lg border border-border bg-background p-0.5">
+                                    <button @click="diffViewMode = 'unified'" :class="[
+                                        'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                                        diffViewMode === 'unified'
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'text-muted-foreground hover:text-foreground',
+                                    ]">
+                                        Unified
+                                    </button>
+                                    <button @click="diffViewMode = 'split'" :class="[
+                                        'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                                        diffViewMode === 'split'
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'text-muted-foreground hover:text-foreground',
+                                    ]">
+                                        Split
+                                    </button>
+                                </div>
+                                <button v-if="!isDiffEditing" @click="startDiffEditing" class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-all hover:border-primary hover:bg-primary/10 hover:text-primary">
+                                    <PencilIcon class="h-4 w-4" />
+                                    Edit
+                                </button>
+                                <div v-else class="flex items-center gap-2">
+                                    <button @click="cancelDiffEditing" class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-all hover:bg-muted">
+                                        Cancel
+                                    </button>
+                                    <button @click="saveDiffEdit" :disabled="updateForm.processing" class="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50">
+                                        {{ updateForm.processing ? 'Saving...' : 'Save' }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Unified Diff View (Inline) - uses liveDiff when editing -->
+                        <div v-if="diffViewMode === 'unified'" class="max-h-80 overflow-auto p-6">
+                            <div class="whitespace-pre-wrap font-mono text-sm leading-relaxed" dir="auto">
+                                <template v-for="(segment, i) in (isDiffEditing ? liveDiff : charDiff)" :key="'unified-' + i">
+                                    <span v-if="segment.type === 'removed'" class="rounded bg-red-200 px-0.5 line-through decoration-red-500/70 text-red-900 dark:bg-red-900/50 dark:text-red-200">{{ segment.text }}</span><span v-else-if="segment.type === 'added'" class="rounded bg-emerald-200 px-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">{{ segment.text }}</span><span v-else>{{ segment.text }}</span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Split Diff View (Side-by-side) -->
+                        <div v-else class="grid lg:grid-cols-2">
+                            <!-- Original Side -->
+                            <div class="border-b border-border lg:border-b-0 lg:border-r">
+                                <div class="flex items-center gap-2 border-b border-border bg-red-50/50 px-4 py-2 dark:bg-red-950/20">
+                                    <span class="inline-block h-2 w-2 rounded-full bg-red-500"></span>
+                                    <span class="text-sm font-medium text-red-700 dark:text-red-400">Original</span>
+                                </div>
+                                <div class="h-80 overflow-auto p-4">
+                                    <div class="whitespace-pre-wrap font-mono text-sm" dir="auto">
+                                        <template v-for="(segment, i) in liveDiff" :key="'orig-' + i">
+                                            <span v-if="segment.type === 'removed'" class="rounded bg-red-200 px-0.5 line-through decoration-red-500/70 text-red-900 dark:bg-red-900/50 dark:text-red-200">{{ segment.text }}</span><span v-else-if="segment.type === 'added'" class="rounded bg-emerald-200 px-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">{{ segment.text }}</span><span v-else>{{ segment.text }}</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Cleaned Side (editable when editing) -->
+                            <div class="flex flex-col">
+                                <div class="flex items-center gap-2 border-b border-border bg-emerald-50/50 px-4 py-2 dark:bg-emerald-950/20">
+                                    <span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                                    <span class="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                                        Cleaned{{ isDiffEditing ? ' (Editing)' : '' }}
+                                    </span>
+                                </div>
+                                <!-- Editable textarea when editing in split mode -->
+                                <textarea v-if="isDiffEditing" v-model="diffEditedText" class="h-80 flex-1 resize-none border-0 bg-emerald-50/30 p-4 font-mono text-sm focus:ring-0 dark:bg-emerald-950/10" dir="auto" placeholder="Edit the cleaned text here..."></textarea>
+                                <!-- Read-only diff display when not editing -->
+                                <div v-else class="h-80 overflow-auto p-4">
+                                    <div class="whitespace-pre-wrap font-mono text-sm" dir="auto">
+                                        <template v-for="(segment, i) in charDiff" :key="'clean-' + i">
+                                            <span v-if="segment.type === 'added'" class="rounded bg-emerald-200 px-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">{{ segment.text }}</span>
+                                            <span v-else-if="segment.type === 'same'">{{ segment.text }}</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Editor (shown when editing in unified mode only) -->
+                        <div v-if="isDiffEditing && diffViewMode === 'unified'" class="border-t border-border p-4">
+                            <div class="flex items-center gap-2 mb-2 text-sm font-medium text-muted-foreground">
+                                <PencilIcon class="h-4 w-4" />
+                                Edit cleaned text below — diff updates live as you type
+                            </div>
+                            <textarea v-model="diffEditedText" rows="8" class="w-full resize-y rounded-lg border border-border bg-background p-4 font-mono text-sm focus:border-primary focus:ring-2 focus:ring-primary/20" dir="auto" placeholder="Edit the cleaned text here..."></textarea>
+                        </div>
+
+                        <!-- Diff Legend -->
+                        <div class="border-t border-border bg-muted/30 px-6 py-3">
+                            <div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="inline-block rounded bg-red-200 px-1.5 py-0.5 line-through decoration-red-500/70 text-red-900 dark:bg-red-900/50 dark:text-red-200">removed</span>
+                                    Text that was in the original
+                                </span>
+                                <span class="flex items-center gap-1.5">
+                                    <span class="inline-block rounded bg-emerald-200 px-1.5 py-0.5 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200">added</span>
+                                    Text that was added during cleaning
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -778,18 +963,9 @@ const statusClass = (status: string) => {
                     <form @submit.prevent="submitValidate" class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium mb-1">Notes (optional)</label>
-                            <textarea
-                                v-model="validateForm.notes"
-                                rows="2"
-                                class="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                                placeholder="Any notes about this validation..."
-                            ></textarea>
+                            <textarea v-model="validateForm.notes" rows="2" class="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Any notes about this validation..."></textarea>
                         </div>
-                        <button
-                            type="submit"
-                            :disabled="validateForm.processing"
-                            class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2 font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                        >
+                        <button type="submit" :disabled="validateForm.processing" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                             <CheckCircleIcon class="h-4 w-4" />
                             {{ validateForm.processing ? 'Validating...' : 'Validate' }}
                         </button>
@@ -810,10 +986,7 @@ const statusClass = (status: string) => {
                             </p>
                             <p v-if="baseTranscription.review_notes" class="text-sm mt-2">{{ baseTranscription.review_notes }}</p>
                         </div>
-                        <button
-                            @click="submitUnvalidate"
-                            class="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
-                        >
+                        <button @click="submitUnvalidate" class="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">
                             Remove Validation
                         </button>
                     </div>
@@ -836,12 +1009,8 @@ const statusClass = (status: string) => {
                             <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', statusClass(asrTranscription.status)]">
                                 {{ formatStatus(asrTranscription.status) }}
                             </span>
-                            <Link
-                                v-if="audioSample"
-                                :href="`/audio-samples/${audioSample.id}`"
-                                class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                            >
-                                Back to sample
+                            <Link v-if="audioSample" :href="`/audio-samples/${audioSample.id}`" class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted">
+                            Back to sample
                             </Link>
                         </div>
                     </div>
@@ -910,16 +1079,10 @@ const statusClass = (status: string) => {
 
                     <!-- View Toggle -->
                     <div class="flex flex-wrap gap-2">
-                        <button
-                            @click="viewMode = 'alignment'"
-                            :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']"
-                        >
+                        <button @click="viewMode = 'alignment'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
                             Alignment View
                         </button>
-                        <button
-                            @click="viewMode = 'side-by-side'"
-                            :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']"
-                        >
+                        <button @click="viewMode = 'side-by-side'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
                             Side-by-Side
                         </button>
                     </div>
@@ -931,29 +1094,21 @@ const statusClass = (status: string) => {
                             <div v-for="(chunk, index) in chunkedAlignment" :key="index" class="border-b pb-4 last:border-b-0" dir="rtl">
                                 <div class="mb-2 flex flex-wrap gap-1">
                                     <span class="text-xs text-muted-foreground">Ref:</span>
-                                    <span
-                                        v-for="(item, idx) in chunk"
-                                        :key="`ref-${index}-${idx}`"
-                                        :class="[
-                                            'rounded px-1.5 py-0.5 text-sm',
-                                            item.type === 'correct' ? 'bg-muted' :
+                                    <span v-for="(item, idx) in chunk" :key="`ref-${index}-${idx}`" :class="[
+                                        'rounded px-1.5 py-0.5 text-sm',
+                                        item.type === 'correct' ? 'bg-muted' :
                                             item.type === 'sub' ? 'bg-amber-200' :
-                                            item.type === 'del' ? 'bg-rose-200 line-through' : 'text-muted-foreground',
-                                        ]"
-                                    >{{ item.type === 'ins' ? '—' : item.ref }}</span>
+                                                item.type === 'del' ? 'bg-rose-200 line-through' : 'text-muted-foreground',
+                                    ]">{{ item.type === 'ins' ? '—' : item.ref }}</span>
                                 </div>
                                 <div class="flex flex-wrap gap-1">
                                     <span class="text-xs text-muted-foreground">Hyp:</span>
-                                    <span
-                                        v-for="(item, idx) in chunk"
-                                        :key="`hyp-${index}-${idx}`"
-                                        :class="[
-                                            'rounded px-1.5 py-0.5 text-sm',
-                                            item.type === 'correct' ? 'bg-muted' :
+                                    <span v-for="(item, idx) in chunk" :key="`hyp-${index}-${idx}`" :class="[
+                                        'rounded px-1.5 py-0.5 text-sm',
+                                        item.type === 'correct' ? 'bg-muted' :
                                             item.type === 'sub' ? 'bg-amber-200' :
-                                            item.type === 'ins' ? 'bg-emerald-200' : 'text-muted-foreground',
-                                        ]"
-                                    >{{ item.type === 'del' ? '—' : item.hyp }}</span>
+                                                item.type === 'ins' ? 'bg-emerald-200' : 'text-muted-foreground',
+                                    ]">{{ item.type === 'del' ? '—' : item.hyp }}</span>
                                 </div>
                             </div>
                         </div>
@@ -981,13 +1136,6 @@ const statusClass = (status: string) => {
         </div>
 
         <!-- Link Audio Sample Modal -->
-        <LinkAudioSampleModal
-            v-if="isBase && baseTranscription"
-            :is-open="showLinkModal"
-            :transcription-id="baseTranscription.id"
-            :transcription-name="baseTranscription.name"
-            @close="showLinkModal = false"
-            @linked="handleLinked"
-        />
+        <LinkAudioSampleModal v-if="isBase && baseTranscription" :is-open="showLinkModal" :transcription-id="baseTranscription.id" :transcription-name="baseTranscription.name" @close="showLinkModal = false" @linked="handleLinked" />
     </AppLayout>
 </template>

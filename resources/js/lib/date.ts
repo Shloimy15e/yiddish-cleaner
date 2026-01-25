@@ -13,42 +13,40 @@ export const formatDate = (value: string | null, options?: Intl.DateTimeFormatOp
           )
         : 'N/A';
 
+const TIME_UNITS = [
+    // under 1 hour → minutes
+    { limit: 60 * 60, divisor: 60, label: 'minute' },
+    // under 1 day → hours
+    { limit: 24 * 60 * 60, divisor: 60 * 60, label: 'hour' },
+    // under 7 days → days
+    { limit: 7 * 24 * 60 * 60, divisor: 24 * 60 * 60, label: 'day' },
+    // under 4 weeks → weeks
+    { limit: 4 * 7 * 24 * 60 * 60, divisor: 7 * 24 * 60 * 60, label: 'week' },
+    // under 12 months → months (30-day months as in current code)
+    { limit: 12 * 30 * 24 * 60 * 60, divisor: 30 * 24 * 60 * 60, label: 'month' },
+];
+
 export const formatTimeAgo = (value: string | null): string => {
     if (!value) return 'N/A';
-    
+
     const date = new Date(value);
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-    
+
     if (diffInSeconds < 60) {
         return 'just now';
     }
-    
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) {
-        return diffInMinutes === 1 ? '1 minute ago' : `${diffInMinutes} minutes ago`;
+
+    for (const { limit, divisor, label } of TIME_UNITS) {
+        if (diffInSeconds < limit) {
+            const count = Math.floor(diffInSeconds / divisor);
+            const suffix = count === 1 ? '' : 's';
+            return `${count} ${label}${suffix} ago`;
+        }
     }
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) {
-        return diffInHours === 1 ? '1 hour ago' : `${diffInHours} hours ago`;
-    }
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) {
-        return diffInDays === 1 ? '1 day ago' : `${diffInDays} days ago`;
-    }
-    
-    const diffInWeeks = Math.floor(diffInDays / 7);
-    if (diffInWeeks < 4) {
-        return diffInWeeks === 1 ? '1 week ago' : `${diffInWeeks} weeks ago`;
-    }
-    
-    const diffInMonths = Math.floor(diffInDays / 30);
-    if (diffInMonths < 12) {
-        return diffInMonths === 1 ? '1 month ago' : `${diffInMonths} months ago`;
-    }
-    
-    const diffInYears = Math.floor(diffInDays / 365);
-    return diffInYears === 1 ? '1 year ago' : `${diffInYears} years ago`;
+
+    // years (365-day years as in current code)
+    const years = Math.floor(diffInSeconds / (365 * 24 * 60 * 60));
+    const suffix = years === 1 ? '' : 's';
+    return `${years} year${suffix} ago`;
 };

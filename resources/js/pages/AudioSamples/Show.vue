@@ -44,8 +44,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-const page = usePage();
-
 // Audio helpers
 const hasAudio = computed(() => !!props.audioMedia);
 const isFailed = computed(() => props.audioSample.status === 'failed');
