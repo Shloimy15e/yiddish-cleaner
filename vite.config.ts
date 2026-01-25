@@ -32,7 +32,10 @@ export default defineConfig({
             vueTemplate: true,
         }),
         Components({
-            dirs: [],
+            dirs: [
+                './resources/js/components',
+                './resources/js/layouts',
+            ],
             dts: './resources/js/components.d.ts',
             resolvers: [
                 // Auto-import Inertia's Link component

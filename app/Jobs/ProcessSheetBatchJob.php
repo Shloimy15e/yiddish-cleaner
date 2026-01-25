@@ -110,6 +110,7 @@ class ProcessSheetBatchJob implements ShouldQueue
 
                     // Create audio sample record
                     $audioSample = AudioSample::create([
+                        'user_id' => $this->run->user_id,
                         'processing_run_id' => $this->run->id,
                         'name' => "Row {$rowIndex}",
                         'source_url' => $docUrl ?: $audioUrl,

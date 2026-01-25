@@ -12,12 +12,13 @@ import {
     ArrowPathIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/outline';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { TranscriptionListItem } from '@/types/transcriptions';
 import { formatDate } from '@/lib/date';
+import { formatCreatedBy } from '@/lib/createdBy';
 
 interface CleaningPreset {
     name: string;
@@ -388,8 +389,8 @@ const getStatusLabel = (status: string) => {
             </div>
 
             <!-- Table -->
-            <div class="rounded-xl border bg-card overflow-hidden">
-                <table class="w-full">
+            <div class="rounded-xl border bg-card overflow-x-auto">
+                <table class="w-full min-w-[800px]">
                     <thead class="border-b bg-muted/50">
                         <tr>
                             <th class="w-12 px-4 py-3">
@@ -412,6 +413,9 @@ const getStatusLabel = (status: string) => {
                             </th>
                             <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                                 Linked
+                            </th>
+                            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                                Created By
                             </th>
                             <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                                 Created
@@ -478,12 +482,15 @@ const getStatusLabel = (status: string) => {
                                 </div>
                                 <span v-else class="text-muted-foreground text-sm">Not linked</span>
                             </td>
+                            <td class="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                {{ formatCreatedBy(transcription.user, undefined) }}
+                            </td>
                             <td class="px-4 py-3 text-sm text-muted-foreground">
                                 {{ formatDate(transcription.created_at) }}
                             </td>
                         </tr>
                         <tr v-if="transcriptions.data.length === 0">
-                            <td colspan="6" class="px-4 py-12 text-center text-muted-foreground">
+                            <td colspan="7" class="px-4 py-12 text-center text-muted-foreground">
                                 <DocumentTextIcon class="mx-auto h-12 w-12 opacity-50 mb-4" />
                                 <p class="font-medium">No transcriptions found</p>
                                 <p class="text-sm mt-1">Create a new transcription to get started</p>

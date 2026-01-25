@@ -21,6 +21,7 @@
         "phpoffice/phpspreadsheet": "^5.4",
         "phpoffice/phpword": "^1.4",
         "spatie/laravel-medialibrary": "^11.17",
+        "spatie/laravel-permission": "^6.24",
         "tightenco/ziggy": "^2.6"
     },
     "require-dev": {

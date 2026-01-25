@@ -26,16 +26,18 @@ class TranscriptionController extends Controller
         $user = $request->user();
 
         $transcriptions = Transcription::base()
+            ->when(! $user->isAdmin(), fn ($q) => $q->where('user_id', $user->id))
             ->select([
                 'id',
                 'name',
                 'audio_sample_id',
+                'user_id',
                 'status',
                 'clean_rate',
                 'validated_at',
                 'created_at',
             ])
-            ->with('audioSample:id,name')
+            ->with(['audioSample:id,name', 'user:id,name'])
             ->orderByDesc('created_at')
             ->paginate(20);
 
@@ -91,6 +93,7 @@ class TranscriptionController extends Controller
         }
 
         $transcription = Transcription::create([
+            'user_id' => $request->user()->id,
             'type' => Transcription::TYPE_BASE,
             'name' => $request->name,
             'audio_sample_id' => $request->audio_sample_id,
@@ -121,7 +124,7 @@ class TranscriptionController extends Controller
      */
     public function show(Transcription $transcription): Response
     {
-        $transcription->load('audioSample.baseTranscription');
+        $transcription->load(['audioSample.baseTranscription', 'user:id,name']);
 
         $viewData = [
             'transcription' => $transcription,
@@ -463,6 +466,7 @@ class TranscriptionController extends Controller
         $modelName = $validated['provider'] . '/' . $validated['model'];
 
         $transcription = Transcription::create([
+            'user_id' => $request->user()->id,
             'type' => Transcription::TYPE_ASR,
             'audio_sample_id' => $audioSample->id,
             'model_name' => $modelName,
@@ -519,6 +523,7 @@ class TranscriptionController extends Controller
         $modelName = $validated['provider'] . '/' . $validated['model'];
 
         $transcription = Transcription::create([
+            'user_id' => $request->user()->id,
             'type' => Transcription::TYPE_ASR,
             'audio_sample_id' => $audioSample->id,
             'model_name' => $modelName,

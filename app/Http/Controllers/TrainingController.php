@@ -14,7 +14,9 @@ class TrainingController extends Controller
     {
         $user = $request->user();
 
-        $versions = TrainingVersion::where('user_id', $user->id)
+        $versions = TrainingVersion::query()
+            ->when(! $user->isAdmin(), fn ($q) => $q->where('user_id', $user->id))
+            ->with('user:id,name')
             ->latest()
             ->paginate(10);
 
@@ -72,7 +74,7 @@ class TrainingController extends Controller
         $this->authorize('view', $version);
 
         return Inertia::render('Training/Show', [
-            'version' => $version->load('audioSamples'),
+            'version' => $version->load(['user:id,name', 'audioSamples']),
         ]);
     }
 

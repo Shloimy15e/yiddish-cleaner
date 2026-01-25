@@ -14,7 +14,7 @@ class TrainingVersionPolicy
 
     public function view(User $user, TrainingVersion $trainingVersion): bool
     {
-        return $trainingVersion->user_id === $user->id;
+        return $user->isAdmin() || $trainingVersion->user_id === $user->id;
     }
 
     public function create(User $user): bool
@@ -24,11 +24,11 @@ class TrainingVersionPolicy
 
     public function update(User $user, TrainingVersion $trainingVersion): bool
     {
-        return $trainingVersion->user_id === $user->id;
+        return $user->isAdmin() || $trainingVersion->user_id === $user->id;
     }
 
     public function delete(User $user, TrainingVersion $trainingVersion): bool
     {
-        return $trainingVersion->user_id === $user->id;
+        return $user->isAdmin() || $trainingVersion->user_id === $user->id;
     }
 }

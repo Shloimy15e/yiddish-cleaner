@@ -4,10 +4,11 @@ import LinkAudioSampleModal from '@/components/transcriptions/LinkAudioSampleMod
 import { type BreadcrumbItem } from '@/types';
 import type { Preset } from '@/types/audio-samples';
 import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { decodeHtmlEntities } from '@/lib/utils';
 import { formatErrorRate } from '@/lib/asrMetrics';
 import { formatDate } from '@/lib/date';
+import { formatCreatedBy } from '@/lib/createdBy';
 import * as Diff from 'diff';
 import { computed, ref, watch, onMounted } from 'vue';
 import {
@@ -460,7 +461,7 @@ const statusClass = (status: string) => {
                     </div>
 
                     <!-- Info Grid -->
-                    <div class="grid gap-4 md:grid-cols-4">
+                    <div class="grid gap-4 md:grid-cols-5">
                         <div>
                             <div class="text-xs uppercase text-muted-foreground">Source</div>
                             <div class="font-medium capitalize">{{ baseTranscription.source }}</div>
@@ -480,6 +481,12 @@ const statusClass = (status: string) => {
                                 </Link>
                             </div>
                             <div v-else class="text-muted-foreground">Not linked</div>
+                        </div>
+                        <div>
+                            <div class="text-xs uppercase text-muted-foreground">Created By</div>
+                            <div class="text-sm">
+                                {{ formatCreatedBy(baseTranscription?.user, undefined) }}
+                            </div>
                         </div>
                         <div>
                             <div class="text-xs uppercase text-muted-foreground">Created</div>

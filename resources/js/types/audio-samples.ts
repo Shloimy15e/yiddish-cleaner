@@ -38,6 +38,11 @@ export interface AudioSampleDetail {
     error_message: string | null;
     created_at: string;
     updated_at: string;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     processing_run: AudioSampleProcessingRun | null;
     
     // Base transcription (reference/ground truth)
@@ -53,6 +58,11 @@ export interface AudioSampleListItem {
     status: AudioSampleStatus;
     audio_duration_seconds: number | null;
     created_at: string;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     processing_run: AudioSampleProcessingRunSummary | null;
     
     // Base transcription summary
@@ -83,6 +93,11 @@ export interface AudioSampleRunItem {
     status: AudioSampleStatus;
     error_message: string | null;
     created_at: string;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     base_transcription?: {
         clean_rate: number | null;
     } | null;
@@ -93,10 +108,22 @@ export interface AudioSampleContext {
     name: string;
     status: AudioSampleStatus;
     created_at: string;
+    user_id?: number | null;
+    user?: {
+        id: number;
+        name: string;
+    } | null;
     base_transcription: BaseTranscription | null;
     processing_run: {
         preset: string;
         mode: string;
+        llm_provider?: string | null;
+        llm_model?: string | null;
+        user_id?: number | null;
+        user?: {
+            id: number;
+            name: string;
+        } | null;
     } | null;
 }
 

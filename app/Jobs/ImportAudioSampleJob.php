@@ -86,6 +86,7 @@ class ImportAudioSampleJob implements ShouldQueue
                 : $this->audioSample->name;
 
             $transcription = Transcription::create([
+                'user_id' => $this->audioSample->user_id,
                 'type' => Transcription::TYPE_BASE,
                 'audio_sample_id' => $this->audioSample->id,
                 'name' => $transcriptionName,

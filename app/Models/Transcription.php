@@ -46,6 +46,7 @@ class Transcription extends Model implements HasMedia
 
     protected $fillable = [
         // Common fields
+        'user_id',
         'type',
         'name',
         'audio_sample_id',
@@ -120,6 +121,11 @@ class Transcription extends Model implements HasMedia
     public function trainingVersion(): BelongsTo
     {
         return $this->belongsTo(TrainingVersion::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     // ==================== Media Collections ====================

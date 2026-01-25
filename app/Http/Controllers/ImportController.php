@@ -109,8 +109,10 @@ class ImportController extends Controller
     {
         $user = $request->user();
 
-        $runs = ProcessingRun::where('user_id', $user->id)
+        $runs = ProcessingRun::query()
+            ->when(! $user->isAdmin(), fn ($q) => $q->where('user_id', $user->id))
             ->where('mode', 'import')
+            ->with('user:id,name')
             ->withCount(['audioSamples', 'audioSamples as completed_count' => fn ($q) => $q->whereNot('status', 'pending_base')])
             ->latest()
             ->paginate(20);
@@ -127,7 +129,7 @@ class ImportController extends Controller
     {
         $this->authorize('view', $run);
 
-        $run->load(['audioSamples' => fn ($q) => $q->with('baseTranscription')->latest()->limit(100)]);
+        $run->load(['user:id,name', 'audioSamples' => fn ($q) => $q->with('baseTranscription')->latest()->limit(100)]);
 
         return Inertia::render('Import/Show', [
             'run' => $run,

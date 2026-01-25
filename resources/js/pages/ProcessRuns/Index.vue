@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDateTime } from '@/lib/date';
+import { formatCreatedBy } from '@/lib/createdBy';
 import {
     getProcessRunStatusClass,
     getProcessRunStatusLabel,
@@ -88,6 +89,7 @@ const goToPage = (page: number) => {
                             <th class="px-4 py-3 text-left text-sm font-medium">Source</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Progress</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium">Created By</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Started</th>
                             <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
                         </tr>
@@ -121,6 +123,14 @@ const goToPage = (page: number) => {
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-sm text-muted-foreground">
+                                {{
+                                    formatCreatedBy(
+                                        run.user,
+                                        undefined
+                                    )
+                                }}
+                            </td>
+                            <td class="px-4 py-3 text-sm text-muted-foreground">
                                 {{ formatDateTime(run.created_at) }}
                             </td>
                             <td class="px-4 py-3">
@@ -130,7 +140,7 @@ const goToPage = (page: number) => {
                             </td>
                         </tr>
                         <tr v-if="runs.data.length === 0">
-                            <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
+                            <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">
                                 No import runs yet
                             </td>
                         </tr>

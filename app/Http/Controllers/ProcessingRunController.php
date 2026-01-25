@@ -16,8 +16,10 @@ class ProcessingRunController extends Controller
     {
         $user = $request->user();
 
-        $runs = ProcessingRun::where('user_id', $user->id)
+        $runs = ProcessingRun::query()
+            ->when(! $user->isAdmin(), fn ($q) => $q->where('user_id', $user->id))
             ->where('mode', 'import')
+            ->with('user:id,name')
             ->latest()
             ->paginate(25)
             ->withQueryString();
@@ -35,7 +37,7 @@ class ProcessingRunController extends Controller
         $this->authorize('view', $run);
 
         return Inertia::render('ProcessRuns/Show', [
-            'run' => $run->load(['audioSamples' => function ($query) {
+            'run' => $run->load(['user:id,name', 'audioSamples' => function ($query) {
                 $query->with('baseTranscription:id,audio_sample_id,clean_rate')
                     ->latest()
                     ->select([

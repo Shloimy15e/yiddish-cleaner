@@ -14,7 +14,7 @@ class AudioSamplePolicy
 
     public function view(User $user, AudioSample $audioSample): bool
     {
-        return $audioSample->processingRun?->user_id === $user->id;
+        return $user->isAdmin() || $audioSample->user_id === $user->id;
     }
 
     public function create(User $user): bool
@@ -24,11 +24,11 @@ class AudioSamplePolicy
 
     public function update(User $user, AudioSample $audioSample): bool
     {
-        return $audioSample->processingRun?->user_id === $user->id;
+        return $user->isAdmin() || $audioSample->user_id === $user->id;
     }
 
     public function delete(User $user, AudioSample $audioSample): bool
     {
-        return $audioSample->processingRun?->user_id === $user->id;
+        return $user->isAdmin() || $audioSample->user_id === $user->id;
     }
 }

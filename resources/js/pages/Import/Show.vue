@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
 import { formatDateTime } from '@/lib/date';
+import { formatCreatedBy } from '@/lib/createdBy';
 import {
     getProcessRunStatusClass,
     getProcessRunStatusLabel,
@@ -181,6 +182,17 @@ onBeforeUnmount(() => {
                         <div class="flex items-center justify-between">
                             <span class="text-muted-foreground">Mode</span>
                             <span class="font-medium">{{ run.mode || 'import' }}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground">Created By</span>
+                            <span class="font-medium">
+                                {{
+                                    formatCreatedBy(
+                                        run.user,
+                                        undefined,
+                                    )
+                                }}
+                            </span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-muted-foreground">Started</span>

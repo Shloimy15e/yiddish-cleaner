@@ -121,6 +121,7 @@ class TranscribeAudioSampleJob implements ShouldQueue
             // Update Transcription record
             if (! $transcription) {
                 $transcription = Transcription::create([
+                    'user_id' => $this->userId,
                     'audio_sample_id' => $this->audioSample->id,
                     'model_name' => $result->provider.'/'.$result->model,
                     'model_version' => $result->model,

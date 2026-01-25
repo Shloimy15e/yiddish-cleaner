@@ -51,6 +51,7 @@ class ProcessAudioSampleJob implements ShouldQueue
 
             if (! $baseTranscription) {
                 $baseTranscription = Transcription::create([
+                    'user_id' => $this->audioSample->user_id,
                     'type' => Transcription::TYPE_BASE,
                     'audio_sample_id' => $this->audioSample->id,
                     'name' => $this->audioSample->name,

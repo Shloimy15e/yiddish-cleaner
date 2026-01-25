@@ -14,7 +14,7 @@ class ProcessingRunPolicy
 
     public function view(User $user, ProcessingRun $processingRun): bool
     {
-        return $processingRun->user_id === $user->id;
+        return $user->isAdmin() || $processingRun->user_id === $user->id;
     }
 
     public function create(User $user): bool
@@ -24,11 +24,11 @@ class ProcessingRunPolicy
 
     public function update(User $user, ProcessingRun $processingRun): bool
     {
-        return $processingRun->user_id === $user->id;
+        return $user->isAdmin() || $processingRun->user_id === $user->id;
     }
 
     public function delete(User $user, ProcessingRun $processingRun): bool
     {
-        return $processingRun->user_id === $user->id;
+        return $user->isAdmin() || $processingRun->user_id === $user->id;
     }
 }

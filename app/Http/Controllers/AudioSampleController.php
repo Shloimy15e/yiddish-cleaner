@@ -22,9 +22,11 @@ class AudioSampleController extends Controller
     {
         $user = $request->user();
 
-        $audioSamples = AudioSample::whereHas('processingRun', fn ($q) => $q->where('user_id', $user->id))
-            ->select(['id', 'processing_run_id', 'name', 'status', 'created_at'])
+        $audioSamples = AudioSample::query()
+            ->when(! $user->isAdmin(), fn ($q) => $q->where('user_id', $user->id))
+            ->select(['id', 'user_id', 'processing_run_id', 'name', 'status', 'created_at'])
             ->with([
+                'user:id,name',
                 'processingRun:id,preset,mode,llm_provider,llm_model,batch_id',
                 'baseTranscription:id,audio_sample_id,clean_rate',
             ])
@@ -51,6 +53,8 @@ class AudioSampleController extends Controller
     {
         $this->authorize('view', $audioSample);
 
+        $audioSample->load(['user:id,name', 'processingRun', 'baseTranscription', 'asrTranscriptions']);
+
         $audioMedia = $audioSample->getFirstMedia('audio');
         $audioInfo = $audioMedia ? [
             'url' => $audioMedia->getUrl(),
@@ -60,7 +64,7 @@ class AudioSampleController extends Controller
         ] : null;
 
         return Inertia::render('AudioSamples/Show', [
-            'audioSample' => $audioSample->load('processingRun', 'baseTranscription', 'asrTranscriptions'),
+            'audioSample' => $audioSample,
             'audioMedia' => $audioInfo,
             'presets' => config('cleaning.presets'),
         ]);
@@ -96,6 +100,7 @@ class AudioSampleController extends Controller
 
         // Create the audio sample
         $audioSample = AudioSample::create([
+            'user_id' => $user->id,
             'processing_run_id' => $run->id,
             'name' => $request->name,
             'status' => AudioSample::STATUS_PENDING_BASE,
@@ -118,6 +123,7 @@ class AudioSampleController extends Controller
 
             if ($text) {
                 $transcription = Transcription::create([
+                    'user_id' => $user->id,
                     'type' => Transcription::TYPE_BASE,
                     'audio_sample_id' => $audioSample->id,
                     'name' => $request->name,
@@ -140,6 +146,7 @@ class AudioSampleController extends Controller
 
             if ($text) {
                 $transcription = Transcription::create([
+                    'user_id' => $user->id,
                     'type' => Transcription::TYPE_BASE,
                     'audio_sample_id' => $audioSample->id,
                     'name' => $request->name,
@@ -211,6 +218,7 @@ class AudioSampleController extends Controller
         } else {
             // Create new base transcription
             $transcription = Transcription::create([
+                'user_id' => $request->user()->id,
                 'type' => Transcription::TYPE_BASE,
                 'audio_sample_id' => $audioSample->id,
                 'name' => $audioSample->name,
@@ -333,6 +341,7 @@ class AudioSampleController extends Controller
 
         $modelName = $request->model ? $provider.'/'.$request->model : $provider;
         $transcription = Transcription::create([
+            'user_id' => $request->user()->id,
             'type' => Transcription::TYPE_ASR,
             'audio_sample_id' => $audioSample->id,
             'model_name' => $modelName,
@@ -384,6 +393,7 @@ class AudioSampleController extends Controller
             if ($sample->getFirstMedia('audio')) {
                 $modelName = $request->model ? $provider.'/'.$request->model : $provider;
                 $transcription = Transcription::create([
+                    'user_id' => $user->id,
                     'type' => Transcription::TYPE_ASR,
                     'audio_sample_id' => $sample->id,
                     'model_name' => $modelName,

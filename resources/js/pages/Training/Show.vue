@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
+import { formatCreatedBy } from '@/lib/createdBy';
 import { type BreadcrumbItem } from '@/types';
 import type { TrainingVersionDetail } from '@/types/training';
 
@@ -32,7 +33,13 @@ const deleteVersion = () => {
                 <div>
                     <h1 class="text-2xl font-bold">{{ version.name }}</h1>
                     <p class="text-muted-foreground">
-                        Version {{ version.version }} · Created {{ version.created_at }}
+                        Version {{ version.version }} · Created {{ version.created_at }} ·
+                        {{
+                            formatCreatedBy(
+                                version.user,
+                                undefined,
+                            )
+                        }}
                     </p>
                 </div>
                 <div class="flex gap-2">
