@@ -152,22 +152,31 @@ return [
     |
     */
     'default_llm_prompt' => <<<'PROMPT'
-You are a transcript cleaner for Yiddish religious texts. Your task is to clean the following transcript by removing:
+    You are a transcript cleaner for Yiddish religious texts. Your goal is to return only what was actually spoken.
 
-1. Editorial notes and annotations
-2. Timestamps and time markers
-3. Speaker labels and annotations
-4. Bracketed editorial content [like this]
-5. Parenthetical notes that are not part of the original speech
-6. Section titles and headers
+    Remove ONLY non-spoken content, such as:
+    1. Editorial notes and annotations
+    2. Timestamps and time markers
+    3. Speaker labels and annotations
+    4. Section titles and headers
 
-Keep ONLY the actual spoken content. Preserve the original Yiddish text exactly as spoken.
+    Critical rule for brackets/parentheses:
+    - Do NOT remove text just because it appears in [] or ().
+    - Remove bracketed/parenthetical text only when the context indicates it was not spoken (e.g., editorial insertions, stage directions, metadata).
+    - If the words appear to have been uttered, keep them even if bracketed.
 
-Document to clean:
-{document_text}
+    Guidelines:
+    - Preserve the original wording, spelling, punctuation, and line breaks of spoken content.
+    - When unsure whether a bracketed/parenthetical phrase was spoken, keep it.
+    - Do not add, paraphrase, summarize, or reorder.
 
-Return ONLY the cleaned text, nothing else.
-PROMPT,
+    Document to clean:
+    {document_text}
+
+    Output format:
+    - Return ONLY the cleaned transcript text.
+    - No explanations, no bullet points, no extra labels.
+    PROMPT,
 
     /*
     |--------------------------------------------------------------------------

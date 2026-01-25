@@ -115,20 +115,38 @@ const presetOptions = computed(() =>
         : []
 );
 
+const availableLlmProviders = computed(() =>
+    Object.entries(llmProviders.value).filter(([, value]) => value.has_credential)
+);
+
 // Provider options
 const providerOptions = computed(() =>
-    Object.entries(llmProviders.value).map(([key, value]) => ({
+    availableLlmProviders.value.map(([key, value]) => ({
         id: key,
         name: value.name,
         hasCredential: value.has_credential,
     }))
 );
 
+const getFirstAvailableProvider = () =>
+    availableLlmProviders.value[0]?.[0] ?? null;
+
 // Fetch LLM providers
 const fetchProviders = async () => {
     try {
         const response = await fetch('/api/llm/providers');
         llmProviders.value = await response.json();
+
+        const firstAvailable = getFirstAvailableProvider();
+        if (firstAvailable) {
+            if (!llmProviders.value[cleanForm.llm_provider]?.has_credential) {
+                cleanForm.llm_provider = firstAvailable;
+            }
+            await fetchModelsForProvider(cleanForm.llm_provider);
+        } else {
+            providerModels.value = [];
+            cleanForm.llm_model = '';
+        }
     } catch (error) {
         console.error('Failed to fetch LLM providers:', error);
     }
@@ -136,6 +154,12 @@ const fetchProviders = async () => {
 
 // Fetch models for provider
 const fetchModelsForProvider = async (provider: string) => {
+    if (!provider) {
+        providerModels.value = [];
+        cleanForm.llm_model = '';
+        return;
+    }
+
     loadingModels.value = true;
     try {
         const response = await fetch(`/api/llm/providers/${provider}/models`);
@@ -145,6 +169,16 @@ const fetchModelsForProvider = async (provider: string) => {
         providerModels.value = llmProviders.value[provider]?.models || [];
     } finally {
         loadingModels.value = false;
+    }
+
+    const modelIds = providerModels.value.map((model) => model.id);
+    const defaultModel = llmProviders.value[provider]?.default_model;
+    if (!modelIds.includes(cleanForm.llm_model)) {
+        if (defaultModel && modelIds.includes(defaultModel)) {
+            cleanForm.llm_model = defaultModel;
+        } else {
+            cleanForm.llm_model = modelIds[0] ?? '';
+        }
     }
 };
 
