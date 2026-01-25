@@ -614,6 +614,10 @@ const formatDate = (dateString: string | null) => {
                                         </ListboxOptions>
                                     </div>
                                 </Listbox>
+                                <p v-if="providerOptions.length === 0" class="mt-2 text-sm text-amber-700">
+                                    No connected providers. Add credentials in
+                                    <Link href="/settings/credentials" class="text-primary hover:underline">Settings</Link>.
+                                </p>
                             </div>
                             <div>
                                 <label class="mb-1 block text-sm font-medium">Model</label>
@@ -642,12 +646,16 @@ const formatDate = (dateString: string | null) => {
                                         </ListboxOptions>
                                     </div>
                                 </Listbox>
+                                <p v-if="!loadingModels && providerModels.length === 0" class="mt-2 text-sm text-amber-700">
+                                    No models available. Check provider credentials in
+                                    <Link href="/settings/credentials" class="text-primary hover:underline">Settings</Link>.
+                                </p>
                             </div>
                         </div>
 
                         <button
                             type="submit"
-                            :disabled="cleanForm.processing"
+                            :disabled="cleanForm.processing || (cleanForm.mode === 'llm' && (!providerOptions.length || !providerModels.length))"
                             class="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                         >
                             <ArrowPathIcon v-if="cleanForm.processing" class="h-4 w-4 animate-spin" />
