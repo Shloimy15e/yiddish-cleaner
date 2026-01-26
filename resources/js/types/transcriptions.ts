@@ -17,6 +17,14 @@ export interface AsrMetrics {
     reference_words: number;
 }
 
+// WER calculation range (word indices, 0-based, inclusive)
+export interface WerRange {
+    wer_ref_start: number | null;
+    wer_ref_end: number | null;
+    wer_hyp_start: number | null;
+    wer_hyp_end: number | null;
+}
+
 // Base transcription cleaning metrics
 export interface CleaningMetrics {
     word_count?: number;
@@ -72,7 +80,7 @@ export interface BaseTranscription {
 }
 
 // ASR transcription detail (for benchmark comparison)
-export interface AsrTranscription extends AsrMetrics {
+export interface AsrTranscription extends AsrMetrics, WerRange {
     id: number;
     type: 'asr';
     audio_sample_id: number;

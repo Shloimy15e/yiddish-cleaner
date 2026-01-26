@@ -15,9 +15,22 @@ class WerCalculator
 
     /**
      * Calculate WER and CER metrics between reference and hypothesis texts.
+     *
+     * @param string $reference The reference (ground truth) text
+     * @param string $hypothesis The hypothesis (ASR output) text
+     * @param int|null $refStart Start word index for reference (0-based, inclusive)
+     * @param int|null $refEnd End word index for reference (0-based, inclusive)
+     * @param int|null $hypStart Start word index for hypothesis (0-based, inclusive)
+     * @param int|null $hypEnd End word index for hypothesis (0-based, inclusive)
      */
-    public function calculate(string $reference, string $hypothesis): WerResult
-    {
+    public function calculate(
+        string $reference,
+        string $hypothesis,
+        ?int $refStart = null,
+        ?int $refEnd = null,
+        ?int $hypStart = null,
+        ?int $hypEnd = null,
+    ): WerResult {
         // Normalize texts
         $reference = $this->normalize($reference);
         $hypothesis = $this->normalize($hypothesis);
@@ -25,6 +38,35 @@ class WerCalculator
         // Calculate word-level metrics (WER)
         $refWords = $this->tokenizeWords($reference);
         $hypWords = $this->tokenizeWords($hypothesis);
+
+        // Apply range slicing if specified
+        $totalRefWords = count($refWords);
+        $totalHypWords = count($hypWords);
+
+        // Clamp and apply reference range
+        if ($refStart !== null || $refEnd !== null) {
+            $refStart = $refStart ?? 0;
+            $refEnd = $refEnd ?? ($totalRefWords - 1);
+            $refStart = max(0, min($refStart, $totalRefWords - 1));
+            $refEnd = max($refStart, min($refEnd, $totalRefWords - 1));
+            $refWords = array_slice($refWords, $refStart, $refEnd - $refStart + 1);
+        } else {
+            $refStart = 0;
+            $refEnd = $totalRefWords > 0 ? $totalRefWords - 1 : null;
+        }
+
+        // Clamp and apply hypothesis range
+        if ($hypStart !== null || $hypEnd !== null) {
+            $hypStart = $hypStart ?? 0;
+            $hypEnd = $hypEnd ?? ($totalHypWords - 1);
+            $hypStart = max(0, min($hypStart, $totalHypWords - 1));
+            $hypEnd = max($hypStart, min($hypEnd, $totalHypWords - 1));
+            $hypWords = array_slice($hypWords, $hypStart, $hypEnd - $hypStart + 1);
+        } else {
+            $hypStart = 0;
+            $hypEnd = $totalHypWords > 0 ? $totalHypWords - 1 : null;
+        }
+
         $wordCells = count($refWords) * count($hypWords);
 
         if ($wordCells > self::MAX_WORD_CELLS) {
@@ -39,9 +81,11 @@ class WerCalculator
             ? ($wordMetrics['substitutions'] + $wordMetrics['insertions'] + $wordMetrics['deletions']) / count($refWords) * 100
             : 0.0;
 
-        // Calculate character-level metrics (CER)
-        $refChars = $this->tokenizeChars($reference);
-        $hypChars = $this->tokenizeChars($hypothesis);
+        // Calculate character-level metrics (CER) - uses full sliced text
+        $refText = implode(' ', $refWords);
+        $hypText = implode(' ', $hypWords);
+        $refChars = $this->tokenizeChars($refText);
+        $hypChars = $this->tokenizeChars($hypText);
         $charMetrics = $this->levenshteinCountsLinear($refChars, $hypChars);
         $cer = count($refChars) > 0
             ? ($charMetrics['substitutions'] + $charMetrics['insertions'] + $charMetrics['deletions']) / count($refChars) * 100
@@ -56,6 +100,10 @@ class WerCalculator
             referenceWords: count($refWords),
             hypothesisWords: count($hypWords),
             errors: $wordMetrics['errors'] ?? [],
+            refStart: $refStart,
+            refEnd: $refEnd,
+            hypStart: $hypStart,
+            hypEnd: $hypEnd,
         );
     }
 
@@ -69,13 +117,29 @@ class WerCalculator
 
     /**
      * Normalize text for comparison.
+     *
+     * Strips:
+     * - Hebrew/Yiddish nikkud (vowel points): U+05B0-U+05BD, U+05BF, U+05C1-U+05C2, U+05C4-U+05C5, U+05C7
+     * - Hebrew cantillation marks (trop): U+0591-U+05AF
+     * - Other combining marks
+     * - Punctuation and symbols
+     * - Excess whitespace
      */
     protected function normalize(string $text): string
     {
         // Convert to lowercase
         $text = mb_strtolower($text, 'UTF-8');
 
-        // Remove punctuation but keep Hebrew/Yiddish characters
+        // Remove Hebrew nikkud (vowel points) - U+05B0 to U+05BD, U+05BF, U+05C1-U+05C2, U+05C4-U+05C5, U+05C7
+        $text = preg_replace('/[\x{05B0}-\x{05BD}\x{05BF}\x{05C1}\x{05C2}\x{05C4}\x{05C5}\x{05C7}]/u', '', $text);
+
+        // Remove Hebrew cantillation marks (trop/teamim) - U+0591 to U+05AF
+        $text = preg_replace('/[\x{0591}-\x{05AF}]/u', '', $text);
+
+        // Remove other combining diacritical marks
+        $text = preg_replace('/\p{M}/u', '', $text);
+
+        // Remove punctuation and symbols but keep Hebrew/Yiddish letters and numbers
         $text = preg_replace('/[^\p{L}\p{N}\s]/u', '', $text);
 
         // Normalize whitespace
