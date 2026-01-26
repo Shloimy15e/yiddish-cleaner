@@ -33,6 +33,10 @@ const volume = ref([100]);
 const isMuted = ref(false);
 const showVolumeSlider = ref(false);
 
+// Range playback state
+const rangeEndTime = ref<number | null>(null);
+const isPlayingRange = ref(false);
+
 // Format time as MM:SS
 const formatTime = (seconds: number): string => {
     if (isNaN(seconds) || !isFinite(seconds)) return '0:00';
@@ -91,6 +95,50 @@ const toggleMute = () => {
     audioRef.value.muted = isMuted.value;
 };
 
+// Play a specific range of audio (for word review)
+const playRange = async (startTime: number, endTime: number, padding: number = 2) => {
+    if (!audioRef.value || hasError.value) return;
+    
+    // Apply padding
+    const paddedStart = Math.max(0, startTime - padding);
+    const paddedEnd = Math.min(duration.value || Infinity, endTime + padding);
+    
+    // Seek to start
+    audioRef.value.currentTime = paddedStart;
+    currentTime.value = paddedStart;
+    
+    // Set range end for auto-pause
+    rangeEndTime.value = paddedEnd;
+    isPlayingRange.value = true;
+    
+    // Start playback
+    try {
+        await audioRef.value.play();
+    } catch (err) {
+        console.error('Playback error:', err);
+        hasError.value = true;
+        rangeEndTime.value = null;
+        isPlayingRange.value = false;
+    }
+};
+
+// Seek to a specific time (for external control)
+const seekTo = (time: number) => {
+    if (!audioRef.value) return;
+    audioRef.value.currentTime = time;
+    currentTime.value = time;
+};
+
+// Expose methods for external use
+defineExpose({
+    playRange,
+    seekTo,
+    audioRef,
+    currentTime,
+    duration,
+    isPlaying,
+});
+
 const retry = () => {
     if (!audioRef.value) return;
     hasError.value = false;
@@ -108,6 +156,15 @@ const onLoadedMetadata = () => {
 const onTimeUpdate = () => {
     if (!audioRef.value) return;
     currentTime.value = audioRef.value.currentTime;
+    
+    // Auto-pause at range end
+    if (isPlayingRange.value && rangeEndTime.value !== null) {
+        if (currentTime.value >= rangeEndTime.value) {
+            audioRef.value.pause();
+            rangeEndTime.value = null;
+            isPlayingRange.value = false;
+        }
+    }
 };
 
 const onPlay = () => {

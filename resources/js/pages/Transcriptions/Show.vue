@@ -23,13 +23,17 @@ import {
     PencilIcon,
     TrashIcon,
     AdjustmentsHorizontalIcon,
+    AcademicCapIcon,
 } from '@heroicons/vue/24/outline';
 import { Loader } from 'lucide-vue-next';
 
+import AudioPlayer from '@/components/AudioPlayer.vue';
+import TranscriptionWordReview from '@/components/transcriptions/TranscriptionWordReview.vue';
 import type { BreadcrumbItem } from '@/types';
+import type { AudioMedia } from '@/types/audio-samples';
 import type { Preset } from '@/types/audio-samples';
 import type { LlmModel, LlmProvider, DiffSegment, AlignmentItem } from '@/types/transcription-show';
-import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
+import type { BaseTranscription, AsrTranscription, Transcription, WordReviewStats } from '@/types/transcriptions';
 
 const props = defineProps<{
     transcription: Transcription;
@@ -40,6 +44,7 @@ const props = defineProps<{
             text_clean: string | null;
         } | null;
     } | null;
+    audioMedia?: AudioMedia | null;
     presets?: Record<string, Preset>;
 }>();
 
@@ -377,6 +382,25 @@ const saveDiffEdit = () => {
 // ==================== ASR TRANSCRIPTION STATE ====================
 
 const viewMode = ref<'alignment' | 'side-by-side'>('alignment');
+
+// Word Review State
+const audioPlayerRef = ref<InstanceType<typeof AudioPlayer> | null>(null);
+const wordReviewStats = ref<WordReviewStats | null>(null);
+const showWordReview = ref(true);
+
+// Training flag toggle
+const trainingFlagForm = useForm({});
+const toggleTrainingFlag = () => {
+    if (!props.audioSample || !asrTranscription.value) return;
+
+    trainingFlagForm.post(`/api/transcriptions/${props.transcription.id}/words/toggle-training-flag`, {
+        preserveScroll: true,
+    });
+};
+
+const handleWordReviewStats = (stats: WordReviewStats) => {
+    wordReviewStats.value = stats;
+};
 
 // WER Range Selection
 const showRangeModal = ref(false);
@@ -1354,6 +1378,72 @@ const chunkedAlignment = computed(() => {
                         <div class="rounded-xl border bg-card p-4" dir="rtl">
                             <div class="mb-2 text-sm font-semibold text-muted-foreground">Hypothesis</div>
                             <p class="whitespace-pre-wrap text-sm">{{ hypothesisText }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Word-Level Review Section -->
+                    <div class="rounded-xl border border-border bg-card">
+                        <!-- Audio Player for Word Playback -->
+                        <div v-if="audioMedia" class="border-b border-border p-4">
+                            <AudioPlayer
+                                ref="audioPlayerRef"
+                                :src="audioMedia.url"
+                                :name="audioMedia.name"
+                                :file-size="audioMedia.size"
+                            />
+                        </div>
+
+                        <!-- Word Review Header with Training Flag -->
+                        <div class="flex items-center justify-between border-b border-border px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/15">
+                                    <DocumentTextIcon class="h-5 w-5 text-secondary" />
+                                </div>
+                                <div>
+                                    <h2 class="font-semibold text-foreground">Word-Level Review</h2>
+                                    <p class="text-xs text-muted-foreground">
+                                        Click words to play audio, edit corrections
+                                        <span v-if="wordReviewStats">
+                                            • {{ wordReviewStats.correction_count }} corrections ({{ (wordReviewStats.correction_rate * 100).toFixed(1) }}%)
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center gap-3">
+                                <!-- Training Flag Toggle -->
+                                <button
+                                    @click="toggleTrainingFlag"
+                                    :disabled="trainingFlagForm.processing"
+                                    :class="[
+                                        'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                                        props.transcription.flagged_for_training
+                                            ? 'border-success bg-success/10 text-success hover:bg-success/20'
+                                            : 'border-border hover:bg-muted'
+                                    ]"
+                                    :title="props.transcription.flagged_for_training ? 'Remove from training dataset' : 'Flag for training dataset'"
+                                >
+                                    <AcademicCapIcon class="h-4 w-4" />
+                                    {{ props.transcription.flagged_for_training ? 'Training Data' : 'Flag for Training' }}
+                                </button>
+
+                                <!-- Collapse Toggle -->
+                                <button
+                                    @click="showWordReview = !showWordReview"
+                                    class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                                >
+                                    {{ showWordReview ? 'Hide' : 'Show' }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Word Review Component -->
+                        <div v-show="showWordReview" class="p-6">
+                            <TranscriptionWordReview
+                                :transcription-id="props.transcription.id"
+                                :audio-player-ref="audioPlayerRef"
+                                @stats-updated="handleWordReviewStats"
+                            />
                         </div>
                     </div>
                 </div>

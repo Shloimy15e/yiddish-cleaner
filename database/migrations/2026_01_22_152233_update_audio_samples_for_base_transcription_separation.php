@@ -96,6 +96,16 @@ return new class extends Migration
             ->update(['status' => 'pending_base']);
 
         // Step 3: Remove transcript-related columns from audio_samples
+        // First drop the index on reference_hash_raw (required for SQLite compatibility)
+        try {
+            Schema::table('audio_samples', function (Blueprint $table) {
+                $table->dropIndex('audio_samples_reference_hash_raw_index');
+            });
+        } catch (\Exception $e) {
+            // Index may not exist, continue
+        }
+
+        // Now drop the columns
         Schema::table('audio_samples', function (Blueprint $table) {
             $table->dropColumn([
                 'reference_text_raw',

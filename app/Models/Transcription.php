@@ -2,14 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
 class Transcription extends Model implements HasMedia
 {
-    use InteractsWithMedia;
+    use HasFactory, InteractsWithMedia;
 
     /**
      * Type constants
@@ -95,6 +97,9 @@ class Transcription extends Model implements HasMedia
         'wer_ref_end',
         'wer_hyp_start',
         'wer_hyp_end',
+
+        // Training flag
+        'flagged_for_training',
     ];
 
     protected function casts(): array
@@ -120,6 +125,9 @@ class Transcription extends Model implements HasMedia
             'wer_ref_end' => 'integer',
             'wer_hyp_start' => 'integer',
             'wer_hyp_end' => 'integer',
+
+            // Training
+            'flagged_for_training' => 'boolean',
         ];
     }
 
@@ -138,6 +146,11 @@ class Transcription extends Model implements HasMedia
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function words(): HasMany
+    {
+        return $this->hasMany(TranscriptionWord::class)->orderBy('word_index');
     }
 
     // ==================== Media Collections ====================
@@ -430,6 +443,86 @@ class Transcription extends Model implements HasMedia
     public function getWordCountAttribute(): int
     {
         return $this->metrics['word_count'] ?? 0;
+    }
+
+    // ==================== Word-Level Methods ====================
+
+    /**
+     * Check if this transcription has word-level data.
+     */
+    public function hasWordData(): bool
+    {
+        return $this->words()->exists();
+    }
+
+    /**
+     * Get the count of corrected words.
+     */
+    public function getCorrectionCount(): int
+    {
+        return $this->words()
+            ->where(function ($q) {
+                $q->whereNotNull('corrected_word')
+                  ->orWhere('is_deleted', true)
+                  ->orWhere('is_inserted', true);
+            })
+            ->count();
+    }
+
+    /**
+     * Get the correction rate (corrected words / total words).
+     */
+    public function getCorrectionRate(): ?float
+    {
+        $totalWords = $this->words()->original()->count();
+        
+        if ($totalWords === 0) {
+            return null;
+        }
+
+        return $this->getCorrectionCount() / $totalWords;
+    }
+
+    /**
+     * Get the corrected text (applying all word corrections).
+     */
+    public function getCorrectedText(): string
+    {
+        if (! $this->hasWordData()) {
+            return $this->hypothesis_text ?? '';
+        }
+
+        $words = $this->words()
+            ->active()
+            ->orderBy('word_index')
+            ->get();
+
+        return $words
+            ->map(fn (TranscriptionWord $word) => $word->getDisplayWord())
+            ->filter(fn ($word) => $word !== '')
+            ->implode(' ');
+    }
+
+    /**
+     * Store word-level data from ASR result.
+     *
+     * @param  \App\Services\Asr\AsrWord[]  $asrWords
+     */
+    public function storeWords(array $asrWords): void
+    {
+        // Clear existing words
+        $this->words()->delete();
+
+        // Insert new words
+        foreach ($asrWords as $index => $asrWord) {
+            $this->words()->create([
+                'word_index' => $index,
+                'word' => $asrWord->word,
+                'start_time' => $asrWord->start,
+                'end_time' => $asrWord->end,
+                'confidence' => $asrWord->confidence,
+            ]);
+        }
     }
 
     // ==================== Boot ====================

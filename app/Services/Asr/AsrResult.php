@@ -4,6 +4,17 @@ namespace App\Services\Asr;
 
 class AsrResult
 {
+    /**
+     * @param  string  $text  Full transcription text
+     * @param  string  $provider  ASR provider name
+     * @param  string  $model  Model used for transcription
+     * @param  float|null  $durationSeconds  Audio duration
+     * @param  int|null  $wordCount  Word count
+     * @param  string|null  $summary  Summary (if provided by ASR)
+     * @param  array  $keywords  Keywords (if provided by ASR)
+     * @param  array  $metadata  Additional metadata
+     * @param  AsrWord[]|null  $words  Word-level timing and confidence data
+     */
     public function __construct(
         public readonly string $text,
         public readonly string $provider,
@@ -13,6 +24,7 @@ class AsrResult
         public readonly ?string $summary = null,
         public readonly array $keywords = [],
         public readonly array $metadata = [],
+        public readonly ?array $words = null,
     ) {}
 
     /**
@@ -49,6 +61,15 @@ class AsrResult
             'summary' => $this->summary,
             'keywords' => $this->keywords,
             'metadata' => $this->metadata,
+            'words' => $this->words ? array_map(fn (AsrWord $w) => $w->toArray(), $this->words) : null,
         ];
+    }
+
+    /**
+     * Check if word-level data is available.
+     */
+    public function hasWords(): bool
+    {
+        return $this->words !== null && count($this->words) > 0;
     }
 }
