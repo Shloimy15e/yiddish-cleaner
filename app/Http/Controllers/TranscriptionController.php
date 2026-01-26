@@ -38,8 +38,13 @@ class TranscriptionController extends Controller
                 'created_at',
             ])
             ->with(['audioSample:id,name', 'user:id,name'])
+            ->when($request->search, fn ($q, $search) => $q->where('name', 'like', "%{$search}%"))
+            ->when($request->status, fn ($q, $status) => $q->where('status', $status))
+            ->when($request->linked === 'linked', fn ($q) => $q->whereNotNull('audio_sample_id'))
+            ->when($request->linked === 'orphan', fn ($q) => $q->whereNull('audio_sample_id'))
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
         return Inertia::render('Transcriptions/Index', [
             'transcriptions' => $transcriptions,
