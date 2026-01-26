@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AlignTranscriptionJob;
 use App\Jobs\CalculateTranscriptionMetricsJob;
 use App\Jobs\CleanTranscriptionJob;
 use App\Models\AudioSample;
 use App\Models\Transcription;
+use App\Services\Alignment\AlignmentManager;
 use App\Services\Asr\WerCalculator;
 use App\Services\Document\ParserService;
 use App\Services\Llm\LlmManager;
@@ -667,5 +669,103 @@ class TranscriptionController extends Controller
     public function import(Request $request, AudioSample $audioSample)
     {
         return $this->importAsr($request, $audioSample);
+    }
+
+    // ==================== Word Alignment ====================
+
+    /**
+     * Generate word alignment for a transcription using forced alignment.
+     * 
+     * This aligns the transcription text to the audio, creating word-level
+     * timing data (TranscriptionWord records) for review and correction.
+     */
+    public function align(Request $request, Transcription $transcription, AlignmentManager $alignmentManager): RedirectResponse
+    {
+        $request->validate([
+            'provider' => 'sometimes|string|in:' . implode(',', $alignmentManager->getProviders()),
+            'model' => 'nullable|string',
+            'overwrite' => 'sometimes|boolean',
+        ]);
+
+        // Ensure transcription is linked to an audio sample
+        if (! $transcription->audioSample) {
+            return back()->withErrors(['error' => 'Transcription must be linked to an audio sample for alignment.']);
+        }
+
+        // Check if audio file exists
+        $audioMedia = $transcription->audioSample->getFirstMedia('audio');
+        if (! $audioMedia) {
+            return back()->withErrors(['error' => 'No audio file attached to the audio sample.']);
+        }
+
+        // Get text to align
+        $text = $transcription->isBase()
+            ? ($transcription->text_clean ?? $transcription->text_raw)
+            : $transcription->hypothesis_text;
+
+        if (empty($text)) {
+            return back()->withErrors(['error' => 'No text available to align.']);
+        }
+
+        // Check if already has word data and overwrite not requested
+        if (! $request->boolean('overwrite') && $transcription->hasWordData()) {
+            return back()->withErrors(['error' => 'Transcription already has word alignment data. Enable "overwrite" to replace it.']);
+        }
+
+        $provider = $request->input('provider', $alignmentManager->getDefaultProvider());
+        $credential = $request->user()->getApiCredential($provider, 'alignment')
+            ?? $request->user()->getApiCredential($provider, 'asr');
+
+        if (! $credential) {
+            return back()->withErrors(['error' => "No API key configured for {$provider}. Add your API key in Settings."]);
+        }
+
+        // Dispatch the alignment job
+        AlignTranscriptionJob::dispatch(
+            transcription: $transcription,
+            provider: $provider,
+            model: $request->input('model'),
+            userId: $request->user()->id,
+            overwrite: $request->boolean('overwrite', false),
+        );
+
+        return back()->with('success', 'Word alignment started. Results will appear when complete.');
+    }
+
+    /**
+     * Get available alignment providers and models (API endpoint).
+     */
+    public function alignmentProviders(Request $request, AlignmentManager $alignmentManager): \Illuminate\Http\JsonResponse
+    {
+        $providers = [];
+
+        foreach ($alignmentManager->getProviders() as $providerName) {
+            $config = $alignmentManager->getProviderConfig($providerName);
+            $requiresCredential = $config['requires_credential'] ?? true;
+
+            // Check for credential only if required
+            $hasCredential = false;
+            if ($requiresCredential) {
+                $credential = $request->user()->getApiCredential($providerName, 'alignment')
+                    ?? $request->user()->getApiCredential($providerName, 'asr');
+                $hasCredential = $credential !== null;
+            }
+
+            $providers[] = [
+                'id' => $providerName,
+                'name' => $config['name'] ?? $providerName,
+                'models' => $config['models'] ?? [],
+                'default_model' => $config['default_model'] ?? null,
+                'description' => $config['description'] ?? null,
+                'requires_credential' => $requiresCredential,
+                'has_credential' => $hasCredential,
+                'available' => ! $requiresCredential || $hasCredential,
+            ];
+        }
+
+        return response()->json([
+            'providers' => $providers,
+            'default' => $alignmentManager->getDefaultProvider(),
+        ]);
     }
 }
