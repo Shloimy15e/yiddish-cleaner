@@ -384,6 +384,7 @@ const hasCustomRange = computed(() => {
 
 // Format range display
 const formatRange = (start: number | null, end: number | null, total: number) => {
+    if (total === 0) return 'None';
     if (start === null && end === null) return `All (0-${total - 1})`;
     const s = start ?? 0;
     const e = end ?? (total - 1);

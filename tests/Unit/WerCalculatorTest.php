@@ -34,7 +34,6 @@ describe('WerCalculator', function () {
         $reference = "שלום עולם";
         $hypothesis = "בורא המלך";
         $result = $calculator->calculate($reference, $hypothesis);
-        fwrite(STDERR, print_r($result, true));
 
         // Maximum error rate expected
         expect($result->wer)->toBe(100.0);

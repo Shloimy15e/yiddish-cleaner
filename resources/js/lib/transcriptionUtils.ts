@@ -21,8 +21,8 @@ export const normalizeForWer = (text: string): string => {
     // Remove Hebrew cantillation marks (trop/teamim)
     normalized = normalized.replace(/[\u0591-\u05AF]/g, '');
 
-    // Remove other combining diacritical marks (Unicode category M)
-    normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // Remove all combining diacritical marks (Unicode category M, matching backend PHP normalization)
+    normalized = normalized.normalize('NFD').replace(/\p{M}+/gu, '');
 
     // Remove punctuation and symbols (keep letters, numbers, spaces)
     normalized = normalized.replace(/[^\p{L}\p{N}\s]/gu, '');
