@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
 import { AdjustmentsHorizontalIcon, CheckIcon } from '@heroicons/vue/24/outline';
+import { ref, computed, watch } from 'vue';
 
 interface Processor {
     name: string;

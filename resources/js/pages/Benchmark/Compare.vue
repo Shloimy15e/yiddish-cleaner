@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { ArrowsRightLeftIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem } from '@/types';
-import { ArrowsRightLeftIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { getWerColor } from '@/lib/asrMetrics';
+import { type BreadcrumbItem } from '@/types';
 
 interface ModelResult {
     wer: number;

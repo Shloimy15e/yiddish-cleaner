@@ -1,4 +1,5 @@
 import * as Diff from 'diff';
+
 import type { AlignmentItem, DiffSegment } from '@/types/transcription-show';
 
 /**

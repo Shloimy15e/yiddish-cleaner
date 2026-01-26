@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Head, useForm, router } from '@inertiajs/vue3';
-import { ref, computed, watch, onMounted } from 'vue';
 import { 
     TabGroup, 
     TabList, 
@@ -19,10 +17,13 @@ import {
     DocumentTextIcon,
     MagnifyingGlassIcon,
 } from '@heroicons/vue/24/outline';
+import { Head, useForm, router } from '@inertiajs/vue3';
+import { ref, computed, watch, onMounted } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
+import { formatDate } from '@/lib/date';
 import { type BreadcrumbItem } from '@/types';
 import type { BaseTranscription } from '@/types/transcriptions';
-import { formatDate } from '@/lib/date';
 
 const props = defineProps<{
     hasGoogleCredentials: boolean;

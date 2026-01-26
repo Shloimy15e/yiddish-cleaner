@@ -1,15 +1,4 @@
 <script setup lang="ts">
-import { formatErrorRate, getWerColor } from '@/lib/asrMetrics';
-import { formatCreatedBy } from '@/lib/createdBy';
-import { formatDate } from '@/lib/date';
-import { decodeHtmlEntities } from '@/lib/utils';
-import { type BreadcrumbItem } from '@/types';
-import type {
-    AsrProvider,
-    AudioMedia,
-    AudioSampleDetail,
-} from '@/types/audio-samples';
-import type { BaseTranscription } from '@/types/transcriptions';
 import {
     ArrowPathIcon,
     ArrowTopRightOnSquareIcon,
@@ -29,6 +18,18 @@ import {
 import { CheckIcon } from '@heroicons/vue/24/solid';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
+
+import { formatErrorRate, getWerColor } from '@/lib/asrMetrics';
+import { formatCreatedBy } from '@/lib/createdBy';
+import { formatDate } from '@/lib/date';
+import { decodeHtmlEntities } from '@/lib/utils';
+import { type BreadcrumbItem } from '@/types';
+import type {
+    AsrProvider,
+    AudioMedia,
+    AudioSampleDetail,
+} from '@/types/audio-samples';
+import type { BaseTranscription } from '@/types/transcriptions';
 
 const props = defineProps<{
     audioSample: AudioSampleDetail;

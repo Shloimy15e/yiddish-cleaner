@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
+
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { formatCreatedBy } from '@/lib/createdBy';

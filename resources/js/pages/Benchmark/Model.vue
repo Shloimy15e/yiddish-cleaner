@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { ChartBarIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { Head, Link } from '@inertiajs/vue3';
+
 import AppLayout from '@/layouts/AppLayout.vue';
+import { getWerColor } from '@/lib/asrMetrics';
 import { type BreadcrumbItem } from '@/types';
 import type { BenchmarkTranscription } from '@/types/transcriptions';
-import { ChartBarIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { getWerColor } from '@/lib/asrMetrics';
 
 interface Stats {
     sample_count: number;

@@ -14,11 +14,12 @@ import {
 } from '@heroicons/vue/24/outline';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch, onMounted } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
+import { formatCreatedBy } from '@/lib/createdBy';
+import { formatDate } from '@/lib/date';
 import { type BreadcrumbItem } from '@/types';
 import type { TranscriptionListItem } from '@/types/transcriptions';
-import { formatDate } from '@/lib/date';
-import { formatCreatedBy } from '@/lib/createdBy';
 
 interface CleaningPreset {
     name: string;

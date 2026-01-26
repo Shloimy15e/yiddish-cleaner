@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem } from '@/types';
 import { TrophyIcon, ArrowUpIcon, ArrowDownIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline';
+import { Head, Link, router } from '@inertiajs/vue3';
+
+import AppLayout from '@/layouts/AppLayout.vue';
 import { getWerColor } from '@/lib/asrMetrics';
+import { type BreadcrumbItem } from '@/types';
 
 interface ModelStats {
     rank: number;

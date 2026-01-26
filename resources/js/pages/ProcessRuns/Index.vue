@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
-import { formatDateTime } from '@/lib/date';
 import { formatCreatedBy } from '@/lib/createdBy';
+import { formatDateTime } from '@/lib/date';
 import {
     getProcessRunStatusClass,
     getProcessRunStatusLabel,
