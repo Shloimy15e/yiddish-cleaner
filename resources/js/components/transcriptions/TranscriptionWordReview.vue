@@ -7,6 +7,7 @@ import {
     XMarkIcon,
     SpeakerWaveIcon,
     FunnelIcon,
+    ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, onMounted, ref, watch } from 'vue';
 
@@ -27,6 +28,17 @@ import type {
     WordReviewConfig,
 } from '@/types/transcriptions';
 
+interface AlignmentProvider {
+    id: string;
+    name: string;
+    models: string[];
+    default_model: string | null;
+    description: string | null;
+    requires_credential: boolean;
+    has_credential: boolean;
+    available: boolean;
+}
+
 interface Props {
     transcriptionId: number;
     audioPlayerRef?: {
@@ -38,6 +50,7 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
     statsUpdated: [stats: WordReviewStats];
+    alignmentStarted: [];
 }>();
 
 // State
@@ -49,6 +62,14 @@ const config = ref<WordReviewConfig>({
 });
 const isLoading = ref(true);
 const error = ref<string | null>(null);
+
+// Alignment state
+const alignmentProviders = ref<AlignmentProvider[]>([]);
+const selectedProvider = ref<string>('');
+const selectedModel = ref<string>('');
+const isAligning = ref(false);
+const alignmentError = ref<string | null>(null);
+const showAlignmentOptions = ref(false);
 
 // Filter state
 const confidenceThreshold = ref<string>('low'); // 'all' | 'low' | custom number
@@ -375,9 +396,125 @@ const getWordClass = (word: TranscriptionWord): string => {
     return `${base} ${getConfidenceColor(word.confidence)}`;
 };
 
+// ==================== Alignment Functions ====================
+
+// Fetch alignment providers
+const fetchAlignmentProviders = async () => {
+    try {
+        const response = await fetch('/api/alignment/providers');
+        if (!response.ok) throw new Error('Failed to fetch providers');
+        
+        const data = await response.json();
+        alignmentProviders.value = data.providers || [];
+        
+        // Set default provider
+        if (data.default && alignmentProviders.value.some(p => p.id === data.default)) {
+            selectedProvider.value = data.default;
+            const provider = alignmentProviders.value.find(p => p.id === data.default);
+            if (provider?.default_model) {
+                selectedModel.value = provider.default_model;
+            }
+        } else if (alignmentProviders.value.length > 0) {
+            selectedProvider.value = alignmentProviders.value[0].id;
+            selectedModel.value = alignmentProviders.value[0].default_model || '';
+        }
+    } catch (e) {
+        console.error('Failed to fetch alignment providers:', e);
+    }
+};
+
+// Get available models for selected provider
+const availableModels = computed(() => {
+    const provider = alignmentProviders.value.find(p => p.id === selectedProvider.value);
+    return provider?.models || [];
+});
+
+// Check if alignment is available
+const canAlign = computed(() => {
+    const provider = alignmentProviders.value.find(p => p.id === selectedProvider.value);
+    return provider?.available ?? false;
+});
+
+// Submit alignment request
+const submitAlignment = async (overwrite = false) => {
+    if (!selectedProvider.value) {
+        alignmentError.value = 'Please select a provider';
+        return;
+    }
+
+    isAligning.value = true;
+    alignmentError.value = null;
+
+    try {
+        const response = await fetch(
+            `/transcriptions/${props.transcriptionId}/align`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN':
+                        document
+                            .querySelector('meta[name="csrf-token"]')
+                            ?.getAttribute('content') || '',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    provider: selectedProvider.value,
+                    model: selectedModel.value || null,
+                    overwrite,
+                }),
+            },
+        );
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.message || data.errors?.error?.[0] || 'Failed to start alignment');
+        }
+
+        // Alignment job dispatched successfully
+        emit('alignmentStarted');
+        showAlignmentOptions.value = false;
+        
+        // Show message and poll for results
+        error.value = null;
+        
+        // Start polling for word data
+        pollForWords();
+    } catch (e) {
+        alignmentError.value = e instanceof Error ? e.message : 'Failed to start alignment';
+    } finally {
+        isAligning.value = false;
+    }
+};
+
+// Poll for words after alignment is dispatched
+const pollForWords = async () => {
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes with 5 second intervals
+    
+    const poll = async () => {
+        if (attempts >= maxAttempts) {
+            error.value = 'Alignment is taking longer than expected. Please refresh the page later.';
+            return;
+        }
+        
+        attempts++;
+        await fetchWords();
+        
+        if (words.value.length === 0) {
+            // Still no words, continue polling
+            setTimeout(poll, 5000);
+        }
+    };
+    
+    // Start polling after a short delay
+    setTimeout(poll, 3000);
+};
+
 // Load words on mount
 onMounted(() => {
     fetchWords();
+    fetchAlignmentProviders();
 });
 
 // Reload when transcription changes
@@ -405,27 +542,85 @@ watch(
                 </span>
             </div>
 
-            <DropdownMenu>
-                <DropdownMenuTrigger as-child>
-                    <Button variant="outline" size="sm">
-                        <FunnelIcon class="mr-2 h-4 w-4" />
-                        {{ confidenceOptions.find(o => o.value === confidenceThreshold)?.label || 'Filter' }}
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" class="w-48">
-                    <DropdownMenuLabel>Filter by confidence</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuRadioGroup v-model="confidenceThreshold">
-                        <DropdownMenuRadioItem
-                            v-for="option in confidenceOptions"
-                            :key="option.value"
-                            :value="option.value"
-                        >
-                            {{ option.label }}
-                        </DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <div class="flex items-center gap-2">
+                <!-- Re-generate alignment button (when words exist) -->
+                <DropdownMenu v-if="hasWordData && alignmentProviders.length > 0">
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="outline" size="sm" :disabled="isAligning">
+                            <ArrowPathIcon :class="['mr-2 h-4 w-4', isAligning ? 'animate-spin' : '']" />
+                            Re-align
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="w-64">
+                        <DropdownMenuLabel>Re-generate word alignment</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <div class="p-2 space-y-3">
+                            <div class="space-y-1">
+                                <label class="text-xs font-medium">Provider</label>
+                                <select
+                                    v-model="selectedProvider"
+                                    class="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+                                    @change="selectedModel = alignmentProviders.find(p => p.id === selectedProvider)?.default_model || ''"
+                                >
+                                    <option
+                                        v-for="provider in alignmentProviders"
+                                        :key="provider.id"
+                                        :value="provider.id"
+                                        :disabled="!provider.available"
+                                    >
+                                        {{ provider.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div v-if="availableModels.length > 1" class="space-y-1">
+                                <label class="text-xs font-medium">Model</label>
+                                <select
+                                    v-model="selectedModel"
+                                    class="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+                                >
+                                    <option v-for="model in availableModels" :key="model" :value="model">
+                                        {{ model }}
+                                    </option>
+                                </select>
+                            </div>
+                            <p v-if="!canAlign && alignmentProviders.find(p => p.id === selectedProvider)?.requires_credential" class="text-xs text-warning">
+                                No API key for this provider
+                            </p>
+                            <Button
+                                size="sm"
+                                class="w-full"
+                                :disabled="isAligning || !canAlign"
+                                @click="submitAlignment(true)"
+                            >
+                                {{ isAligning ? 'Starting...' : 'Overwrite & Re-align' }}
+                            </Button>
+                        </div>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
+                <!-- Filter dropdown -->
+                <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="outline" size="sm">
+                            <FunnelIcon class="mr-2 h-4 w-4" />
+                            {{ confidenceOptions.find(o => o.value === confidenceThreshold)?.label || 'Filter' }}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="w-48">
+                        <DropdownMenuLabel>Filter by confidence</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuRadioGroup v-model="confidenceThreshold">
+                            <DropdownMenuRadioItem
+                                v-for="option in confidenceOptions"
+                                :key="option.value"
+                                :value="option.value"
+                            >
+                                {{ option.label }}
+                            </DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
         </div>
 
         <!-- Loading state -->
@@ -448,8 +643,94 @@ watch(
                 No word-level data available for this transcription.
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
-                Word timing data is captured when transcribing with supported ASR providers.
+                Word timing data is captured when transcribing with supported ASR providers,
+                or you can generate alignment using a forced alignment model.
             </p>
+
+            <!-- Alignment Options -->
+            <div v-if="alignmentProviders.length > 0" class="mt-4 space-y-4">
+                <Button
+                    v-if="!showAlignmentOptions"
+                    variant="outline"
+                    @click="showAlignmentOptions = true"
+                >
+                    <ArrowPathIcon class="mr-2 h-4 w-4" />
+                    Generate Word Alignment
+                </Button>
+
+                <div v-if="showAlignmentOptions" class="mx-auto max-w-md space-y-4 rounded-lg border border-border bg-card p-4 text-left">
+                    <h4 class="font-medium">Generate Word Alignment</h4>
+                    <p class="text-xs text-muted-foreground">
+                        Use a forced alignment model to create word-level timing data.
+                    </p>
+
+                    <!-- Provider Selection -->
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium">Provider</label>
+                        <select
+                            v-model="selectedProvider"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            @change="selectedModel = alignmentProviders.find(p => p.id === selectedProvider)?.default_model || ''"
+                        >
+                            <option
+                                v-for="provider in alignmentProviders"
+                                :key="provider.id"
+                                :value="provider.id"
+                                :disabled="!provider.available"
+                            >
+                                {{ provider.name }}
+                                {{ provider.requires_credential && !provider.has_credential ? '(No API key)' : '' }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Model Selection -->
+                    <div v-if="availableModels.length > 0" class="space-y-2">
+                        <label class="text-sm font-medium">Model</label>
+                        <select
+                            v-model="selectedModel"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        >
+                            <option
+                                v-for="model in availableModels"
+                                :key="model"
+                                :value="model"
+                            >
+                                {{ model }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Error message -->
+                    <div v-if="alignmentError" class="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
+                        {{ alignmentError }}
+                    </div>
+
+                    <!-- No credential warning -->
+                    <div v-if="!canAlign" class="rounded-md bg-warning/10 p-2 text-sm text-warning">
+                        No API key configured for this provider. Add your API key in Settings.
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-2">
+                        <Button
+                            :disabled="isAligning || !canAlign"
+                            @click="submitAlignment(false)"
+                        >
+                            <ArrowPathIcon v-if="isAligning" class="mr-2 h-4 w-4 animate-spin" />
+                            <ArrowPathIcon v-else class="mr-2 h-4 w-4" />
+                            {{ isAligning ? 'Starting...' : 'Start Alignment' }}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            :disabled="isAligning"
+                            @click="showAlignmentOptions = false"
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Word list -->

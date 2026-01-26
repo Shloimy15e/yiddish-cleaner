@@ -402,6 +402,11 @@ const handleWordReviewStats = (stats: WordReviewStats) => {
     wordReviewStats.value = stats;
 };
 
+const handleAlignmentStarted = () => {
+    // Show a success message - the component will handle polling
+    console.log('Alignment job started');
+};
+
 // WER Range Selection
 const showRangeModal = ref(false);
 const rangeForm = useForm({
@@ -1444,6 +1449,7 @@ const chunkedAlignment = computed(() => {
                                 :transcription-id="props.transcription.id"
                                 :audio-player-ref="audioPlayerRef"
                                 @stats-updated="handleWordReviewStats"
+                                @alignment-started="handleAlignmentStarted"
                             />
                         </div>
                     </div>
