@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Log;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -510,18 +511,31 @@ class Transcription extends Model implements HasMedia
      */
     public function storeWords(array $asrWords): void
     {
-        // Clear existing words
-        $this->words()->delete();
+        if (empty($asrWords)) {
+            return;
+        }
 
-        // Insert new words
-        foreach ($asrWords as $index => $asrWord) {
-            $this->words()->create([
-                'word_index' => $index,
-                'word' => $asrWord->word,
-                'start_time' => $asrWord->start,
-                'end_time' => $asrWord->end,
-                'confidence' => $asrWord->confidence,
+        try {
+            // Clear existing words
+            $this->words()->delete();
+
+            // Insert new words
+            foreach ($asrWords as $index => $asrWord) {
+                $this->words()->create([
+                    'word_index' => $index,
+                    'word' => $asrWord->word,
+                    'start_time' => $asrWord->start,
+                    'end_time' => $asrWord->end,
+                    'confidence' => $asrWord->confidence,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to store word-level data for transcription, continuing without words', [
+                'transcription_id' => $this->id,
+                'error' => $e->getMessage(),
+                'word_count' => count($asrWords),
             ]);
+            // Don't re-throw - transcription is still valid without word data
         }
     }
 

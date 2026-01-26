@@ -6,6 +6,7 @@ use App\Services\Asr\AsrDriverInterface;
 use App\Services\Asr\AsrResult;
 use App\Services\Asr\AsrWord;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class YiddishLabsDriver implements AsrDriverInterface
@@ -99,10 +100,27 @@ class YiddishLabsDriver implements AsrDriverInterface
                 $text = $data['text'] ?? '';
                 
                 // Parse word-level data from timestamped text
-                $words = $this->parseTimestampedText($text);
+                // Wrapped in try-catch to ensure parsing failures don't crash transcription
+                $words = null;
+                $cleanText = $text;
                 
-                // Get clean text (without timestamps) for storage
-                $cleanText = $words ? $this->getCleanText($words) : $text;
+                try {
+                    $words = $this->parseTimestampedText($text);
+                    
+                    // Get clean text (without timestamps) for storage
+                    if ($words !== null && count($words) > 0) {
+                        $cleanText = $this->getCleanText($words);
+                    }
+                } catch (\Throwable $e) {
+                    // Log the parsing error but don't fail the transcription
+                    Log::warning('YiddishLabs word timestamp parsing failed, continuing without word-level data', [
+                        'error' => $e->getMessage(),
+                        'job_id' => $jobId,
+                        'text_preview' => substr($text, 0, 200),
+                    ]);
+                    $words = null;
+                    $cleanText = $text;
+                }
 
                 return new AsrResult(
                     text: $cleanText,

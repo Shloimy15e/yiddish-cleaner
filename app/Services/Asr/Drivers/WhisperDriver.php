@@ -6,6 +6,7 @@ use App\Services\Asr\AsrDriverInterface;
 use App\Services\Asr\AsrResult;
 use App\Services\Asr\AsrWord;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class WhisperDriver implements AsrDriverInterface
@@ -65,7 +66,17 @@ class WhisperDriver implements AsrDriverInterface
         $duration = $data['duration'] ?? null;
 
         // Extract word-level data with timing and confidence
-        $words = $this->extractWords($data);
+        // Wrapped in try-catch to ensure parsing failures don't crash transcription
+        $words = null;
+        try {
+            $words = $this->extractWords($data);
+        } catch (\Throwable $e) {
+            Log::warning('Whisper word extraction failed, continuing without word-level data', [
+                'error' => $e->getMessage(),
+                'text_preview' => substr($text, 0, 200),
+            ]);
+            $words = null;
+        }
 
         return new AsrResult(
             text: $text,
