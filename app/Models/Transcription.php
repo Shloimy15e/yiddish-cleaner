@@ -89,6 +89,12 @@ class Transcription extends Model implements HasMedia
         'deletions',
         'reference_words',
         'errors',
+
+        // WER calculation range (word indices, 0-based, inclusive)
+        'wer_ref_start',
+        'wer_ref_end',
+        'wer_hyp_start',
+        'wer_hyp_end',
     ];
 
     protected function casts(): array
@@ -108,6 +114,12 @@ class Transcription extends Model implements HasMedia
             'deletions' => 'integer',
             'reference_words' => 'integer',
             'errors' => 'array',
+
+            // WER calculation range
+            'wer_ref_start' => 'integer',
+            'wer_ref_end' => 'integer',
+            'wer_hyp_start' => 'integer',
+            'wer_hyp_end' => 'integer',
         ];
     }
 

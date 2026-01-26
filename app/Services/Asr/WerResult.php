@@ -13,6 +13,11 @@ class WerResult
         public readonly int $referenceWords,
         public readonly int $hypothesisWords,
         public readonly array $errors = [],
+        // Range used for calculation (word indices, 0-based, inclusive)
+        public readonly ?int $refStart = null,
+        public readonly ?int $refEnd = null,
+        public readonly ?int $hypStart = null,
+        public readonly ?int $hypEnd = null,
     ) {}
 
     /**
@@ -49,6 +54,10 @@ class WerResult
             'reference_words' => $this->referenceWords,
             'hypothesis_words' => $this->hypothesisWords,
             'errors' => $this->errors,
+            'wer_ref_start' => $this->refStart,
+            'wer_ref_end' => $this->refEnd,
+            'wer_hyp_start' => $this->hypStart,
+            'wer_hyp_end' => $this->hypEnd,
         ];
     }
 
@@ -66,6 +75,10 @@ class WerResult
             referenceWords: $data['reference_words'] ?? 0,
             hypothesisWords: $data['hypothesis_words'] ?? 0,
             errors: $data['errors'] ?? [],
+            refStart: $data['wer_ref_start'] ?? null,
+            refEnd: $data['wer_ref_end'] ?? null,
+            hypStart: $data['wer_hyp_start'] ?? null,
+            hypEnd: $data['wer_hyp_end'] ?? null,
         );
     }
 }

@@ -579,22 +579,36 @@ class TranscriptionController extends Controller
     /**
      * Recalculate WER/CER for an ASR transcription.
      */
-    public function recalculate(AudioSample $audioSample, Transcription $transcription, WerCalculator $werCalculator): RedirectResponse
+    public function recalculate(Request $request, AudioSample $audioSample, Transcription $transcription, WerCalculator $werCalculator): RedirectResponse
     {
         if ($transcription->audio_sample_id !== $audioSample->id) {
             abort(404);
         }
+
+        // Validate range parameters
+        $validated = $request->validate([
+            'ref_start' => 'nullable|integer|min:0',
+            'ref_end' => 'nullable|integer|min:0',
+            'hyp_start' => 'nullable|integer|min:0',
+            'hyp_end' => 'nullable|integer|min:0',
+        ]);
 
         // Get reference text from base transcription
         $baseTranscription = $audioSample->baseTranscription;
         $referenceText = $baseTranscription?->text_clean;
 
         if (! $referenceText || ! $transcription->hypothesis_text) {
-            return redirect()->route('audio-samples.show', $audioSample)
-                ->with('error', 'Cannot recalculate: missing reference or hypothesis text.');
+            return back()->with('error', 'Cannot recalculate: missing reference or hypothesis text.');
         }
 
-        $werResult = $werCalculator->calculate($referenceText, $transcription->hypothesis_text);
+        $werResult = $werCalculator->calculate(
+            $referenceText,
+            $transcription->hypothesis_text,
+            $validated['ref_start'] ?? null,
+            $validated['ref_end'] ?? null,
+            $validated['hyp_start'] ?? null,
+            $validated['hyp_end'] ?? null,
+        );
 
         $transcription->update([
             'wer' => $werResult->wer,
@@ -604,10 +618,13 @@ class TranscriptionController extends Controller
             'deletions' => $werResult->deletions,
             'reference_words' => $werResult->referenceWords,
             'errors' => $werResult->errors,
+            'wer_ref_start' => $werResult->refStart,
+            'wer_ref_end' => $werResult->refEnd,
+            'wer_hyp_start' => $werResult->hypStart,
+            'wer_hyp_end' => $werResult->hypEnd,
         ]);
 
-        return redirect()->route('audio-samples.show', $audioSample)
-            ->with('success', 'WER/CER recalculated successfully.');
+        return back()->with('success', 'WER/CER recalculated successfully.');
     }
 
     // ==================== Legacy Methods (redirect to new) ====================
