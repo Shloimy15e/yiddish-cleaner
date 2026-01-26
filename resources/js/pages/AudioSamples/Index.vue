@@ -11,6 +11,7 @@ import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { formatCreatedBy } from '@/lib/createdBy';
 import { type BreadcrumbItem } from '@/types';
 import type {
+    AsrProvider,
     AudioSampleListItem,
     AudioSampleProcessingRunSummary,
 } from '@/types/audio-samples';
@@ -135,16 +136,9 @@ const bulkTranscribeForm = useForm({
 });
 
 // ASR providers/models
-interface AsrProvider {
-    name: string;
-    has_credential: boolean;
-    default_model: string;
-    models: { id: string; name: string }[];
-    async: boolean;
-    description: string;
-}
 const asrProviders = ref<Record<string, AsrProvider>>({});
 const loadingProviders = ref(false);
+const providerError = ref<string | null>(null);
 
 // Only show providers that user has authenticated
 const authenticatedAsrProviders = computed(() => {
@@ -162,8 +156,12 @@ const currentProviderModels = computed(() => {
 
 const fetchAsrProviders = async () => {
     loadingProviders.value = true;
+    providerError.value = null;
     try {
         const response = await fetch('/api/asr/providers');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch providers: ${response.statusText}`);
+        }
         asrProviders.value = await response.json();
         // Set default provider to first authenticated one if current is not authenticated
         const authKeys = Object.keys(authenticatedAsrProviders.value);
@@ -177,6 +175,7 @@ const fetchAsrProviders = async () => {
         }
     } catch (error) {
         console.error('Failed to fetch ASR providers:', error);
+        providerError.value = 'Failed to load ASR providers. Please try again.';
     } finally {
         loadingProviders.value = false;
     }
@@ -621,6 +620,13 @@ watch(search, () => {
                                         <span class="ml-2 text-sm text-muted-foreground">Loading providers...</span>
                                     </div>
 
+                                    <!-- Error state -->
+                                    <div v-else-if="providerError" class="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+                                        <p class="text-sm text-red-800 dark:text-red-200">
+                                            {{ providerError }}
+                                        </p>
+                                    </div>
+
                                     <!-- No authenticated providers warning -->
                                     <div v-else-if="!hasAuthenticatedAsrProviders" class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
                                         <p class="text-sm text-yellow-800 dark:text-yellow-200">
@@ -711,7 +717,7 @@ watch(search, () => {
                                         </button>
                                         <button
                                             type="submit"
-                                            :disabled="bulkTranscribeForm.processing || !hasAuthenticatedAsrProviders || loadingProviders"
+                                            :disabled="bulkTranscribeForm.processing || !hasAuthenticatedAsrProviders || loadingProviders || !!providerError"
                                             class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                                         >
                                             <ArrowPathIcon v-if="bulkTranscribeForm.processing" class="h-4 w-4 animate-spin" />
