@@ -147,6 +147,12 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 'status' => Transcription::STATUS_COMPLETED,
             ]);
 
+            // Store word-level data if available
+            if ($result->hasWords()) {
+                $transcription->storeWords($result->words);
+                Log::info("Stored {$result->getWordCount()} words for Transcription #{$transcription->id}");
+            }
+
             // Save transcript as media file
             $tempPath = storage_path('app/temp/transcript_'.$transcription->id.'.txt');
             if (! is_dir(dirname($tempPath))) {

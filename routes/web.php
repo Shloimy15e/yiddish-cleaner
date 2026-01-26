@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AsrController;
 use App\Http\Controllers\Api\LlmController;
+use App\Http\Controllers\Api\TranscriptionWordController;
 use App\Http\Controllers\AudioSampleController;
 use App\Http\Controllers\BenchmarkController;
 use App\Http\Controllers\DashboardController;
@@ -87,6 +88,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // API - ASR Providers
     Route::get('/api/asr/providers', [AsrController::class, 'providers'])->name('api.asr.providers');
+
+    // API - Transcription Words (Word-level review)
+    Route::get('/api/transcriptions/{transcription}/words', [TranscriptionWordController::class, 'index'])->name('api.transcription-words.index');
+    Route::post('/api/transcriptions/{transcription}/words', [TranscriptionWordController::class, 'store'])->name('api.transcription-words.store');
+    Route::post('/api/transcriptions/{transcription}/words/start', [TranscriptionWordController::class, 'storeAtStart'])->name('api.transcription-words.store-at-start');
+    Route::patch('/api/transcriptions/{transcription}/words/{word}', [TranscriptionWordController::class, 'update'])->name('api.transcription-words.update');
+    Route::delete('/api/transcriptions/{transcription}/words/{word}', [TranscriptionWordController::class, 'destroy'])->name('api.transcription-words.destroy');
+    Route::post('/api/transcriptions/{transcription}/toggle-training', [TranscriptionWordController::class, 'toggleTrainingFlag'])->name('api.transcription-words.toggle-training');
+    Route::get('/api/transcriptions/{transcription}/corrected-text', [TranscriptionWordController::class, 'getCorrectedText'])->name('api.transcription-words.corrected-text');
 
     // API - Audio Samples
     Route::get('/api/audio-samples/linkable', [AudioSampleController::class, 'linkableList'])->name('api.audio-samples.linkable');

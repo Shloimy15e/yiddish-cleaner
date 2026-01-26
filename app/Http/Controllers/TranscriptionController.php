@@ -156,9 +156,19 @@ class TranscriptionController extends Controller
         $transcription->load('audioSample.baseTranscription');
         $audioSample->load('baseTranscription');
 
+        // Get audio media info for word review playback
+        $audioMedia = $audioSample->getFirstMedia('audio');
+        $audioInfo = $audioMedia ? [
+            'url' => $audioMedia->getUrl(),
+            'name' => $audioMedia->file_name,
+            'size' => $audioMedia->size,
+            'mime_type' => $audioMedia->mime_type,
+        ] : null;
+
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,
             'audioSample' => $audioSample,
+            'audioMedia' => $audioInfo,
             'presets' => $transcription->isBase() ? config('cleaning.presets') : null,
         ]);
     }

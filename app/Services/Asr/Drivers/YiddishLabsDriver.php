@@ -4,7 +4,9 @@ namespace App\Services\Asr\Drivers;
 
 use App\Services\Asr\AsrDriverInterface;
 use App\Services\Asr\AsrResult;
+use App\Services\Asr\AsrWord;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class YiddishLabsDriver implements AsrDriverInterface
@@ -26,7 +28,7 @@ class YiddishLabsDriver implements AsrDriverInterface
             throw new RuntimeException("Audio file not found: {$audioPath}");
         }
 
-        // Submit transcription job
+        // Submit transcription job with timestamps enabled
         $jobId = $this->submitJob($audioPath, $options);
 
         // Poll for completion
@@ -55,7 +57,8 @@ class YiddishLabsDriver implements AsrDriverInterface
             $request = $request->attach('context', $options['context']);
         }
 
-        $response = $request->post("{$this->baseUrl}/transcriptions");
+        // Enable timestamps for word-level data
+        $response = $request->post("{$this->baseUrl}/transcriptions?timestamps=true");
 
         if (! $response->successful()) {
             $error = $response->json('error.message', $response->body());
@@ -81,9 +84,10 @@ class YiddishLabsDriver implements AsrDriverInterface
         $maxInterval = 30; // Max 30 seconds between polls
 
         while (time() - $startTime < $timeout) {
+            // Request with timestamps=true to get timestamped text
             $response = Http::withHeaders([
                 'X-API-KEY' => $this->apiKey,
-            ])->get("{$this->baseUrl}/transcriptions/{$jobId}");
+            ])->get("{$this->baseUrl}/transcriptions/{$jobId}?timestamps=true");
 
             if (! $response->successful()) {
                 $error = $response->json('error.message', $response->body());
@@ -93,8 +97,33 @@ class YiddishLabsDriver implements AsrDriverInterface
             $data = $response->json();
 
             if ($data['status'] === 'completed') {
+                $text = $data['text'] ?? '';
+                
+                // Parse word-level data from timestamped text
+                // Wrapped in try-catch to ensure parsing failures don't crash transcription
+                $words = null;
+                $cleanText = $text;
+                
+                try {
+                    $words = $this->parseTimestampedText($text);
+                    
+                    // Get clean text (without timestamps) for storage
+                    if ($words !== null && count($words) > 0) {
+                        $cleanText = $this->getCleanText($words);
+                    }
+                } catch (\Throwable $e) {
+                    // Log the parsing error but don't fail the transcription
+                    Log::warning('YiddishLabs word timestamp parsing failed, continuing without word-level data', [
+                        'error' => $e->getMessage(),
+                        'job_id' => $jobId,
+                        'text_preview' => substr($text, 0, 200),
+                    ]);
+                    $words = null;
+                    $cleanText = $text;
+                }
+
                 return new AsrResult(
-                    text: $data['text'] ?? '',
+                    text: $cleanText,
                     provider: 'yiddishlabs',
                     model: $this->model,
                     durationSeconds: $data['duration_seconds'] ?? null,
@@ -104,7 +133,9 @@ class YiddishLabsDriver implements AsrDriverInterface
                     metadata: [
                         'job_id' => $jobId,
                         'credits_cost' => $data['credits_cost'] ?? null,
+                        'raw_timestamped_text' => $text,
                     ],
+                    words: $words,
                 );
             }
 
@@ -118,6 +149,191 @@ class YiddishLabsDriver implements AsrDriverInterface
         }
 
         throw new RuntimeException("YiddishLabs transcription timed out after {$timeout} seconds");
+    }
+
+    /**
+     * Parse timestamped text from YiddishLabs into word-level data.
+     * 
+     * Expected format variations (to be confirmed with sample response):
+     * - "[00:00:01.234] word1 word2 [00:00:02.567] word3"
+     * - "<0.000> word1 <0.500> word2"
+     * - Or other timestamp formats
+     * 
+     * @return AsrWord[]|null
+     */
+    protected function parseTimestampedText(string $text): ?array
+    {
+        // Try format: [HH:MM:SS.mmm] or [MM:SS.mmm] or [SS.mmm]
+        $pattern1 = '/\[(\d{1,2}:)?(\d{1,2}):(\d{1,2})\.(\d{1,3})\]/';
+        
+        // Try format: <seconds.milliseconds>
+        $pattern2 = '/<(\d+\.?\d*)>/';
+        
+        // Try format: (seconds.milliseconds)
+        $pattern3 = '/\((\d+\.?\d*)\)/';
+
+        $words = [];
+        $currentTime = 0.0;
+
+        // Try pattern 1: [HH:MM:SS.mmm] or [MM:SS.mmm]
+        if (preg_match($pattern1, $text)) {
+            $parts = preg_split($pattern1, $text, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+            $words = $this->parseWithBracketTimestamps($text);
+        }
+        // Try pattern 2: <seconds>
+        elseif (preg_match($pattern2, $text)) {
+            $words = $this->parseWithAngleBracketTimestamps($text);
+        }
+        // Try pattern 3: (seconds)
+        elseif (preg_match($pattern3, $text)) {
+            $words = $this->parseWithParenTimestamps($text);
+        }
+
+        return count($words) > 0 ? $words : null;
+    }
+
+    /**
+     * Parse text with [HH:MM:SS.mmm] or [MM:SS.mmm] timestamps.
+     * 
+     * @return AsrWord[]
+     */
+    protected function parseWithBracketTimestamps(string $text): array
+    {
+        $words = [];
+        $pattern = '/\[(?:(\d{1,2}):)?(\d{1,2}):(\d{1,2})\.(\d{1,3})\]\s*([^\[\]]+)/';
+        
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            for ($i = 0; $i < count($matches); $i++) {
+                $hours = ! empty($matches[$i][1]) ? (int) $matches[$i][1] : 0;
+                $minutes = (int) $matches[$i][2];
+                $seconds = (int) $matches[$i][3];
+                $milliseconds = (int) str_pad($matches[$i][4], 3, '0');
+                
+                $startTime = $hours * 3600 + $minutes * 60 + $seconds + $milliseconds / 1000;
+                $wordsInSegment = preg_split('/\s+/', trim($matches[$i][5]), -1, PREG_SPLIT_NO_EMPTY);
+                
+                // Calculate end time from next timestamp or estimate
+                $endTime = isset($matches[$i + 1]) 
+                    ? $this->parseTimestampToSeconds($matches[$i + 1])
+                    : $startTime + (count($wordsInSegment) * 0.3); // Estimate 0.3s per word
+                
+                // Distribute time evenly among words in segment
+                $wordDuration = count($wordsInSegment) > 0 
+                    ? ($endTime - $startTime) / count($wordsInSegment) 
+                    : 0;
+                
+                foreach ($wordsInSegment as $j => $word) {
+                    $wordStart = $startTime + ($j * $wordDuration);
+                    $words[] = new AsrWord(
+                        word: $word,
+                        start: $wordStart,
+                        end: $wordStart + $wordDuration,
+                        confidence: null, // YiddishLabs doesn't provide confidence
+                    );
+                }
+            }
+        }
+        
+        return $words;
+    }
+
+    /**
+     * Parse text with <seconds> timestamps.
+     * 
+     * @return AsrWord[]
+     */
+    protected function parseWithAngleBracketTimestamps(string $text): array
+    {
+        $words = [];
+        $pattern = '/<(\d+\.?\d*)>\s*([^<]+)/';
+        
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            for ($i = 0; $i < count($matches); $i++) {
+                $startTime = (float) $matches[$i][1];
+                $wordsInSegment = preg_split('/\s+/', trim($matches[$i][2]), -1, PREG_SPLIT_NO_EMPTY);
+                
+                $endTime = isset($matches[$i + 1]) 
+                    ? (float) $matches[$i + 1][1]
+                    : $startTime + (count($wordsInSegment) * 0.3);
+                
+                $wordDuration = count($wordsInSegment) > 0 
+                    ? ($endTime - $startTime) / count($wordsInSegment) 
+                    : 0;
+                
+                foreach ($wordsInSegment as $j => $word) {
+                    $wordStart = $startTime + ($j * $wordDuration);
+                    $words[] = new AsrWord(
+                        word: $word,
+                        start: $wordStart,
+                        end: $wordStart + $wordDuration,
+                        confidence: null,
+                    );
+                }
+            }
+        }
+        
+        return $words;
+    }
+
+    /**
+     * Parse text with (seconds) timestamps.
+     * 
+     * @return AsrWord[]
+     */
+    protected function parseWithParenTimestamps(string $text): array
+    {
+        $words = [];
+        $pattern = '/\((\d+\.?\d*)\)\s*([^()]+)/';
+        
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            for ($i = 0; $i < count($matches); $i++) {
+                $startTime = (float) $matches[$i][1];
+                $wordsInSegment = preg_split('/\s+/', trim($matches[$i][2]), -1, PREG_SPLIT_NO_EMPTY);
+                
+                $endTime = isset($matches[$i + 1]) 
+                    ? (float) $matches[$i + 1][1]
+                    : $startTime + (count($wordsInSegment) * 0.3);
+                
+                $wordDuration = count($wordsInSegment) > 0 
+                    ? ($endTime - $startTime) / count($wordsInSegment) 
+                    : 0;
+                
+                foreach ($wordsInSegment as $j => $word) {
+                    $wordStart = $startTime + ($j * $wordDuration);
+                    $words[] = new AsrWord(
+                        word: $word,
+                        start: $wordStart,
+                        end: $wordStart + $wordDuration,
+                        confidence: null,
+                    );
+                }
+            }
+        }
+        
+        return $words;
+    }
+
+    /**
+     * Parse a bracket timestamp match to seconds.
+     */
+    protected function parseTimestampToSeconds(array $match): float
+    {
+        $hours = ! empty($match[1]) ? (int) $match[1] : 0;
+        $minutes = (int) $match[2];
+        $seconds = (int) $match[3];
+        $milliseconds = (int) str_pad($match[4], 3, '0');
+        
+        return $hours * 3600 + $minutes * 60 + $seconds + $milliseconds / 1000;
+    }
+
+    /**
+     * Get clean text from parsed words (without timestamps).
+     * 
+     * @param  AsrWord[]  $words
+     */
+    protected function getCleanText(array $words): string
+    {
+        return implode(' ', array_map(fn (AsrWord $w) => $w->word, $words));
     }
 
     public function getProvider(): string

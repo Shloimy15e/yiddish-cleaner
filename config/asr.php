@@ -63,4 +63,21 @@ return [
     'poll_interval' => env('ASR_POLL_INTERVAL', 5), // Initial poll interval in seconds
 
     'max_poll_interval' => env('ASR_MAX_POLL_INTERVAL', 30), // Max poll interval
+
+    /*
+    |--------------------------------------------------------------------------
+    | Review Settings
+    |--------------------------------------------------------------------------
+    |
+    | Settings for the word-level transcription review feature.
+    |
+    */
+
+    'review' => [
+        // Seconds of padding before/after a word when playing audio snippet
+        'playback_padding_seconds' => env('ASR_REVIEW_PLAYBACK_PADDING', 2.0),
+
+        // Default confidence threshold for filtering low-confidence words (0-1)
+        'default_confidence_threshold' => env('ASR_REVIEW_DEFAULT_CONFIDENCE', 0.7),
+    ],
 ];

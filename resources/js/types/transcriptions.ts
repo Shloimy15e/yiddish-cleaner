@@ -7,6 +7,47 @@ export type TranscriptionStatus =
     | 'failed'
     | string;
 
+// Word-level transcription data
+export interface TranscriptionWord {
+    id: number;
+    transcription_id: number;
+    word_index: number;
+    word: string;
+    start_time: number;
+    end_time: number;
+    confidence: number | null;
+    corrected_word: string | null;
+    is_deleted: boolean;
+    is_inserted: boolean;
+    corrected_by: number | null;
+    corrected_at: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+// Word review stats
+export interface WordReviewStats {
+    total_words: number;
+    correction_count: number;
+    correction_rate: number;
+    inserted_count: number;
+    deleted_count: number;
+    low_confidence_count: number;
+}
+
+// Word review config from backend
+export interface WordReviewConfig {
+    playback_padding_seconds: number;
+    default_confidence_threshold: number;
+}
+
+// API response for word list
+export interface WordReviewResponse {
+    words: TranscriptionWord[];
+    stats: WordReviewStats;
+    config: WordReviewConfig;
+}
+
 // ASR transcription metrics (WER/CER)
 export interface AsrMetrics {
     wer: number | null;
@@ -67,6 +108,9 @@ export interface BaseTranscription {
     validated_by: string | null;
     review_notes: string | null;
     
+    // Training
+    flagged_for_training: boolean;
+    
     // Timestamps
     created_at: string;
     updated_at: string;
@@ -98,6 +142,7 @@ export interface AsrTranscription extends AsrMetrics, WerRange {
     hypothesis_hash: string | null;
     errors: Record<string, unknown> | null;
     notes: string | null;
+    flagged_for_training: boolean;
     created_at: string;
     updated_at: string;
     

@@ -166,6 +166,7 @@ declare module 'vue' {
     TooltipContent: typeof import('./components/ui/tooltip/TooltipContent.vue')['default']
     TooltipProvider: typeof import('./components/ui/tooltip/TooltipProvider.vue')['default']
     TooltipTrigger: typeof import('./components/ui/tooltip/TooltipTrigger.vue')['default']
+    TranscriptionWordReview: typeof import('./components/transcriptions/TranscriptionWordReview.vue')['default']
     TwoFactorRecoveryCodes: typeof import('./components/TwoFactorRecoveryCodes.vue')['default']
     TwoFactorSetupModal: typeof import('./components/TwoFactorSetupModal.vue')['default']
     UploadZone: typeof import('./components/UploadZone.vue')['default']
