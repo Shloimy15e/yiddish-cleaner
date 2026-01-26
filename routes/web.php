@@ -42,6 +42,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/audio-samples', [AudioSampleController::class, 'index'])->name('audio-samples.index');
     Route::post('/audio-samples', [AudioSampleController::class, 'store'])->name('audio-samples.store');
     Route::get('/audio-samples/{audioSample}', [AudioSampleController::class, 'show'])->name('audio-samples.show');
+    Route::patch('/audio-samples/{audioSample}', [AudioSampleController::class, 'update'])->name('audio-samples.update');
     Route::delete('/audio-samples/bulk-delete', [AudioSampleController::class, 'bulkDelete'])->name('audio-samples.bulk-delete');
     Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');
     Route::post('/audio-samples/{audioSample}/transcript', [AudioSampleController::class, 'uploadTranscript'])->name('audio-samples.upload-transcript');

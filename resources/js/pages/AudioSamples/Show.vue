@@ -8,6 +8,7 @@ import {
     DocumentTextIcon,
     LinkIcon,
     MusicalNoteIcon,
+    PencilIcon,
     PlayIcon,
     PlusIcon,
     SparklesIcon,
@@ -115,6 +116,31 @@ const deleteAudioSample = () => {
     if (confirm('Are you sure you want to delete this audio sample?')) {
         router.delete(`/audio-samples/${props.audioSample.id}`);
     }
+};
+
+// Name editing
+const isEditingName = ref(false);
+const nameForm = useForm({
+    name: props.audioSample.name,
+});
+
+const startEditingName = () => {
+    nameForm.name = props.audioSample.name;
+    isEditingName.value = true;
+};
+
+const cancelEditingName = () => {
+    isEditingName.value = false;
+    nameForm.name = props.audioSample.name;
+};
+
+const saveName = () => {
+    nameForm.patch(`/audio-samples/${props.audioSample.id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isEditingName.value = false;
+        },
+    });
 };
 
 // ==========================================
@@ -362,8 +388,38 @@ const steps = [
                                     <MusicalNoteIcon class="h-7 w-7 text-white" />
                                 </div>
                                 <div>
-                                    <h1 class="text-3xl font-bold tracking-tight text-foreground">
+                                    <!-- Editable name -->
+                                    <div v-if="isEditingName" class="flex items-center gap-2">
+                                        <input
+                                            v-model="nameForm.name"
+                                            type="text"
+                                            class="rounded-lg border border-border bg-background px-3 py-1.5 text-2xl font-bold tracking-tight focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                            @keyup.enter="saveName"
+                                            @keyup.escape="cancelEditingName"
+                                        />
+                                        <button
+                                            @click="saveName"
+                                            :disabled="nameForm.processing"
+                                            class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                        >
+                                            Save
+                                        </button>
+                                        <button
+                                            @click="cancelEditingName"
+                                            class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                    <h1 v-else class="group flex items-center gap-2 text-3xl font-bold tracking-tight text-foreground">
                                         {{ audioSample.name }}
+                                        <button
+                                            @click="startEditingName"
+                                            class="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                            title="Edit name"
+                                        >
+                                            <PencilIcon class="h-4 w-4" />
+                                        </button>
                                     </h1>
                                     <div class="flex items-center justify-start gap-2">
                                         <p class="text-sm text-muted-foreground">

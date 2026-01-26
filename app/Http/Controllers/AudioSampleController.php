@@ -71,6 +71,22 @@ class AudioSampleController extends Controller
     }
 
     /**
+     * Update an audio sample's name.
+     */
+    public function update(Request $request, AudioSample $audioSample): RedirectResponse
+    {
+        $this->authorize('update', $audioSample);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        $audioSample->update(['name' => $request->name]);
+
+        return back()->with('success', 'Audio sample updated.');
+    }
+
+    /**
      * Create a new audio sample (with or without transcript).
      */
     public function store(Request $request): RedirectResponse

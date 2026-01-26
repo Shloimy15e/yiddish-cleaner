@@ -200,6 +200,31 @@ const updateForm = useForm({
     text_clean: '',
 });
 
+// Name editing
+const isEditingName = ref(false);
+const nameForm = useForm({
+    name: baseTranscription.value?.name || '',
+});
+
+const startEditingName = () => {
+    nameForm.name = baseTranscription.value?.name || '';
+    isEditingName.value = true;
+};
+
+const cancelEditingName = () => {
+    isEditingName.value = false;
+    nameForm.name = baseTranscription.value?.name || '';
+};
+
+const saveName = () => {
+    nameForm.patch(`/transcriptions/${props.transcription.id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isEditingName.value = false;
+        },
+    });
+};
+
 const startEditing = () => {
     editedText.value = decodedCleanText.value || '';
     isEditing.value = true;
@@ -551,7 +576,39 @@ const chunkedAlignment = computed(() => {
                 <div class="flex flex-col gap-4 rounded-xl border bg-card p-6">
                     <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <h1 class="text-2xl font-bold">{{ baseTranscription.name || `Transcription #${baseTranscription.id}` }}</h1>
+                            <!-- Editable name -->
+                            <div v-if="isEditingName" class="flex items-center gap-2">
+                                <input
+                                    v-model="nameForm.name"
+                                    type="text"
+                                    class="rounded-lg border border-border bg-background px-3 py-1.5 text-xl font-bold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    @keyup.enter="saveName"
+                                    @keyup.escape="cancelEditingName"
+                                />
+                                <button
+                                    @click="saveName"
+                                    :disabled="nameForm.processing"
+                                    class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                    Save
+                                </button>
+                                <button
+                                    @click="cancelEditingName"
+                                    class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                            <h1 v-else class="group flex items-center gap-2 text-2xl font-bold">
+                                {{ baseTranscription.name || `Transcription #${baseTranscription.id}` }}
+                                <button
+                                    @click="startEditingName"
+                                    class="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                    title="Edit name"
+                                >
+                                    <PencilIcon class="h-4 w-4" />
+                                </button>
+                            </h1>
                             <p class="text-sm text-muted-foreground">Base Transcription</p>
                         </div>
                         <div class="flex items-center gap-2">

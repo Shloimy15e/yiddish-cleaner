@@ -164,7 +164,7 @@ class TranscriptionController extends Controller
     }
 
     /**
-     * Update a base transcription's cleaned text (inline edit).
+     * Update a base transcription (name and/or cleaned text).
      */
     public function update(Request $request, Transcription $transcription): RedirectResponse
     {
@@ -173,39 +173,48 @@ class TranscriptionController extends Controller
         }
 
         $request->validate([
-            'text_clean' => 'required|string',
+            'name' => 'sometimes|string|max:255',
+            'text_clean' => 'sometimes|string',
         ]);
 
-        // Clear and re-save the cleaned file
-        $transcription->clearMediaCollection('cleaned_file');
-
-        $cleanedFilePath = storage_path('app/temp/cleaned_' . $transcription->id . '.txt');
-        if (! is_dir(dirname($cleanedFilePath))) {
-            mkdir(dirname($cleanedFilePath), 0755, true);
-        }
-        file_put_contents($cleanedFilePath, $request->text_clean);
-        $transcription->addMedia($cleanedFilePath)
-            ->usingFileName('cleaned.txt')
-            ->toMediaCollection('cleaned_file');
-
-        $previousHash = $transcription->hash_clean;
-        $newHash = hash('sha256', $request->text_clean);
-
-        $transcription->update([
-            'text_clean' => $request->text_clean,
-            'hash_clean' => $newHash,
-            'status' => Transcription::STATUS_COMPLETED,
-            // Reset validation if text changed
-            'validated_at' => $previousHash !== $newHash ? null : $transcription->validated_at,
-            'validated_by' => $previousHash !== $newHash ? null : $transcription->validated_by,
-        ]);
-
-        // Sync audio sample status
-        if ($transcription->isLinked()) {
-            $transcription->audioSample->syncStatusFromBaseTranscription();
+        // Update name if provided
+        if ($request->has('name')) {
+            $transcription->update(['name' => $request->name]);
         }
 
-        return back()->with('success', 'Cleaned text updated.');
+        // Update text_clean if provided
+        if ($request->has('text_clean')) {
+            // Clear and re-save the cleaned file
+            $transcription->clearMediaCollection('cleaned_file');
+
+            $cleanedFilePath = storage_path('app/temp/cleaned_' . $transcription->id . '.txt');
+            if (! is_dir(dirname($cleanedFilePath))) {
+                mkdir(dirname($cleanedFilePath), 0755, true);
+            }
+            file_put_contents($cleanedFilePath, $request->text_clean);
+            $transcription->addMedia($cleanedFilePath)
+                ->usingFileName('cleaned.txt')
+                ->toMediaCollection('cleaned_file');
+
+            $previousHash = $transcription->hash_clean;
+            $newHash = hash('sha256', $request->text_clean);
+
+            $transcription->update([
+                'text_clean' => $request->text_clean,
+                'hash_clean' => $newHash,
+                'status' => Transcription::STATUS_COMPLETED,
+                // Reset validation if text changed
+                'validated_at' => $previousHash !== $newHash ? null : $transcription->validated_at,
+                'validated_by' => $previousHash !== $newHash ? null : $transcription->validated_by,
+            ]);
+
+            // Sync audio sample status
+            if ($transcription->isLinked()) {
+                $transcription->audioSample->syncStatusFromBaseTranscription();
+            }
+        }
+
+        return back()->with('success', 'Transcription updated.');
     }
 
     /**
