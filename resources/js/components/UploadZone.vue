@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
 import { 
     CloudArrowUpIcon, 
     DocumentIcon, 
     XMarkIcon,
     ExclamationTriangleIcon 
 } from '@heroicons/vue/24/outline';
+import { ref, computed } from 'vue';
 
 const props = withDefaults(defineProps<{
     accept?: string;

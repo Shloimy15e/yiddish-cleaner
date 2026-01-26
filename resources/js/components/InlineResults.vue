@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Link } from '@inertiajs/vue3';
 import {
     CheckCircleIcon,
     XCircleIcon,
@@ -11,6 +9,8 @@ import {
     XMarkIcon,
     CheckIcon,
 } from '@heroicons/vue/24/outline';
+import { Link } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
 
 interface ProcessedDocument {
     id: number;

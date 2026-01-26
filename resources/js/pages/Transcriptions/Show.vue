@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import type { BreadcrumbItem } from '@/types';
-import type { Preset } from '@/types/audio-samples';
-import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
-import type { LlmModel, LlmProvider, DiffSegment, AlignmentItem } from '@/types/transcription-show';
+import {
+    Listbox,
+    ListboxButton,
+    ListboxOption,
+    ListboxOptions,
+} from '@headlessui/vue';
+import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import {
     InformationCircleIcon,
     SparklesIcon,
@@ -15,14 +18,12 @@ import {
     PencilIcon,
     TrashIcon,
 } from '@heroicons/vue/24/outline';
-import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import { Loader } from 'lucide-vue-next';
-import {
-    Listbox,
-    ListboxButton,
-    ListboxOption,
-    ListboxOptions,
-} from '@headlessui/vue';
+
+import type { BreadcrumbItem } from '@/types';
+import type { Preset } from '@/types/audio-samples';
+import type { LlmModel, LlmProvider, DiffSegment, AlignmentItem } from '@/types/transcription-show';
+import type { BaseTranscription, AsrTranscription, Transcription } from '@/types/transcriptions';
 
 const props = defineProps<{
     transcription: Transcription;

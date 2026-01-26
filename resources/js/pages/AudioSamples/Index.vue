@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/vue';
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
-import { CpuChipIcon } from '@heroicons/vue/24/outline';
+import { CpuChipIcon, MicrophoneIcon, ArrowPathIcon, XMarkIcon, SparklesIcon } from '@heroicons/vue/24/outline';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
@@ -122,6 +125,97 @@ const submitBulkDelete = () => {
         },
     });
 };
+
+// Bulk transcription modal state
+const showBulkTranscribeModal = ref(false);
+const bulkTranscribeForm = useForm({
+    ids: [] as number[],
+    provider: 'yiddishlabs',
+    model: '',
+});
+
+// ASR providers/models
+interface AsrProvider {
+    name: string;
+    has_credential: boolean;
+    default_model: string;
+    models: { id: string; name: string }[];
+    async: boolean;
+    description: string;
+}
+const asrProviders = ref<Record<string, AsrProvider>>({});
+const loadingProviders = ref(false);
+
+// Only show providers that user has authenticated
+const authenticatedAsrProviders = computed(() => {
+    return Object.fromEntries(
+        Object.entries(asrProviders.value).filter(([, provider]) => provider.has_credential)
+    );
+});
+
+const hasAuthenticatedAsrProviders = computed(() => Object.keys(authenticatedAsrProviders.value).length > 0);
+
+const currentProviderModels = computed(() => {
+    const provider = asrProviders.value[bulkTranscribeForm.provider];
+    return provider?.models || [];
+});
+
+const fetchAsrProviders = async () => {
+    loadingProviders.value = true;
+    try {
+        const response = await fetch('/api/asr/providers');
+        asrProviders.value = await response.json();
+        // Set default provider to first authenticated one if current is not authenticated
+        const authKeys = Object.keys(authenticatedAsrProviders.value);
+        if (authKeys.length > 0 && !authenticatedAsrProviders.value[bulkTranscribeForm.provider]) {
+            bulkTranscribeForm.provider = authKeys[0];
+        }
+        // Set default model for the selected provider
+        const provider = asrProviders.value[bulkTranscribeForm.provider];
+        if (provider) {
+            bulkTranscribeForm.model = provider.default_model;
+        }
+    } catch (error) {
+        console.error('Failed to fetch ASR providers:', error);
+    } finally {
+        loadingProviders.value = false;
+    }
+};
+
+watch(
+    () => bulkTranscribeForm.provider,
+    (newProvider) => {
+        const provider = asrProviders.value[newProvider];
+        if (provider) {
+            bulkTranscribeForm.model = provider.default_model;
+        }
+    }
+);
+
+const openBulkTranscribeModal = async () => {
+    showBulkTranscribeModal.value = true;
+    await fetchAsrProviders();
+};
+
+const submitBulkTranscribe = () => {
+    bulkTranscribeForm.ids = Array.from(selectedIds.value);
+    bulkTranscribeForm.post(route('audio-samples.bulk-transcribe'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showBulkTranscribeModal.value = false;
+            selectedIds.value = new Set();
+            selectAll.value = false;
+            bulkTranscribeForm.reset();
+        },
+    });
+};
+
+// Count selected items that are eligible for transcription (status: ready)
+const selectedEligibleCount = computed(() => {
+    return props.audioSamples.data.filter(
+        (s) => selectedIds.value.has(s.id) && s.status === 'ready'
+    ).length;
+});
 
 // Get display text for cleaning method
 const getMethodDisplay = (run: AudioSampleProcessingRunSummary | null) => {
@@ -320,6 +414,13 @@ watch(search, () => {
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <button 
+                        @click="openBulkTranscribeModal"
+                        class="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 font-medium hover:bg-primary/90"
+                    >
+                        <MicrophoneIcon class="h-4 w-4" />
+                        Bulk Transcribe
+                    </button>
+                    <button 
                         @click="submitBulkDelete"
                         :disabled="bulkDeleteForm.processing"
                         class="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white px-4 py-2 font-medium hover:bg-red-700 disabled:opacity-50"
@@ -462,5 +563,168 @@ watch(search, () => {
                 </div>
             </div>
         </div>
+
+        <!-- Bulk Transcribe Modal -->
+        <TransitionRoot appear :show="showBulkTranscribeModal" as="template">
+            <Dialog as="div" @close="showBulkTranscribeModal = false" class="relative z-50">
+                <TransitionChild
+                    as="template"
+                    enter="duration-300 ease-out"
+                    enter-from="opacity-0"
+                    enter-to="opacity-100"
+                    leave="duration-200 ease-in"
+                    leave-from="opacity-100"
+                    leave-to="opacity-0"
+                >
+                    <div class="fixed inset-0 bg-black/25 backdrop-blur-sm" />
+                </TransitionChild>
+
+                <div class="fixed inset-0 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4">
+                        <TransitionChild
+                            as="template"
+                            enter="duration-300 ease-out"
+                            enter-from="opacity-0 scale-95"
+                            enter-to="opacity-100 scale-100"
+                            leave="duration-200 ease-in"
+                            leave-from="opacity-100 scale-100"
+                            leave-to="opacity-0 scale-95"
+                        >
+                            <DialogPanel class="w-full max-w-md transform rounded-2xl bg-background border p-6 shadow-xl transition-all">
+                                <div class="flex items-center justify-between mb-4">
+                                    <DialogTitle as="h3" class="text-lg font-semibold">
+                                        Bulk Transcribe Audio Samples
+                                    </DialogTitle>
+                                    <button
+                                        type="button"
+                                        @click="showBulkTranscribeModal = false"
+                                        class="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+                                    >
+                                        <XMarkIcon class="h-5 w-5" />
+                                    </button>
+                                </div>
+
+                                <form @submit.prevent="submitBulkTranscribe" class="space-y-4">
+                                    <!-- Selection summary -->
+                                    <div class="rounded-lg bg-muted/50 p-3 text-sm">
+                                        <p>
+                                            <span class="font-medium">{{ selectedCount }}</span> audio sample(s) selected
+                                        </p>
+                                        <p v-if="selectedEligibleCount < selectedCount" class="text-muted-foreground mt-1">
+                                            {{ selectedEligibleCount }} eligible for transcription (status: ready)
+                                        </p>
+                                    </div>
+
+                                    <!-- Loading state -->
+                                    <div v-if="loadingProviders" class="flex items-center justify-center py-4">
+                                        <ArrowPathIcon class="h-5 w-5 animate-spin text-muted-foreground" />
+                                        <span class="ml-2 text-sm text-muted-foreground">Loading providers...</span>
+                                    </div>
+
+                                    <!-- No authenticated providers warning -->
+                                    <div v-else-if="!hasAuthenticatedAsrProviders" class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+                                        <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                                            No ASR providers configured.
+                                            <Link href="/settings/credentials" class="font-medium underline hover:no-underline">
+                                                Add API credentials
+                                            </Link>
+                                            to use transcription.
+                                        </p>
+                                    </div>
+
+                                    <template v-else>
+                                        <!-- Provider Selection -->
+                                        <div>
+                                            <div class="mb-2 flex items-center justify-between">
+                                                <label class="block text-sm font-medium">ASR Provider</label>
+                                                <Link href="/settings/credentials" class="text-xs text-muted-foreground hover:text-primary">
+                                                    Add more
+                                                </Link>
+                                            </div>
+                                            <Listbox v-model="bulkTranscribeForm.provider">
+                                                <div class="relative">
+                                                    <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                                                        <span class="block truncate">{{ authenticatedAsrProviders[bulkTranscribeForm.provider]?.name || bulkTranscribeForm.provider }}</span>
+                                                        <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                                            <ChevronUpDownIcon class="h-4 w-4 text-muted-foreground" />
+                                                        </span>
+                                                    </ListboxButton>
+                                                    <ListboxOptions class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                                        <ListboxOption
+                                                            v-for="(provider, key) in authenticatedAsrProviders"
+                                                            :key="key"
+                                                            :value="key"
+                                                            v-slot="{ active, selected }"
+                                                        >
+                                                            <li :class="['relative cursor-pointer py-2 pl-10 pr-4 text-sm', active ? 'bg-muted' : '']">
+                                                                <span :class="['block', selected ? 'font-medium' : '']">{{ provider.name }}</span>
+                                                                <span class="block text-xs text-muted-foreground">{{ provider.description }}</span>
+                                                                <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                                    <CheckIcon class="h-4 w-4" />
+                                                                </span>
+                                                            </li>
+                                                        </ListboxOption>
+                                                    </ListboxOptions>
+                                                </div>
+                                            </Listbox>
+                                        </div>
+
+                                        <!-- Model Selection -->
+                                        <div>
+                                            <label class="mb-2 block text-sm font-medium">Model</label>
+                                            <Listbox v-model="bulkTranscribeForm.model">
+                                                <div class="relative">
+                                                    <ListboxButton class="relative w-full rounded-lg border bg-background py-2 pl-3 pr-10 text-left text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                                                        <span class="block truncate">{{ currentProviderModels.find(m => m.id === bulkTranscribeForm.model)?.name || bulkTranscribeForm.model }}</span>
+                                                        <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                                            <ChevronUpDownIcon class="h-4 w-4 text-muted-foreground" />
+                                                        </span>
+                                                    </ListboxButton>
+                                                    <ListboxOptions class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-background py-1 shadow-lg">
+                                                        <ListboxOption
+                                                            v-for="model in currentProviderModels"
+                                                            :key="model.id"
+                                                            :value="model.id"
+                                                            v-slot="{ active, selected }"
+                                                        >
+                                                            <li :class="['relative cursor-pointer py-2 pl-10 pr-4 text-sm whitespace-nowrap', active ? 'bg-muted' : '']">
+                                                                <span :class="['block', selected ? 'font-medium' : '']">{{ model.name }}</span>
+                                                                <span v-if="selected" class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                                                                    <CheckIcon class="h-4 w-4" />
+                                                                </span>
+                                                            </li>
+                                                        </ListboxOption>
+                                                    </ListboxOptions>
+                                                </div>
+                                            </Listbox>
+                                        </div>
+                                    </template>
+
+                                    <!-- Actions -->
+                                    <div class="flex justify-end gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            @click="showBulkTranscribeModal = false"
+                                            class="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            :disabled="bulkTranscribeForm.processing || !hasAuthenticatedAsrProviders || loadingProviders"
+                                            class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                        >
+                                            <ArrowPathIcon v-if="bulkTranscribeForm.processing" class="h-4 w-4 animate-spin" />
+                                            <MicrophoneIcon v-else class="h-4 w-4" />
+                                            {{ bulkTranscribeForm.processing ? 'Starting...' : 'Start Transcription' }}
+                                        </button>
+                                    </div>
+                                </form>
+                            </DialogPanel>
+                        </TransitionChild>
+                    </div>
+                </div>
+            </Dialog>
+        </TransitionRoot>
     </AppLayout>
 </template>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { router } from '@inertiajs/vue3';
 import {
     Dialog,
     DialogPanel,
@@ -14,6 +12,8 @@ import {
     XMarkIcon,
     LinkIcon,
 } from '@heroicons/vue/24/outline';
+import { router } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
 
 interface AudioSampleItem {
     id: number;

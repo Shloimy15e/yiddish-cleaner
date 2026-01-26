@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { type BreadcrumbItem } from '@/types';

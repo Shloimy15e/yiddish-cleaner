@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { router, useForm } from '@inertiajs/vue3';
 import {
     Dialog,
     DialogPanel,
@@ -20,6 +18,9 @@ import {
     LinkIcon,
     CheckCircleIcon,
 } from '@heroicons/vue/24/outline';
+import { router, useForm } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
+
 import type { BaseTranscription } from '@/types/transcriptions';
 
 const props = defineProps<{

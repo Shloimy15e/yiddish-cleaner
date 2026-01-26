@@ -15,6 +15,7 @@ import {
     TrashIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
+
 import type { AsrProvider } from '@/types/audio-samples';
 import type { TranscriptionWithStatus } from '@/types/transcriptions';
 

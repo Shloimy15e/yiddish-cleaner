@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import {
+    Listbox,
+    ListboxButton,
+    ListboxOption,
+    ListboxOptions,
+} from '@headlessui/vue';
+import {
     ArrowPathIcon,
     CheckIcon,
     ChevronUpDownIcon,
     CpuChipIcon,
     SparklesIcon,
 } from '@heroicons/vue/24/outline';
-import {
-    Listbox,
-    ListboxButton,
-    ListboxOption,
-    ListboxOptions,
-} from '@headlessui/vue';
 
 interface PresetOption {
     id: string;

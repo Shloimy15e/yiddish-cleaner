@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
 import {
     DocumentArrowUpIcon,
     DocumentTextIcon,
     LinkIcon,
     ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
+import { Head, useForm } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { Preset } from '@/types/audio-samples';

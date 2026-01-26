@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
+import { 
+    ArrowPathIcon,
+} from '@heroicons/vue/24/outline';
 import { 
     PlayIcon, 
     PauseIcon,
@@ -9,9 +9,10 @@ import {
     SpeakerXMarkIcon,
     ArrowDownTrayIcon,
 } from '@heroicons/vue/24/solid';
-import { 
-    ArrowPathIcon,
-} from '@heroicons/vue/24/outline';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 
 interface Props {
     src: string;

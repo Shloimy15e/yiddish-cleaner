@@ -1,5 +1,6 @@
-import { AppPageProps } from '@/types/index';
 import { route as routeFn } from 'ziggy-js';
+
+import { AppPageProps } from '@/types/index';
 
 declare global {
     var route: typeof routeFn;
