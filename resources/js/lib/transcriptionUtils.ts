@@ -3,13 +3,45 @@ import * as Diff from 'diff';
 import type { AlignmentItem, DiffSegment } from '@/types/transcription-show';
 
 /**
- * Tokenize a string into words
+ * Normalize text for WER comparison.
+ *
+ * Strips:
+ * - Hebrew/Yiddish nikkud (vowel points): U+05B0-U+05BD, U+05BF, U+05C1-U+05C2, U+05C4-U+05C5, U+05C7
+ * - Hebrew cantillation marks (trop): U+0591-U+05AF
+ * - Punctuation and symbols
+ * - Excess whitespace
+ */
+export const normalizeForWer = (text: string): string => {
+    // Convert to lowercase
+    let normalized = text.toLowerCase();
+
+    // Remove Hebrew nikkud (vowel points)
+    normalized = normalized.replace(/[\u05B0-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7]/g, '');
+
+    // Remove Hebrew cantillation marks (trop/teamim)
+    normalized = normalized.replace(/[\u0591-\u05AF]/g, '');
+
+    // Remove other combining diacritical marks (Unicode category M)
+    normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // Remove punctuation and symbols (keep letters, numbers, spaces)
+    normalized = normalized.replace(/[^\p{L}\p{N}\s]/gu, '');
+
+    // Normalize whitespace
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+
+    return normalized;
+};
+
+/**
+ * Tokenize a string into words (with normalization for WER)
  */
 export const tokenize = (value: string): string[] =>
-    (value.match(/[^\s]+/g) || []).filter(Boolean);
+    (normalizeForWer(value).match(/[^\s]+/g) || []).filter(Boolean);
 
 /**
  * Build alignment from diff between reference and hypothesis text
+ * Uses normalized text for accurate WER calculation
  */
 export const buildAlignmentFromDiff = (
     refText: string,

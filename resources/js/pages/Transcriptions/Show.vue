@@ -4,6 +4,11 @@ import {
     ListboxButton,
     ListboxOption,
     ListboxOptions,
+    Dialog,
+    DialogPanel,
+    DialogTitle,
+    TransitionChild,
+    TransitionRoot,
 } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import {
@@ -17,6 +22,7 @@ import {
     DocumentTextIcon,
     PencilIcon,
     TrashIcon,
+    AdjustmentsHorizontalIcon,
 } from '@heroicons/vue/24/outline';
 import { Loader } from 'lucide-vue-next';
 
@@ -347,6 +353,162 @@ const saveDiffEdit = () => {
 
 const viewMode = ref<'alignment' | 'side-by-side'>('alignment');
 
+// WER Range Selection
+const showRangeModal = ref(false);
+const rangeForm = useForm({
+    ref_start: null as number | null,
+    ref_end: null as number | null,
+    hyp_start: null as number | null,
+    hyp_end: null as number | null,
+});
+
+// Interactive selection state
+type SelectionMode = 'ref-start' | 'ref-end' | 'hyp-start' | 'hyp-end' | null;
+const selectionMode = ref<SelectionMode>(null);
+
+// Tokenized words for display
+const refWords = computed(() => tokenize(referenceText.value));
+const hypWords = computed(() => tokenize(hypothesisText.value));
+
+// Get total word counts for range validation
+const totalRefWords = computed(() => refWords.value.length);
+const totalHypWords = computed(() => hypWords.value.length);
+
+// Check if a custom range is currently applied
+const hasCustomRange = computed(() => {
+    const t = asrTranscription.value;
+    if (!t) return false;
+    return t.wer_ref_start !== null || t.wer_ref_end !== null ||
+           t.wer_hyp_start !== null || t.wer_hyp_end !== null;
+});
+
+// Format range display
+const formatRange = (start: number | null, end: number | null, total: number) => {
+    if (start === null && end === null) return `All (0-${total - 1})`;
+    const s = start ?? 0;
+    const e = end ?? (total - 1);
+    return `${s}-${e}`;
+};
+
+// Check if word is in selected range
+const isWordInRefRange = (index: number) => {
+    const start = rangeForm.ref_start ?? 0;
+    const end = rangeForm.ref_end ?? (totalRefWords.value - 1);
+    return index >= start && index <= end;
+};
+
+const isWordInHypRange = (index: number) => {
+    const start = rangeForm.hyp_start ?? 0;
+    const end = rangeForm.hyp_end ?? (totalHypWords.value - 1);
+    return index >= start && index <= end;
+};
+
+// Check if word is a boundary
+const isRefStart = (index: number) => index === (rangeForm.ref_start ?? 0);
+const isRefEnd = (index: number) => index === (rangeForm.ref_end ?? (totalRefWords.value - 1));
+const isHypStart = (index: number) => index === (rangeForm.hyp_start ?? 0);
+const isHypEnd = (index: number) => index === (rangeForm.hyp_end ?? (totalHypWords.value - 1));
+
+// Handle word click
+const handleRefWordClick = (index: number) => {
+    if (selectionMode.value === 'ref-start') {
+        rangeForm.ref_start = index;
+        // Auto-adjust end if needed
+        if (rangeForm.ref_end !== null && rangeForm.ref_end < index) {
+            rangeForm.ref_end = index;
+        }
+        selectionMode.value = null;
+    } else if (selectionMode.value === 'ref-end') {
+        rangeForm.ref_end = index;
+        // Auto-adjust start if needed
+        if (rangeForm.ref_start !== null && rangeForm.ref_start > index) {
+            rangeForm.ref_start = index;
+        }
+        selectionMode.value = null;
+    }
+};
+
+const handleHypWordClick = (index: number) => {
+    if (selectionMode.value === 'hyp-start') {
+        rangeForm.hyp_start = index;
+        // Auto-adjust end if needed
+        if (rangeForm.hyp_end !== null && rangeForm.hyp_end < index) {
+            rangeForm.hyp_end = index;
+        }
+        selectionMode.value = null;
+    } else if (selectionMode.value === 'hyp-end') {
+        rangeForm.hyp_end = index;
+        // Auto-adjust start if needed
+        if (rangeForm.hyp_start !== null && rangeForm.hyp_start > index) {
+            rangeForm.hyp_start = index;
+        }
+        selectionMode.value = null;
+    }
+};
+
+// Get word class for styling
+const getRefWordClass = (index: number) => {
+    const inRange = isWordInRefRange(index);
+    const isStart = isRefStart(index);
+    const isEnd = isRefEnd(index);
+    const isSelecting = selectionMode.value === 'ref-start' || selectionMode.value === 'ref-end';
+    
+    return [
+        'inline-block rounded px-1 py-0.5 text-sm cursor-pointer transition-all',
+        isSelecting ? 'hover:ring-2 hover:ring-primary' : '',
+        inRange ? 'bg-primary/20' : 'bg-muted/50 opacity-50',
+        isStart ? 'ring-2 ring-green-500' : '',
+        isEnd ? 'ring-2 ring-red-500' : '',
+        isStart && isEnd ? 'ring-2 ring-purple-500' : '',
+    ];
+};
+
+const getHypWordClass = (index: number) => {
+    const inRange = isWordInHypRange(index);
+    const isStart = isHypStart(index);
+    const isEnd = isHypEnd(index);
+    const isSelecting = selectionMode.value === 'hyp-start' || selectionMode.value === 'hyp-end';
+    
+    return [
+        'inline-block rounded px-1 py-0.5 text-sm cursor-pointer transition-all',
+        isSelecting ? 'hover:ring-2 hover:ring-primary' : '',
+        inRange ? 'bg-primary/20' : 'bg-muted/50 opacity-50',
+        isStart ? 'ring-2 ring-green-500' : '',
+        isEnd ? 'ring-2 ring-red-500' : '',
+        isStart && isEnd ? 'ring-2 ring-purple-500' : '',
+    ];
+};
+
+const openRangeModal = () => {
+    const t = asrTranscription.value;
+    rangeForm.ref_start = t?.wer_ref_start ?? null;
+    rangeForm.ref_end = t?.wer_ref_end ?? null;
+    rangeForm.hyp_start = t?.wer_hyp_start ?? null;
+    rangeForm.hyp_end = t?.wer_hyp_end ?? null;
+    selectionMode.value = null;
+    showRangeModal.value = true;
+};
+
+const submitRangeRecalculate = () => {
+    if (!props.audioSample || !asrTranscription.value) return;
+    
+    rangeForm.post(`/audio-samples/${props.audioSample.id}/transcriptions/${asrTranscription.value.id}/recalculate`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showRangeModal.value = false;
+            selectionMode.value = null;
+        },
+    });
+};
+
+const resetRange = () => {
+    rangeForm.ref_start = null;
+    rangeForm.ref_end = null;
+    rangeForm.hyp_start = null;
+    rangeForm.hyp_end = null;
+    selectionMode.value = null;
+};
+
 // Get reference text for ASR comparison
 const referenceText = computed(() => {
     if (isAsr.value && props.audioSample?.base_transcription?.text_clean) {
@@ -360,21 +522,6 @@ const hypothesisText = computed(() => asrTranscription.value?.hypothesis_text ??
 const alignment = computed(() => {
     if (!referenceText.value.trim() || !hypothesisText.value.trim()) return [];
     return buildAlignmentFromDiff(referenceText.value, hypothesisText.value);
-});
-
-const asrMetrics = computed(() => {
-    if (!alignment.value.length) {
-        return { ins: 0, del: 0, sub: 0, wer: 0 };
-    }
-    let ins = 0, del = 0, sub = 0;
-    for (const item of alignment.value) {
-        if (item.type === 'ins') ins++;
-        if (item.type === 'del') del++;
-        if (item.type === 'sub') sub++;
-    }
-    const refCount = tokenize(referenceText.value).length || 1;
-    const wer = ((ins + del + sub) / refCount) * 100;
-    return { ins, del, sub, wer };
 });
 
 const chunkedAlignment = computed(() => {
@@ -1029,6 +1176,9 @@ const chunkedAlignment = computed(() => {
                                 </span>
                             </div>
                             <div class="font-mono font-semibold">{{ formatErrorRate(asrTranscription.wer) }}</div>
+                            <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
+                                (custom range)
+                            </div>
                         </div>
                         <div>
                             <div class="text-xs uppercase text-muted-foreground">
@@ -1061,31 +1211,47 @@ const chunkedAlignment = computed(() => {
                     <!-- Metrics Cards -->
                     <div class="grid gap-4 md:grid-cols-4">
                         <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-emerald-600">{{ asrMetrics.ins }}</div>
+                            <div class="text-3xl font-bold text-emerald-600">{{ asrTranscription.insertions ?? 0 }}</div>
                             <div class="text-xs text-muted-foreground">Insertions</div>
                         </div>
                         <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-rose-600">{{ asrMetrics.del }}</div>
+                            <div class="text-3xl font-bold text-rose-600">{{ asrTranscription.deletions ?? 0 }}</div>
                             <div class="text-xs text-muted-foreground">Deletions</div>
                         </div>
                         <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-amber-500">{{ asrMetrics.sub }}</div>
+                            <div class="text-3xl font-bold text-amber-500">{{ asrTranscription.substitutions ?? 0 }}</div>
                             <div class="text-xs text-muted-foreground">Substitutions</div>
                         </div>
                         <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-red-600">{{ asrMetrics.wer.toFixed(1) }}%</div>
+                            <div class="text-3xl font-bold text-red-600">{{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}%</div>
                             <div class="text-xs text-muted-foreground">WER</div>
                         </div>
                     </div>
 
-                    <!-- View Toggle -->
-                    <div class="flex flex-wrap gap-2">
-                        <button @click="viewMode = 'alignment'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
-                            Alignment View
-                        </button>
-                        <button @click="viewMode = 'side-by-side'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
-                            Side-by-Side
-                        </button>
+                    <!-- View Toggle & Range Controls -->
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div class="flex flex-wrap gap-2">
+                            <button @click="viewMode = 'alignment'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
+                                Alignment View
+                            </button>
+                            <button @click="viewMode = 'side-by-side'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
+                                Side-by-Side
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
+                                Ref: {{ formatRange(asrTranscription.wer_ref_start, asrTranscription.wer_ref_end, totalRefWords) }} |
+                                Hyp: {{ formatRange(asrTranscription.wer_hyp_start, asrTranscription.wer_hyp_end, totalHypWords) }}
+                            </div>
+                            <button 
+                                @click="openRangeModal"
+                                :class="['inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted', hasCustomRange ? 'border-primary text-primary' : '']"
+                            >
+                                <AdjustmentsHorizontalIcon class="h-4 w-4" />
+                                {{ hasCustomRange ? 'Edit Range' : 'Set Range' }}
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Alignment View -->
@@ -1138,5 +1304,218 @@ const chunkedAlignment = computed(() => {
 
         <!-- Link Audio Sample Modal -->
         <LinkAudioSampleModal v-if="isBase && baseTranscription" :is-open="showLinkModal" :transcription-id="baseTranscription.id" :transcription-name="baseTranscription.name" @close="showLinkModal = false" @linked="handleLinked" />
+
+        <!-- WER Range Selection Modal -->
+        <TransitionRoot appear :show="showRangeModal" as="template">
+            <Dialog as="div" @close="showRangeModal = false; selectionMode = null" class="relative z-50">
+                <TransitionChild
+                    as="template"
+                    enter="duration-300 ease-out"
+                    enter-from="opacity-0"
+                    enter-to="opacity-100"
+                    leave="duration-200 ease-in"
+                    leave-from="opacity-100"
+                    leave-to="opacity-0"
+                >
+                    <div class="fixed inset-0 bg-black/25 dark:bg-black/50" />
+                </TransitionChild>
+
+                <div class="fixed inset-0 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4">
+                        <TransitionChild
+                            as="template"
+                            enter="duration-300 ease-out"
+                            enter-from="opacity-0 scale-95"
+                            enter-to="opacity-100 scale-100"
+                            leave="duration-200 ease-in"
+                            leave-from="opacity-100 scale-100"
+                            leave-to="opacity-0 scale-95"
+                        >
+                            <DialogPanel class="w-full max-w-4xl transform rounded-2xl bg-card p-6 shadow-xl transition-all max-h-[90vh] flex flex-col">
+                                <DialogTitle class="text-lg font-semibold flex-shrink-0">WER Calculation Range</DialogTitle>
+                                <p class="mt-1 text-sm text-muted-foreground flex-shrink-0">
+                                    Click on words to set start/end points, or enter indices manually. Selected range is highlighted.
+                                </p>
+
+                                <!-- Legend -->
+                                <div class="mt-3 flex flex-wrap gap-4 text-xs flex-shrink-0">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="h-3 w-3 rounded ring-2 ring-green-500"></span>
+                                        <span>Start</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="h-3 w-3 rounded ring-2 ring-red-500"></span>
+                                        <span>End</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="h-3 w-3 rounded bg-primary/20"></span>
+                                        <span>In Range</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="h-3 w-3 rounded bg-muted/50 opacity-50"></span>
+                                        <span>Excluded</span>
+                                    </div>
+                                </div>
+
+                                <form @submit.prevent="submitRangeRecalculate" class="mt-4 flex-1 overflow-hidden flex flex-col gap-4">
+                                    <!-- Scrollable content area -->
+                                    <div class="flex-1 overflow-y-auto space-y-4 pr-2">
+                                        <!-- Reference Text Section -->
+                                        <div class="space-y-2">
+                                            <div class="flex items-center justify-between sticky top-0 bg-card py-1 z-10">
+                                                <div class="text-sm font-medium">Reference Text</div>
+                                                <div class="text-xs text-muted-foreground">
+                                                    {{ totalRefWords }} words | Range: {{ rangeForm.ref_start ?? 0 }}-{{ rangeForm.ref_end ?? (totalRefWords - 1) }}
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Selection buttons -->
+                                            <div class="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    @click="selectionMode = selectionMode === 'ref-start' ? null : 'ref-start'"
+                                                    :class="['rounded px-2 py-1 text-xs font-medium transition-colors', selectionMode === 'ref-start' ? 'bg-green-500 text-white' : 'bg-muted hover:bg-muted/80']"
+                                                >
+                                                    {{ selectionMode === 'ref-start' ? 'Click a word...' : 'Set Start' }}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click="selectionMode = selectionMode === 'ref-end' ? null : 'ref-end'"
+                                                    :class="['rounded px-2 py-1 text-xs font-medium transition-colors', selectionMode === 'ref-end' ? 'bg-red-500 text-white' : 'bg-muted hover:bg-muted/80']"
+                                                >
+                                                    {{ selectionMode === 'ref-end' ? 'Click a word...' : 'Set End' }}
+                                                </button>
+                                                <div class="flex-1"></div>
+                                                <div class="flex items-center gap-1">
+                                                    <input
+                                                        v-model.number="rangeForm.ref_start"
+                                                        type="number"
+                                                        min="0"
+                                                        :max="totalRefWords - 1"
+                                                        placeholder="Start"
+                                                        class="w-16 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                                    />
+                                                    <span class="text-xs text-muted-foreground">to</span>
+                                                    <input
+                                                        v-model.number="rangeForm.ref_end"
+                                                        type="number"
+                                                        :min="rangeForm.ref_start ?? 0"
+                                                        :max="totalRefWords - 1"
+                                                        placeholder="End"
+                                                        class="w-16 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Interactive word display -->
+                                            <div class="max-h-48 overflow-y-auto rounded-lg border bg-muted/30 p-3" dir="rtl">
+                                                <div class="flex flex-wrap gap-1">
+                                                    <span
+                                                        v-for="(word, idx) in refWords"
+                                                        :key="`ref-word-${idx}`"
+                                                        :class="getRefWordClass(idx)"
+                                                        @click="handleRefWordClick(idx)"
+                                                        :title="`Word ${idx}`"
+                                                    >{{ word }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Hypothesis Text Section -->
+                                        <div class="space-y-2">
+                                            <div class="flex items-center justify-between sticky top-0 bg-card py-1 z-10">
+                                                <div class="text-sm font-medium">Hypothesis Text</div>
+                                                <div class="text-xs text-muted-foreground">
+                                                    {{ totalHypWords }} words | Range: {{ rangeForm.hyp_start ?? 0 }}-{{ rangeForm.hyp_end ?? (totalHypWords - 1) }}
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Selection buttons -->
+                                            <div class="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    @click="selectionMode = selectionMode === 'hyp-start' ? null : 'hyp-start'"
+                                                    :class="['rounded px-2 py-1 text-xs font-medium transition-colors', selectionMode === 'hyp-start' ? 'bg-green-500 text-white' : 'bg-muted hover:bg-muted/80']"
+                                                >
+                                                    {{ selectionMode === 'hyp-start' ? 'Click a word...' : 'Set Start' }}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click="selectionMode = selectionMode === 'hyp-end' ? null : 'hyp-end'"
+                                                    :class="['rounded px-2 py-1 text-xs font-medium transition-colors', selectionMode === 'hyp-end' ? 'bg-red-500 text-white' : 'bg-muted hover:bg-muted/80']"
+                                                >
+                                                    {{ selectionMode === 'hyp-end' ? 'Click a word...' : 'Set End' }}
+                                                </button>
+                                                <div class="flex-1"></div>
+                                                <div class="flex items-center gap-1">
+                                                    <input
+                                                        v-model.number="rangeForm.hyp_start"
+                                                        type="number"
+                                                        min="0"
+                                                        :max="totalHypWords - 1"
+                                                        placeholder="Start"
+                                                        class="w-16 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                                    />
+                                                    <span class="text-xs text-muted-foreground">to</span>
+                                                    <input
+                                                        v-model.number="rangeForm.hyp_end"
+                                                        type="number"
+                                                        :min="rangeForm.hyp_start ?? 0"
+                                                        :max="totalHypWords - 1"
+                                                        placeholder="End"
+                                                        class="w-16 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Interactive word display -->
+                                            <div class="max-h-48 overflow-y-auto rounded-lg border bg-muted/30 p-3" dir="rtl">
+                                                <div class="flex flex-wrap gap-1">
+                                                    <span
+                                                        v-for="(word, idx) in hypWords"
+                                                        :key="`hyp-word-${idx}`"
+                                                        :class="getHypWordClass(idx)"
+                                                        @click="handleHypWordClick(idx)"
+                                                        :title="`Word ${idx}`"
+                                                    >{{ word }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Actions - Fixed at bottom -->
+                                    <div class="flex items-center justify-between pt-3 border-t flex-shrink-0">
+                                        <button
+                                            type="button"
+                                            @click="resetRange"
+                                            class="text-sm text-muted-foreground hover:text-foreground"
+                                        >
+                                            Reset to Full Text
+                                        </button>
+                                        <div class="flex gap-2">
+                                            <button
+                                                type="button"
+                                                @click="showRangeModal = false; selectionMode = null"
+                                                class="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                :disabled="rangeForm.processing"
+                                                class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                            >
+                                                <ArrowPathIcon v-if="rangeForm.processing" class="h-4 w-4 animate-spin" />
+                                                Recalculate WER
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </DialogPanel>
+                        </TransitionChild>
+                    </div>
+                </div>
+            </Dialog>
+        </TransitionRoot>
     </AppLayout>
 </template>

@@ -95,6 +95,7 @@ declare global {
   const models: typeof import('./routes/api/llm/index').models
   const nextTick: typeof import('vue').nextTick
   const normalizeErrorRate: typeof import('./lib/asrMetrics').normalizeErrorRate
+  const normalizeForWer: typeof import('./lib/transcriptionUtils').normalizeForWer
   const notice: typeof import('./routes/verification/index').notice
   const onActivated: typeof import('vue').onActivated
   const onBeforeMount: typeof import('vue').onBeforeMount
@@ -243,6 +244,7 @@ declare module 'vue' {
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly normalizeErrorRate: UnwrapRef<typeof import('./lib/asrMetrics')['normalizeErrorRate']>
+    readonly normalizeForWer: UnwrapRef<typeof import('./lib/transcriptionUtils')['normalizeForWer']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
     readonly onBeforeUnmount: UnwrapRef<typeof import('vue')['onBeforeUnmount']>
