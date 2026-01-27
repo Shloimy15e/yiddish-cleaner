@@ -11,17 +11,18 @@ namespace App\Services\Asr;
 class WerCalculator
 {
     protected const MAX_MATRIX_CELLS = 20000;
+
     protected const MAX_WORD_CELLS = 250000;
 
     /**
      * Calculate WER and CER metrics between reference and hypothesis texts.
      *
-     * @param string $reference The reference (ground truth) text
-     * @param string $hypothesis The hypothesis (ASR output) text
-     * @param int|null $refStart Start word index for reference (0-based, inclusive)
-     * @param int|null $refEnd End word index for reference (0-based, inclusive)
-     * @param int|null $hypStart Start word index for hypothesis (0-based, inclusive)
-     * @param int|null $hypEnd End word index for hypothesis (0-based, inclusive)
+     * @param  string  $reference  The reference (ground truth) text
+     * @param  string  $hypothesis  The hypothesis (ASR output) text
+     * @param  int|null  $refStart  Start word index for reference (0-based, inclusive)
+     * @param  int|null  $refEnd  End word index for reference (0-based, inclusive)
+     * @param  int|null  $hypStart  Start word index for hypothesis (0-based, inclusive)
+     * @param  int|null  $hypEnd  End word index for hypothesis (0-based, inclusive)
      */
     public function calculate(
         string $reference,

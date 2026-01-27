@@ -108,11 +108,11 @@ Interactive word-level transcription review with time-coded audio playback, conf
 - **3.2** Added API routes for word operations
 
 ### 🔄 In Progress
-_(Paused for review)_
+- **4.2** `TranscriptionWordReview.vue` created with all features
+- **4.3** TypeScript types added
 
 ### ⏳ Pending
-- Stage 4: Frontend Components
-- Stage 5: Page Integration
+- Stage 5: Page Integration (integrate into `AudioSampleBenchmarkSection.vue`)
 
 ---
 
