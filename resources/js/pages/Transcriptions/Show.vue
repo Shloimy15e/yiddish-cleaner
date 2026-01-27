@@ -1380,9 +1380,10 @@ const chunkedAlignment = computed(() => {
                             <p class="whitespace-pre-wrap text-sm">{{ hypothesisText }}</p>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Word-Level Review Section -->
-                    <div class="rounded-xl border border-border bg-card">
+                <!-- Word-Level Review Section (always shown for ASR transcriptions) -->
+                <div class="rounded-xl border border-border bg-card">
                         <!-- Audio Player for Word Playback -->
                         <div v-if="audioMedia" class="border-b border-border p-4">
                             <AudioPlayer
@@ -1446,7 +1447,6 @@ const chunkedAlignment = computed(() => {
                             />
                         </div>
                     </div>
-                </div>
             </template>
         </div>
 
