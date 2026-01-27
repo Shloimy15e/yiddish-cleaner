@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Asr\Drivers\LocalWhisperDriver;
 use App\Services\Asr\Drivers\WhisperDriver;
 use App\Services\Asr\Drivers\YiddishLabsDriver;
 
@@ -35,6 +36,23 @@ return [
             ],
             'async' => false,
             'description' => 'OpenAI Whisper with Yiddish language hint',
+        ],
+
+        'local-whisper' => [
+            'driver' => LocalWhisperDriver::class,
+            'name' => 'Local Whisper',
+            'default_model' => 'base',
+            'models' => [
+                'tiny',
+                'base',
+                'small',
+                'medium',
+                'large',
+                'turbo',
+            ],
+            'async' => false,
+            'description' => 'Local Whisper (no API key required)',
+            'requires_key' => false,
         ],
     ],
 
@@ -79,5 +97,25 @@ return [
 
         // Default confidence threshold for filtering low-confidence words (0-1)
         'default_confidence_threshold' => env('ASR_REVIEW_DEFAULT_CONFIDENCE', 0.7),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Local Whisper Settings
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the local Whisper driver.
+    |
+    */
+
+    'local_whisper' => [
+        // Path to Python executable
+        'python_path' => env('WHISPER_PYTHON_PATH', 'python3'),
+
+        // Default device (cpu, cuda, or auto)
+        'device' => env('WHISPER_DEVICE', 'cpu'),
+
+        // Default model size
+        'model' => env('WHISPER_MODEL', 'base'),
     ],
 ];

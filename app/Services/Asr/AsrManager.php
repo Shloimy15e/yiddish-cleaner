@@ -3,6 +3,7 @@
 namespace App\Services\Asr;
 
 use App\Models\ApiCredential;
+use App\Services\Asr\Drivers\LocalWhisperDriver;
 use App\Services\Asr\Drivers\WhisperDriver;
 use App\Services\Asr\Drivers\YiddishLabsDriver;
 use InvalidArgumentException;
@@ -26,10 +27,20 @@ class AsrManager
 
         if (! isset($this->drivers[$key])) {
             $driverClass = $config['driver'];
-            $this->drivers[$key] = new $driverClass(
-                apiKey: $credential?->api_key,
-                model: $model ?? $credential?->default_model ?? $config['default_model'],
-            );
+
+            // LocalWhisperDriver doesn't need an API key
+            if ($provider === 'local-whisper') {
+                $this->drivers[$key] = new $driverClass(
+                    apiKey: null,
+                    model: $model ?? $config['default_model'],
+                    device: config('asr.local_whisper.device', 'cpu'),
+                );
+            } else {
+                $this->drivers[$key] = new $driverClass(
+                    apiKey: $credential?->api_key,
+                    model: $model ?? $credential?->default_model ?? $config['default_model'],
+                );
+            }
         }
 
         return $this->drivers[$key];
@@ -84,6 +95,7 @@ class AsrManager
         return match ($provider) {
             'yiddishlabs' => YiddishLabsDriver::class,
             'whisper' => WhisperDriver::class,
+            'local-whisper' => LocalWhisperDriver::class,
             default => throw new InvalidArgumentException("Unknown ASR provider: {$provider}"),
         };
     }

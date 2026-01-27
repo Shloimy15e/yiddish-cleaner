@@ -98,15 +98,15 @@ class YiddishLabsDriver implements AsrDriverInterface
 
             if ($data['status'] === 'completed') {
                 $text = $data['text'] ?? '';
-                
+
                 // Parse word-level data from timestamped text
                 // Wrapped in try-catch to ensure parsing failures don't crash transcription
                 $words = null;
                 $cleanText = $text;
-                
+
                 try {
                     $words = $this->parseTimestampedText($text);
-                    
+
                     // Get clean text (without timestamps) for storage
                     if ($words !== null && count($words) > 0) {
                         $cleanText = $this->getCleanText($words);
@@ -153,22 +153,22 @@ class YiddishLabsDriver implements AsrDriverInterface
 
     /**
      * Parse timestamped text from YiddishLabs into word-level data.
-     * 
+     *
      * Expected format variations (to be confirmed with sample response):
      * - "[00:00:01.234] word1 word2 [00:00:02.567] word3"
      * - "<0.000> word1 <0.500> word2"
      * - Or other timestamp formats
-     * 
+     *
      * @return AsrWord[]|null
      */
     protected function parseTimestampedText(string $text): ?array
     {
         // Try format: [HH:MM:SS.mmm] or [MM:SS.mmm] or [SS.mmm]
         $pattern1 = '/\[(\d{1,2}:)?(\d{1,2}):(\d{1,2})\.(\d{1,3})\]/';
-        
+
         // Try format: <seconds.milliseconds>
         $pattern2 = '/<(\d+\.?\d*)>/';
-        
+
         // Try format: (seconds.milliseconds)
         $pattern3 = '/\((\d+\.?\d*)\)/';
 
@@ -194,34 +194,34 @@ class YiddishLabsDriver implements AsrDriverInterface
 
     /**
      * Parse text with [HH:MM:SS.mmm] or [MM:SS.mmm] timestamps.
-     * 
+     *
      * @return AsrWord[]
      */
     protected function parseWithBracketTimestamps(string $text): array
     {
         $words = [];
         $pattern = '/\[(?:(\d{1,2}):)?(\d{1,2}):(\d{1,2})\.(\d{1,3})\]\s*([^\[\]]+)/';
-        
+
         if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
             for ($i = 0; $i < count($matches); $i++) {
                 $hours = ! empty($matches[$i][1]) ? (int) $matches[$i][1] : 0;
                 $minutes = (int) $matches[$i][2];
                 $seconds = (int) $matches[$i][3];
                 $milliseconds = (int) str_pad($matches[$i][4], 3, '0');
-                
+
                 $startTime = $hours * 3600 + $minutes * 60 + $seconds + $milliseconds / 1000;
                 $wordsInSegment = preg_split('/\s+/', trim($matches[$i][5]), -1, PREG_SPLIT_NO_EMPTY);
-                
+
                 // Calculate end time from next timestamp or estimate
-                $endTime = isset($matches[$i + 1]) 
+                $endTime = isset($matches[$i + 1])
                     ? $this->parseTimestampToSeconds($matches[$i + 1])
                     : $startTime + (count($wordsInSegment) * 0.3); // Estimate 0.3s per word
-                
+
                 // Distribute time evenly among words in segment
-                $wordDuration = count($wordsInSegment) > 0 
-                    ? ($endTime - $startTime) / count($wordsInSegment) 
+                $wordDuration = count($wordsInSegment) > 0
+                    ? ($endTime - $startTime) / count($wordsInSegment)
                     : 0;
-                
+
                 foreach ($wordsInSegment as $j => $word) {
                     $wordStart = $startTime + ($j * $wordDuration);
                     $words[] = new AsrWord(
@@ -233,33 +233,33 @@ class YiddishLabsDriver implements AsrDriverInterface
                 }
             }
         }
-        
+
         return $words;
     }
 
     /**
      * Parse text with <seconds> timestamps.
-     * 
+     *
      * @return AsrWord[]
      */
     protected function parseWithAngleBracketTimestamps(string $text): array
     {
         $words = [];
         $pattern = '/<(\d+\.?\d*)>\s*([^<]+)/';
-        
+
         if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
             for ($i = 0; $i < count($matches); $i++) {
                 $startTime = (float) $matches[$i][1];
                 $wordsInSegment = preg_split('/\s+/', trim($matches[$i][2]), -1, PREG_SPLIT_NO_EMPTY);
-                
-                $endTime = isset($matches[$i + 1]) 
+
+                $endTime = isset($matches[$i + 1])
                     ? (float) $matches[$i + 1][1]
                     : $startTime + (count($wordsInSegment) * 0.3);
-                
-                $wordDuration = count($wordsInSegment) > 0 
-                    ? ($endTime - $startTime) / count($wordsInSegment) 
+
+                $wordDuration = count($wordsInSegment) > 0
+                    ? ($endTime - $startTime) / count($wordsInSegment)
                     : 0;
-                
+
                 foreach ($wordsInSegment as $j => $word) {
                     $wordStart = $startTime + ($j * $wordDuration);
                     $words[] = new AsrWord(
@@ -271,33 +271,33 @@ class YiddishLabsDriver implements AsrDriverInterface
                 }
             }
         }
-        
+
         return $words;
     }
 
     /**
      * Parse text with (seconds) timestamps.
-     * 
+     *
      * @return AsrWord[]
      */
     protected function parseWithParenTimestamps(string $text): array
     {
         $words = [];
         $pattern = '/\((\d+\.?\d*)\)\s*([^()]+)/';
-        
+
         if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
             for ($i = 0; $i < count($matches); $i++) {
                 $startTime = (float) $matches[$i][1];
                 $wordsInSegment = preg_split('/\s+/', trim($matches[$i][2]), -1, PREG_SPLIT_NO_EMPTY);
-                
-                $endTime = isset($matches[$i + 1]) 
+
+                $endTime = isset($matches[$i + 1])
                     ? (float) $matches[$i + 1][1]
                     : $startTime + (count($wordsInSegment) * 0.3);
-                
-                $wordDuration = count($wordsInSegment) > 0 
-                    ? ($endTime - $startTime) / count($wordsInSegment) 
+
+                $wordDuration = count($wordsInSegment) > 0
+                    ? ($endTime - $startTime) / count($wordsInSegment)
                     : 0;
-                
+
                 foreach ($wordsInSegment as $j => $word) {
                     $wordStart = $startTime + ($j * $wordDuration);
                     $words[] = new AsrWord(
@@ -309,7 +309,7 @@ class YiddishLabsDriver implements AsrDriverInterface
                 }
             }
         }
-        
+
         return $words;
     }
 
@@ -322,13 +322,13 @@ class YiddishLabsDriver implements AsrDriverInterface
         $minutes = (int) $match[2];
         $seconds = (int) $match[3];
         $milliseconds = (int) str_pad($match[4], 3, '0');
-        
+
         return $hours * 3600 + $minutes * 60 + $seconds + $milliseconds / 1000;
     }
 
     /**
      * Get clean text from parsed words (without timestamps).
-     * 
+     *
      * @param  AsrWord[]  $words
      */
     protected function getCleanText(array $words): string
