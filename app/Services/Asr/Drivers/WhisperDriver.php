@@ -42,9 +42,12 @@ class WhisperDriver implements AsrDriverInterface
             basename($audioPath)
         )->attach('model', $this->model);
 
-        // Add language hint for Yiddish
-        $language = $options['language'] ?? 'yi';
-        $request = $request->attach('language', $language);
+        // Add language hint if specified and supported
+        // Note: OpenAI Whisper API doesn't support 'yi' (Yiddish) - let it auto-detect instead
+        $language = $options['language'] ?? null;
+        if ($language && $language !== 'yi') {
+            $request = $request->attach('language', $language);
+        }
 
         // Response format - always use verbose_json for word-level data
         $request = $request->attach('response_format', 'verbose_json');
@@ -85,7 +88,7 @@ class WhisperDriver implements AsrDriverInterface
             durationSeconds: $duration,
             wordCount: str_word_count($text),
             metadata: [
-                'language' => $data['language'] ?? $language,
+                'language' => $data['language'] ?? $language ?? 'auto',
             ],
             words: $words,
         );
