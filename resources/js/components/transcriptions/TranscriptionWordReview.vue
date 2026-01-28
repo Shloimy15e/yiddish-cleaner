@@ -10,6 +10,7 @@ import {
     ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, onMounted, ref, watch } from 'vue';
+import { useForm } from '@inertiajs/vue3';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -65,11 +66,14 @@ const error = ref<string | null>(null);
 
 // Alignment state
 const alignmentProviders = ref<AlignmentProvider[]>([]);
-const selectedProvider = ref<string>('');
-const selectedModel = ref<string>('');
-const isAligning = ref(false);
-const alignmentError = ref<string | null>(null);
 const showAlignmentOptions = ref(false);
+
+// Alignment form using Inertia useForm
+const alignmentForm = useForm({
+    provider: '',
+    model: '',
+    overwrite: false,
+});
 
 // Filter state
 const confidenceThreshold = ref<string>('low'); // 'all' | 'low' | custom number
@@ -409,14 +413,14 @@ const fetchAlignmentProviders = async () => {
         
         // Set default provider
         if (data.default && alignmentProviders.value.some(p => p.id === data.default)) {
-            selectedProvider.value = data.default;
+            alignmentForm.provider = data.default;
             const provider = alignmentProviders.value.find(p => p.id === data.default);
             if (provider?.default_model) {
-                selectedModel.value = provider.default_model;
+                alignmentForm.model = provider.default_model;
             }
         } else if (alignmentProviders.value.length > 0) {
-            selectedProvider.value = alignmentProviders.value[0].id;
-            selectedModel.value = alignmentProviders.value[0].default_model || '';
+            alignmentForm.provider = alignmentProviders.value[0].id;
+            alignmentForm.model = alignmentProviders.value[0].default_model || '';
         }
     } catch (e) {
         console.error('Failed to fetch alignment providers:', e);
@@ -425,66 +429,33 @@ const fetchAlignmentProviders = async () => {
 
 // Get available models for selected provider
 const availableModels = computed(() => {
-    const provider = alignmentProviders.value.find(p => p.id === selectedProvider.value);
+    const provider = alignmentProviders.value.find(p => p.id === alignmentForm.provider);
     return provider?.models || [];
 });
 
 // Check if alignment is available
 const canAlign = computed(() => {
-    const provider = alignmentProviders.value.find(p => p.id === selectedProvider.value);
+    const provider = alignmentProviders.value.find(p => p.id === alignmentForm.provider);
     return provider?.available ?? false;
 });
 
 // Submit alignment request
-const submitAlignment = async (overwrite = false) => {
-    if (!selectedProvider.value) {
-        alignmentError.value = 'Please select a provider';
+const submitAlignment = (overwrite = false) => {
+    if (!alignmentForm.provider) {
+        alignmentForm.setError('provider', 'Please select a provider');
         return;
     }
 
-    isAligning.value = true;
-    alignmentError.value = null;
-
-    try {
-        const response = await fetch(
-            `/transcriptions/${props.transcriptionId}/align`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN':
-                        document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute('content') || '',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({
-                    provider: selectedProvider.value,
-                    model: selectedModel.value || null,
-                    overwrite,
-                }),
-            },
-        );
-
-        if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.message || data.errors?.error?.[0] || 'Failed to start alignment');
-        }
-
-        // Alignment job dispatched successfully
-        emit('alignmentStarted');
-        showAlignmentOptions.value = false;
-        
-        // Show message and poll for results
-        error.value = null;
-        
-        // Start polling for word data
-        pollForWords();
-    } catch (e) {
-        alignmentError.value = e instanceof Error ? e.message : 'Failed to start alignment';
-    } finally {
-        isAligning.value = false;
-    }
+    alignmentForm.overwrite = overwrite;
+    alignmentForm.post(`/transcriptions/${props.transcriptionId}/align`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            emit('alignmentStarted');
+            showAlignmentOptions.value = false;
+            error.value = null;
+            pollForWords();
+        },
+    });
 };
 
 // Poll for words after alignment is dispatched
@@ -546,8 +517,8 @@ watch(
                 <!-- Re-generate alignment button (when words exist) -->
                 <DropdownMenu v-if="hasWordData && alignmentProviders.length > 0">
                     <DropdownMenuTrigger as-child>
-                        <Button variant="outline" size="sm" :disabled="isAligning">
-                            <ArrowPathIcon :class="['mr-2 h-4 w-4', isAligning ? 'animate-spin' : '']" />
+                        <Button variant="outline" size="sm" :disabled="alignmentForm.processing">
+                            <ArrowPathIcon :class="['mr-2 h-4 w-4', alignmentForm.processing ? 'animate-spin' : '']" />
                             Re-align
                         </Button>
                     </DropdownMenuTrigger>
@@ -558,9 +529,9 @@ watch(
                             <div class="space-y-1">
                                 <label class="text-xs font-medium">Provider</label>
                                 <select
-                                    v-model="selectedProvider"
+                                    v-model="alignmentForm.provider"
                                     class="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
-                                    @change="selectedModel = alignmentProviders.find(p => p.id === selectedProvider)?.default_model || ''"
+                                    @change="alignmentForm.model = alignmentProviders.find(p => p.id === alignmentForm.provider)?.default_model || ''"
                                 >
                                     <option
                                         v-for="provider in alignmentProviders"
@@ -575,7 +546,7 @@ watch(
                             <div v-if="availableModels.length > 1" class="space-y-1">
                                 <label class="text-xs font-medium">Model</label>
                                 <select
-                                    v-model="selectedModel"
+                                    v-model="alignmentForm.model"
                                     class="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                                 >
                                     <option v-for="model in availableModels" :key="model" :value="model">
@@ -583,16 +554,16 @@ watch(
                                     </option>
                                 </select>
                             </div>
-                            <p v-if="!canAlign && alignmentProviders.find(p => p.id === selectedProvider)?.requires_credential" class="text-xs text-warning">
+                            <p v-if="!canAlign && alignmentProviders.find(p => p.id === alignmentForm.provider)?.requires_credential" class="text-xs text-warning">
                                 No API key for this provider
                             </p>
                             <Button
                                 size="sm"
                                 class="w-full"
-                                :disabled="isAligning || !canAlign"
+                                :disabled="alignmentForm.processing || !canAlign"
                                 @click="submitAlignment(true)"
                             >
-                                {{ isAligning ? 'Starting...' : 'Overwrite & Re-align' }}
+                                {{ alignmentForm.processing ? 'Starting...' : 'Overwrite & Re-align' }}
                             </Button>
                         </div>
                     </DropdownMenuContent>
@@ -668,9 +639,9 @@ watch(
                     <div class="space-y-2">
                         <label class="text-sm font-medium">Provider</label>
                         <select
-                            v-model="selectedProvider"
+                            v-model="alignmentForm.provider"
                             class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                            @change="selectedModel = alignmentProviders.find(p => p.id === selectedProvider)?.default_model || ''"
+                            @change="alignmentForm.model = alignmentProviders.find(p => p.id === alignmentForm.provider)?.default_model || ''"
                         >
                             <option
                                 v-for="provider in alignmentProviders"
@@ -688,7 +659,7 @@ watch(
                     <div v-if="availableModels.length > 0" class="space-y-2">
                         <label class="text-sm font-medium">Model</label>
                         <select
-                            v-model="selectedModel"
+                            v-model="alignmentForm.model"
                             class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                         >
                             <option
@@ -702,8 +673,8 @@ watch(
                     </div>
 
                     <!-- Error message -->
-                    <div v-if="alignmentError" class="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
-                        {{ alignmentError }}
+                    <div v-if="alignmentForm.errors.provider || alignmentForm.errors.error" class="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
+                        {{ alignmentForm.errors.provider || alignmentForm.errors.error }}
                     </div>
 
                     <!-- No credential warning -->
@@ -714,16 +685,16 @@ watch(
                     <!-- Actions -->
                     <div class="flex gap-2">
                         <Button
-                            :disabled="isAligning || !canAlign"
+                            :disabled="alignmentForm.processing || !canAlign"
                             @click="submitAlignment(false)"
                         >
-                            <ArrowPathIcon v-if="isAligning" class="mr-2 h-4 w-4 animate-spin" />
+                            <ArrowPathIcon v-if="alignmentForm.processing" class="mr-2 h-4 w-4 animate-spin" />
                             <ArrowPathIcon v-else class="mr-2 h-4 w-4" />
-                            {{ isAligning ? 'Starting...' : 'Start Alignment' }}
+                            {{ alignmentForm.processing ? 'Starting...' : 'Start Alignment' }}
                         </Button>
                         <Button
                             variant="outline"
-                            :disabled="isAligning"
+                            :disabled="alignmentForm.processing"
                             @click="showAlignmentOptions = false"
                         >
                             Cancel
