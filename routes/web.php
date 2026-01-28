@@ -89,6 +89,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // API - ASR Providers
     Route::get('/api/asr/providers', [AsrController::class, 'providers'])->name('api.asr.providers');
 
+    // API - Alignment Providers
+    Route::get('/api/alignment/providers', [TranscriptionController::class, 'alignmentProviders'])->name('api.alignment.providers');
+
     // API - Transcription Words (Word-level review)
     Route::get('/api/transcriptions/{transcription}/words', [TranscriptionWordController::class, 'index'])->name('api.transcription-words.index');
     Route::post('/api/transcriptions/{transcription}/words', [TranscriptionWordController::class, 'store'])->name('api.transcription-words.store');
@@ -97,6 +100,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/api/transcriptions/{transcription}/words/{word}', [TranscriptionWordController::class, 'destroy'])->name('api.transcription-words.destroy');
     Route::post('/api/transcriptions/{transcription}/toggle-training', [TranscriptionWordController::class, 'toggleTrainingFlag'])->name('api.transcription-words.toggle-training');
     Route::get('/api/transcriptions/{transcription}/corrected-text', [TranscriptionWordController::class, 'getCorrectedText'])->name('api.transcription-words.corrected-text');
+
+    // Word Alignment
+    Route::post('/transcriptions/{transcription}/align', [TranscriptionController::class, 'align'])->name('transcriptions.align');
 
     // API - Audio Samples
     Route::get('/api/audio-samples/linkable', [AudioSampleController::class, 'linkableList'])->name('api.audio-samples.linkable');
