@@ -53,13 +53,18 @@ class AlignTranscriptionJob implements ShouldQueue
             Log::info("Starting alignment for Transcription #{$this->transcription->id}", [
                 'provider' => $this->provider,
                 'model' => $this->model,
+                'attempt' => $this->transcription->alignment_attempts + 1,
             ]);
 
             // Check if transcription already has words and overwrite is false
             if (! $this->overwrite && $this->transcription->hasWordData()) {
                 Log::info("Transcription #{$this->transcription->id} already has word data, skipping alignment");
+                $this->transcription->markAlignmentNotNeeded();
                 return;
             }
+
+            // Mark alignment as started
+            $this->transcription->markAlignmentStarted($this->provider, $this->model);
 
             // Get the text to align
             $text = $this->getTextToAlign();
@@ -157,14 +162,20 @@ class AlignTranscriptionJob implements ShouldQueue
             if (! empty($asrWords)) {
                 $this->transcription->storeWords($asrWords);
                 Log::info("Stored {$result->getWordCount()} aligned words for Transcription #{$this->transcription->id}");
+                
+                // Mark alignment as completed
+                $this->transcription->markAlignmentCompleted();
             } else {
                 Log::warning("Alignment completed but no words returned for Transcription #{$this->transcription->id}");
+                $this->transcription->markAlignmentFailed('Alignment completed but no words were returned');
             }
 
-            // Update transcription metadata
-            $this->transcription->update([
-                'status' => Transcription::STATUS_COMPLETED,
-            ]);
+            // Update transcription status if not already completed
+            if ($this->transcription->status !== Transcription::STATUS_COMPLETED) {
+                $this->transcription->update([
+                    'status' => Transcription::STATUS_COMPLETED,
+                ]);
+            }
 
             // Clean up temporary audio file
             if ($tempAudioPath && file_exists($tempAudioPath)) {
@@ -182,9 +193,14 @@ class AlignTranscriptionJob implements ShouldQueue
                 unlink($tempAudioPath);
             }
 
+            // Mark alignment as failed with error details
+            $this->transcription->markAlignmentFailed($e->getMessage());
+
             Log::error("Alignment failed for Transcription #{$this->transcription->id}", [
                 'error' => $e->getMessage(),
                 'provider' => $this->provider,
+                'model' => $this->model,
+                'attempts' => $this->transcription->alignment_attempts,
             ]);
 
             throw $e;
@@ -211,6 +227,14 @@ class AlignTranscriptionJob implements ShouldQueue
     {
         Log::error("AlignTranscriptionJob failed for Transcription #{$this->transcription->id}", [
             'error' => $exception->getMessage(),
+            'provider' => $this->provider,
+            'model' => $this->model,
+            'attempts' => $this->transcription->alignment_attempts,
         ]);
+
+        // Ensure alignment is marked as failed even if exception was thrown during cleanup
+        if ($this->transcription->alignment_status !== Transcription::ALIGNMENT_FAILED) {
+            $this->transcription->markAlignmentFailed($exception->getMessage());
+        }
     }
 }

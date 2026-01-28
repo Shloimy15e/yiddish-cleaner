@@ -41,6 +41,23 @@ class Transcription extends Model implements HasMedia
     ];
 
     /**
+     * Alignment status constants
+     */
+    public const ALIGNMENT_PENDING = 'pending';
+    public const ALIGNMENT_PROCESSING = 'processing';
+    public const ALIGNMENT_COMPLETED = 'completed';
+    public const ALIGNMENT_FAILED = 'failed';
+    public const ALIGNMENT_NOT_NEEDED = 'not_needed';
+
+    public const ALIGNMENT_STATUSES = [
+        self::ALIGNMENT_PENDING,
+        self::ALIGNMENT_PROCESSING,
+        self::ALIGNMENT_COMPLETED,
+        self::ALIGNMENT_FAILED,
+        self::ALIGNMENT_NOT_NEEDED,
+    ];
+
+    /**
      * Source constants
      */
     public const SOURCE_IMPORTED = 'imported';
@@ -101,6 +118,15 @@ class Transcription extends Model implements HasMedia
 
         // Training flag
         'flagged_for_training',
+
+        // Alignment tracking
+        'alignment_status',
+        'alignment_error',
+        'alignment_provider',
+        'alignment_model',
+        'alignment_started_at',
+        'alignment_completed_at',
+        'alignment_attempts',
     ];
 
     protected function casts(): array
@@ -129,6 +155,11 @@ class Transcription extends Model implements HasMedia
 
             // Training
             'flagged_for_training' => 'boolean',
+
+            // Alignment
+            'alignment_started_at' => 'datetime',
+            'alignment_completed_at' => 'datetime',
+            'alignment_attempts' => 'integer',
         ];
     }
 
@@ -244,6 +275,40 @@ class Transcription extends Model implements HasMedia
     public function scopeForModel($query, string $modelName)
     {
         return $query->where('model_name', $modelName);
+    }
+
+    /**
+     * Scope to get transcriptions needing alignment.
+     */
+    public function scopeNeedsAlignment($query)
+    {
+        return $query->whereNull('alignment_status')
+            ->orWhere('alignment_status', self::ALIGNMENT_PENDING)
+            ->orWhere('alignment_status', self::ALIGNMENT_FAILED);
+    }
+
+    /**
+     * Scope to get transcriptions with alignment in progress.
+     */
+    public function scopeAligning($query)
+    {
+        return $query->where('alignment_status', self::ALIGNMENT_PROCESSING);
+    }
+
+    /**
+     * Scope to get aligned transcriptions.
+     */
+    public function scopeAligned($query)
+    {
+        return $query->where('alignment_status', self::ALIGNMENT_COMPLETED);
+    }
+
+    /**
+     * Scope to get transcriptions with failed alignment.
+     */
+    public function scopeAlignmentFailed($query)
+    {
+        return $query->where('alignment_status', self::ALIGNMENT_FAILED);
     }
 
     // ==================== Helper Methods ====================
@@ -432,6 +497,122 @@ class Transcription extends Model implements HasMedia
         if ($this->isLinked()) {
             $this->audioSample->syncStatusFromBaseTranscription();
         }
+    }
+
+    // ==================== Alignment Methods ====================
+
+    /**
+     * Check if alignment is needed (has text but no word data).
+     */
+    public function needsAlignment(): bool
+    {
+        if ($this->hasWordData()) {
+            return false;
+        }
+
+        // Check if there's text to align
+        if ($this->isAsr()) {
+            return ! empty($this->hypothesis_text);
+        }
+
+        return ! empty($this->text_clean) || ! empty($this->text_raw);
+    }
+
+    /**
+     * Check if alignment is currently in progress.
+     */
+    public function isAligning(): bool
+    {
+        return $this->alignment_status === self::ALIGNMENT_PROCESSING;
+    }
+
+    /**
+     * Check if alignment has failed.
+     */
+    public function hasAlignmentFailed(): bool
+    {
+        return $this->alignment_status === self::ALIGNMENT_FAILED;
+    }
+
+    /**
+     * Check if alignment is completed.
+     */
+    public function isAligned(): bool
+    {
+        return $this->alignment_status === self::ALIGNMENT_COMPLETED && $this->hasWordData();
+    }
+
+    /**
+     * Check if alignment can be retried.
+     */
+    public function canRetryAlignment(): bool
+    {
+        return $this->hasAlignmentFailed() 
+            || ($this->needsAlignment() && ! $this->isAligning());
+    }
+
+    /**
+     * Mark alignment as started.
+     */
+    public function markAlignmentStarted(string $provider, ?string $model = null): void
+    {
+        $this->update([
+            'alignment_status' => self::ALIGNMENT_PROCESSING,
+            'alignment_error' => null,
+            'alignment_provider' => $provider,
+            'alignment_model' => $model,
+            'alignment_started_at' => now(),
+            'alignment_completed_at' => null,
+            'alignment_attempts' => $this->alignment_attempts + 1,
+        ]);
+    }
+
+    /**
+     * Mark alignment as completed successfully.
+     */
+    public function markAlignmentCompleted(): void
+    {
+        $this->update([
+            'alignment_status' => self::ALIGNMENT_COMPLETED,
+            'alignment_error' => null,
+            'alignment_completed_at' => now(),
+        ]);
+    }
+
+    /**
+     * Mark alignment as failed.
+     */
+    public function markAlignmentFailed(string $error): void
+    {
+        $this->update([
+            'alignment_status' => self::ALIGNMENT_FAILED,
+            'alignment_error' => $error,
+            'alignment_completed_at' => now(),
+        ]);
+    }
+
+    /**
+     * Mark alignment as not needed (e.g., already has word data from ASR).
+     */
+    public function markAlignmentNotNeeded(): void
+    {
+        $this->update([
+            'alignment_status' => self::ALIGNMENT_NOT_NEEDED,
+            'alignment_error' => null,
+        ]);
+    }
+
+    /**
+     * Reset alignment status for retry.
+     */
+    public function resetAlignmentStatus(): void
+    {
+        $this->update([
+            'alignment_status' => self::ALIGNMENT_PENDING,
+            'alignment_error' => null,
+            'alignment_started_at' => null,
+            'alignment_completed_at' => null,
+        ]);
     }
 
     // ==================== Computed Attributes ====================
