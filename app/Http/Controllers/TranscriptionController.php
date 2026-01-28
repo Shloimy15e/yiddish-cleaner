@@ -713,11 +713,16 @@ class TranscriptionController extends Controller
         }
 
         $provider = $request->input('provider', $alignmentManager->getDefaultProvider());
-        $credential = $request->user()->getApiCredential($provider, 'alignment')
-            ?? $request->user()->getApiCredential($provider, 'asr');
+        
+        // Only require credentials if provider needs them
+        $credential = null;
+        if ($alignmentManager->requiresCredential($provider)) {
+            $credential = $request->user()->getApiCredential($provider, 'alignment')
+                ?? $request->user()->getApiCredential($provider, 'asr');
 
-        if (! $credential) {
-            return back()->withErrors(['error' => "No API key configured for {$provider}. Add your API key in Settings."]);
+            if (! $credential) {
+                return back()->withErrors(['error' => "No API key configured for {$provider}. Add your API key in Settings."]);
+            }
         }
 
         // Dispatch the alignment job
