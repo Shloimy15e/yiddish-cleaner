@@ -720,6 +720,16 @@ const hypothesisText = computed(() => asrTranscription.value?.hypothesis_text ??
                     </div>
                 </div>
 
+                <!-- Audio Player (for base transcriptions) -->
+                <div v-if="audioMedia" class="rounded-xl border bg-card p-4">
+                    <AudioPlayer
+                        ref="audioPlayerRef"
+                        :src="audioMedia.url"
+                        :name="audioMedia.name"
+                        :file-size="audioMedia.size"
+                    />
+                </div>
+
                 <!-- Cleaning Section (if needs cleaning) -->
                 <div v-if="baseTranscription.text_raw && !baseTranscription.text_clean && baseTranscription.status !== 'processing'" class="rounded-xl border-2 border-blue-200 bg-blue-50 p-6 dark:border-blue-800 dark:bg-blue-900/20">
                     <h2 class="mb-4 flex items-center gap-2 text-lg font-semibold">
