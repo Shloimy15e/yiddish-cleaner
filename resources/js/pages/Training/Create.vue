@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 
 import AppLayout from '@/layouts/AppLayout.vue';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
@@ -212,9 +212,9 @@ const submit = () => {
                     >
                         {{ form.processing ? 'Creating...' : 'Create Training Version' }}
                     </button>
-                    <a href="/training" class="rounded-lg border px-6 py-2 font-medium hover:bg-muted">
+                    <Link href="/training" class="rounded-lg border px-6 py-2 font-medium hover:bg-muted">
                         Cancel
-                    </a>
+                    </Link>
                 </div>
             </form>
         </div>

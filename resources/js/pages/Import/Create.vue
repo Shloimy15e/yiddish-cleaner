@@ -1,25 +1,23 @@
 <script setup lang="ts">
-import { 
-    TabGroup, 
-    TabList, 
-    Tab, 
-    TabPanels, 
+import {
+    Tab,
+    TabGroup,
+    TabList,
     TabPanel,
+    TabPanels,
 } from '@headlessui/vue';
 import {
-    TableCellsIcon,
-    DocumentArrowUpIcon,
-    InformationCircleIcon,
     ArrowPathIcon,
-    Cog6ToothIcon,
     ArrowUpTrayIcon,
-    LinkIcon,
+    Cog6ToothIcon,
+    DocumentArrowUpIcon,
     DocumentTextIcon,
+    InformationCircleIcon,
     MagnifyingGlassIcon,
-    ClipboardDocumentIcon,
+    TableCellsIcon
 } from '@heroicons/vue/24/outline';
-import { Head, useForm, router } from '@inertiajs/vue3';
-import { ref, computed, watch, onMounted } from 'vue';
+import { Head, useForm } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate } from '@/lib/date';
@@ -287,9 +285,9 @@ const submitSheet = () => {
                                             <p class="text-sm text-amber-600 dark:text-amber-400 mb-2">
                                                 Google account required to import from URLs.
                                             </p>
-                                            <a href="/settings/credentials" class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                                            <Link href="/settings/credentials" class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
                                                 Connect in Settings →
-                                            </a>
+                                            </Link>
                                         </div>
                                         <div v-else>
                                             <input 
@@ -489,9 +487,9 @@ const submitSheet = () => {
                                     <div v-if="!hasGoogleCredentials" class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-2">
                                         <p class="text-xs text-amber-600 dark:text-amber-400">
                                             Connect your Google account to enable URL imports. 
-                                            <a href="/settings/credentials" class="inline-flex items-center font-medium text-primary hover:underline">
+                                            <Link href="/settings/credentials" class="inline-flex items-center font-medium text-primary hover:underline">
                                                 Connect in Settings →
-                                            </a>
+                                            </Link>
                                         </p>
                                     </div>
                                     <div v-if="audioInputType === 'url'">
@@ -591,9 +589,9 @@ const submitSheet = () => {
                                         <div v-if="!hasGoogleCredentials" class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mb-2">
                                             <p class="text-xs text-amber-600 dark:text-amber-400">
                                                 Connect your Google account to enable URL imports. 
-                                                <a href="/settings/credentials" class="inline-flex items-center font-medium text-primary hover:underline">
+                                                <Link href="/settings/credentials" class="inline-flex items-center font-medium text-primary hover:underline">
                                                     Connect in Settings →
-                                                </a>
+                                                </Link>
                                             </p>
                                         </div>
                                         <input 

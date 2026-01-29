@@ -931,7 +931,7 @@ const chunkedAlignment = computed(() => {
                                 <div v-if="!providerOptions.length" class="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
                                     <p class="text-sm text-amber-800 dark:text-amber-200">
                                         No LLM providers configured. Please add API credentials in
-                                        <a href="/settings/credentials" class="font-medium underline hover:no-underline">Settings → API Credentials</a>.
+                                        <Link href="/settings/credentials" class="font-medium underline hover:no-underline">Settings → API Credentials</Link>.
                                     </p>
                                 </div>
 
