@@ -79,6 +79,7 @@ const editingWordId = ref<number | null>(null);
 const editValue = ref('');
 const insertAfterWordId = ref<number | null>(null);
 const insertValue = ref('');
+const savingWordId = ref<number | null>(null);
 
 // Forms for word operations
 const correctionForm = useForm({
@@ -166,6 +167,7 @@ const cancelEdit = () => {
 
 // Save word correction using Inertia
 const saveCorrection = (word: TranscriptionWord) => {
+    savingWordId.value = word.id;
     correctionForm.corrected_word = editValue.value === word.word ? null : editValue.value;
     correctionForm.is_deleted = false;
     
@@ -176,34 +178,55 @@ const saveCorrection = (word: TranscriptionWord) => {
             onSuccess: () => {
                 cancelEdit();
             },
+            onFinish: () => {
+                savingWordId.value = null;
+            },
         },
     );
 };
 
 // Delete word using Inertia
 const deleteWord = (word: TranscriptionWord) => {
+    savingWordId.value = word.id;
+    
     if (word.is_inserted) {
         router.delete(
             `/transcriptions/${props.transcriptionId}/words/${word.id}`,
-            { preserveScroll: true },
+            { 
+                preserveScroll: true,
+                onFinish: () => {
+                    savingWordId.value = null;
+                },
+            },
         );
     } else {
         correctionForm.is_deleted = true;
         correctionForm.corrected_word = null;
         correctionForm.patch(
             `/transcriptions/${props.transcriptionId}/words/${word.id}`,
-            { preserveScroll: true },
+            { 
+                preserveScroll: true,
+                onFinish: () => {
+                    savingWordId.value = null;
+                },
+            },
         );
     }
 };
 
 // Restore deleted word
 const restoreWord = (word: TranscriptionWord) => {
+    savingWordId.value = word.id;
     correctionForm.is_deleted = false;
     correctionForm.corrected_word = null;
     correctionForm.patch(
         `/transcriptions/${props.transcriptionId}/words/${word.id}`,
-        { preserveScroll: true },
+        { 
+            preserveScroll: true,
+            onFinish: () => {
+                savingWordId.value = null;
+            },
+        },
     );
 };
 
@@ -492,12 +515,51 @@ onMounted(() => {
         <div v-else class="rounded-lg border border-border bg-card p-4">
             <div class="flex flex-wrap gap-2" dir="auto">
                 <template v-for="word in filteredWords" :key="word.id">
+                    <!-- Edit mode - shown inline instead of in dropdown -->
+                    <div v-if="editingWordId === word.id" class="inline-flex items-center gap-1 rounded-md border-2 border-primary bg-primary/10 px-1 py-0.5">
+                        <input
+                            v-model="editValue"
+                            type="text"
+                            class="w-24 rounded border border-border bg-background px-2 py-1 text-sm font-mono"
+                            dir="auto"
+                            autofocus
+                            @keyup.enter="saveCorrection(word)"
+                            @keyup.escape="cancelEdit"
+                        />
+                        <Button 
+                            size="icon" 
+                            class="h-7 w-7" 
+                            :disabled="savingWordId === word.id"
+                            @click="saveCorrection(word)"
+                        >
+                            <CheckIcon v-if="savingWordId !== word.id" class="h-4 w-4" />
+                            <span v-else class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="h-7 w-7"
+                            @click="cancelEdit"
+                        >
+                            <XMarkIcon class="h-4 w-4" />
+                        </Button>
+                    </div>
+
+                    <!-- Deleting state - shown inline -->
+                    <div 
+                        v-else-if="savingWordId === word.id" 
+                        class="inline-flex items-center gap-2 rounded-md border-2 border-destructive/50 bg-destructive/10 px-2 py-1 text-sm font-mono text-destructive"
+                    >
+                        <span class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        <span class="opacity-70">{{ word.corrected_word || word.word }}</span>
+                    </div>
+
                     <!-- Word with dropdown for actions -->
-                    <DropdownMenu>
+                    <DropdownMenu v-else>
                         <DropdownMenuTrigger as-child>
                             <button
                                 :class="getWordClass(word)"
-                                :disabled="correctionForm.processing"
+                                :disabled="savingWordId === word.id"
                                 @click.middle.prevent="playWord(word)"
                             >
                                 <template v-if="word.corrected_word && !word.is_deleted">
@@ -517,93 +579,59 @@ onMounted(() => {
                                 </span>
 
                                 <span
-                                    v-if="correctionForm.processing"
+                                    v-if="savingWordId === word.id"
                                     class="ml-1 h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
                                 />
                             </button>
                         </DropdownMenuTrigger>
 
                         <DropdownMenuContent class="w-64" align="start">
-                            <!-- Edit mode -->
-                            <div v-if="editingWordId === word.id" class="p-2 space-y-2">
-                                <input
-                                    v-model="editValue"
-                                    type="text"
-                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                                    dir="auto"
-                                    autofocus
-                                    @keyup.enter="saveCorrection(word)"
-                                    @keyup.escape="cancelEdit"
-                                />
-                                <div class="flex gap-2">
-                                    <Button
-                                        size="sm"
-                                        class="flex-1"
-                                        :disabled="correctionForm.processing"
-                                        @click="saveCorrection(word)"
-                                    >
-                                        <CheckIcon class="mr-1 h-4 w-4" />
-                                        Save
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        @click="cancelEdit"
-                                    >
-                                        <XMarkIcon class="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
+                            <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">
+                                {{ formatTime(word.start_time) }}s - {{ formatTime(word.end_time) }}s
+                                <span v-if="word.confidence !== null">
+                                    • {{ Math.round(ensureNumber(word.confidence) * 100) }}% confidence
+                                </span>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            
+                            <DropdownMenuItem @select="playWord(word)">
+                                <SpeakerWaveIcon class="mr-2 h-4 w-4" />
+                                Play snippet
+                            </DropdownMenuItem>
 
-                            <!-- Actions -->
-                            <template v-else>
-                                <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">
-                                    {{ formatTime(word.start_time) }}s - {{ formatTime(word.end_time) }}s
-                                    <span v-if="word.confidence !== null">
-                                        • {{ Math.round(ensureNumber(word.confidence) * 100) }}% confidence
-                                    </span>
-                                </DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                
-                                <DropdownMenuItem @select="playWord(word)">
-                                    <SpeakerWaveIcon class="mr-2 h-4 w-4" />
-                                    Play snippet
-                                </DropdownMenuItem>
+                            <DropdownMenuItem
+                                v-if="!word.is_deleted"
+                                @select="startEdit(word)"
+                            >
+                                <PencilIcon class="mr-2 h-4 w-4" />
+                                Edit word
+                            </DropdownMenuItem>
 
-                                <DropdownMenuItem
-                                    v-if="!word.is_deleted"
-                                    @select="startEdit(word)"
-                                >
-                                    <PencilIcon class="mr-2 h-4 w-4" />
-                                    Edit word
-                                </DropdownMenuItem>
+                            <DropdownMenuItem
+                                v-if="!word.is_deleted"
+                                @select="startInsert(word.id)"
+                            >
+                                <PlusIcon class="mr-2 h-4 w-4" />
+                                Insert after
+                            </DropdownMenuItem>
 
-                                <DropdownMenuItem
-                                    v-if="!word.is_deleted"
-                                    @select="startInsert(word.id)"
-                                >
-                                    <PlusIcon class="mr-2 h-4 w-4" />
-                                    Insert after
-                                </DropdownMenuItem>
+                            <DropdownMenuSeparator />
 
-                                <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                v-if="word.is_deleted"
+                                @select="restoreWord(word)"
+                            >
+                                Restore word
+                            </DropdownMenuItem>
 
-                                <DropdownMenuItem
-                                    v-if="word.is_deleted"
-                                    @select="restoreWord(word)"
-                                >
-                                    Restore word
-                                </DropdownMenuItem>
-
-                                <DropdownMenuItem
-                                    v-else
-                                    class="text-destructive focus:text-destructive"
-                                    @select="deleteWord(word)"
-                                >
-                                    <TrashIcon class="mr-2 h-4 w-4" />
-                                    Delete word
-                                </DropdownMenuItem>
-                            </template>
+                            <DropdownMenuItem
+                                v-else
+                                class="text-destructive focus:text-destructive"
+                                @select="deleteWord(word)"
+                            >
+                                <TrashIcon class="mr-2 h-4 w-4" />
+                                Delete word
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
 
