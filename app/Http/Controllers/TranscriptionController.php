@@ -167,12 +167,63 @@ class TranscriptionController extends Controller
             'mime_type' => $audioMedia->mime_type,
         ] : null;
 
+        // Load word review data
+        $wordReviewData = $this->getWordReviewData($transcription);
+
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,
             'audioSample' => $audioSample,
             'audioMedia' => $audioInfo,
             'presets' => $transcription->isBase() ? config('cleaning.presets') : null,
+            'wordReview' => $wordReviewData,
         ]);
+    }
+
+    /**
+     * Get word review data for a transcription.
+     */
+    private function getWordReviewData(Transcription $transcription): array
+    {
+        $words = $transcription->words()
+            ->orderBy('word_index')
+            ->get()
+            ->map(fn ($word) => [
+                'id' => $word->id,
+                'transcription_id' => $word->transcription_id,
+                'word_index' => (float) $word->word_index,
+                'word' => $word->word,
+                'start_time' => (float) $word->start_time,
+                'end_time' => (float) $word->end_time,
+                'confidence' => $word->confidence !== null ? (float) $word->confidence : null,
+                'corrected_word' => $word->corrected_word,
+                'is_deleted' => (bool) $word->is_deleted,
+                'is_inserted' => (bool) $word->is_inserted,
+                'corrected_by' => $word->corrected_by,
+                'corrected_at' => $word->corrected_at?->toISOString(),
+            ]);
+
+        $totalWords = $words->where('is_inserted', false)->count();
+        $correctionCount = $words->filter(fn ($w) => 
+            $w['corrected_word'] !== null || $w['is_deleted'] || $w['is_inserted']
+        )->count();
+
+        return [
+            'words' => $words->values()->all(),
+            'stats' => [
+                'total_words' => $totalWords,
+                'correction_count' => $correctionCount,
+                'correction_rate' => $totalWords > 0 ? $correctionCount / $totalWords : 0,
+                'deleted_count' => $words->where('is_deleted', true)->count(),
+                'inserted_count' => $words->where('is_inserted', true)->count(),
+                'low_confidence_count' => $words
+                    ->filter(fn ($w) => $w['confidence'] !== null && $w['confidence'] <= 0.7)
+                    ->count(),
+            ],
+            'config' => [
+                'playback_padding_seconds' => config('asr.review.playback_padding_seconds', 2.0),
+                'default_confidence_threshold' => config('asr.review.default_confidence_threshold', 0.7),
+            ],
+        ];
     }
 
     /**
@@ -669,6 +720,100 @@ class TranscriptionController extends Controller
     public function import(Request $request, AudioSample $audioSample)
     {
         return $this->importAsr($request, $audioSample);
+    }
+
+    // ==================== Word Review Operations ====================
+
+    /**
+     * Update a word (correction or deletion).
+     */
+    public function updateWord(Request $request, Transcription $transcription, \App\Models\TranscriptionWord $word): RedirectResponse
+    {
+        if ($word->transcription_id !== $transcription->id) {
+            abort(403, 'Word does not belong to this transcription');
+        }
+
+        $validated = $request->validate([
+            'corrected_word' => 'nullable|string|max:500',
+            'is_deleted' => 'nullable|boolean',
+        ]);
+
+        $userId = $request->user()->id;
+
+        if ($validated['is_deleted'] ?? false) {
+            $word->markDeleted($userId);
+        } elseif (isset($validated['is_deleted']) && $validated['is_deleted'] === false) {
+            $word->update([
+                'is_deleted' => false,
+                'corrected_word' => $validated['corrected_word'] ?? null,
+            ]);
+        } elseif (array_key_exists('corrected_word', $validated)) {
+            $word->applyCorrection($validated['corrected_word'], $userId);
+        }
+
+        return back();
+    }
+
+    /**
+     * Insert a new word after another word.
+     */
+    public function insertWord(Request $request, Transcription $transcription): RedirectResponse
+    {
+        $validated = $request->validate([
+            'word' => 'required|string|max:500',
+            'after_word_id' => 'required|integer|exists:transcription_words,id',
+        ]);
+
+        $afterWord = \App\Models\TranscriptionWord::find($validated['after_word_id']);
+
+        if ($afterWord->transcription_id !== $transcription->id) {
+            abort(403, 'Word does not belong to this transcription');
+        }
+
+        $nextWord = $transcription->words()
+            ->where('word_index', '>', $afterWord->word_index)
+            ->orderBy('word_index')
+            ->first();
+
+        \App\Models\TranscriptionWord::insertBetween(
+            $transcription,
+            $validated['word'],
+            $afterWord,
+            $nextWord,
+            $request->user()->id
+        );
+
+        return back();
+    }
+
+    /**
+     * Delete an inserted word permanently.
+     */
+    public function destroyWord(Request $request, Transcription $transcription, \App\Models\TranscriptionWord $word): RedirectResponse
+    {
+        if ($word->transcription_id !== $transcription->id) {
+            abort(403, 'Word does not belong to this transcription');
+        }
+
+        if (! $word->is_inserted) {
+            return back()->withErrors(['error' => 'Original ASR words cannot be permanently deleted.']);
+        }
+
+        $word->delete();
+
+        return back();
+    }
+
+    /**
+     * Toggle training flag on transcription.
+     */
+    public function toggleTrainingFlag(Transcription $transcription): RedirectResponse
+    {
+        $transcription->update([
+            'flagged_for_training' => ! $transcription->flagged_for_training,
+        ]);
+
+        return back();
     }
 
     // ==================== Word Alignment ====================

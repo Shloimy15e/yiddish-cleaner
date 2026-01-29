@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\AsrController;
 use App\Http\Controllers\Api\LlmController;
-use App\Http\Controllers\Api\TranscriptionWordController;
 use App\Http\Controllers\AudioSampleController;
 use App\Http\Controllers\BenchmarkController;
 use App\Http\Controllers\DashboardController;
@@ -92,14 +91,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // API - Alignment Providers
     Route::get('/api/alignment/providers', [TranscriptionController::class, 'alignmentProviders'])->name('api.alignment.providers');
 
-    // API - Transcription Words (Word-level review)
-    Route::get('/api/transcriptions/{transcription}/words', [TranscriptionWordController::class, 'index'])->name('api.transcription-words.index');
-    Route::post('/api/transcriptions/{transcription}/words', [TranscriptionWordController::class, 'store'])->name('api.transcription-words.store');
-    Route::post('/api/transcriptions/{transcription}/words/start', [TranscriptionWordController::class, 'storeAtStart'])->name('api.transcription-words.store-at-start');
-    Route::patch('/api/transcriptions/{transcription}/words/{word}', [TranscriptionWordController::class, 'update'])->name('api.transcription-words.update');
-    Route::delete('/api/transcriptions/{transcription}/words/{word}', [TranscriptionWordController::class, 'destroy'])->name('api.transcription-words.destroy');
-    Route::post('/api/transcriptions/{transcription}/toggle-training', [TranscriptionWordController::class, 'toggleTrainingFlag'])->name('api.transcription-words.toggle-training');
-    Route::get('/api/transcriptions/{transcription}/corrected-text', [TranscriptionWordController::class, 'getCorrectedText'])->name('api.transcription-words.corrected-text');
+    // Transcription Word Operations (Inertia)
+    Route::patch('/transcriptions/{transcription}/words/{word}', [TranscriptionController::class, 'updateWord'])->name('transcriptions.words.update');
+    Route::post('/transcriptions/{transcription}/words', [TranscriptionController::class, 'insertWord'])->name('transcriptions.words.store');
+    Route::delete('/transcriptions/{transcription}/words/{word}', [TranscriptionController::class, 'destroyWord'])->name('transcriptions.words.destroy');
+    Route::post('/transcriptions/{transcription}/toggle-training', [TranscriptionController::class, 'toggleTrainingFlag'])->name('transcriptions.toggle-training');
 
     // Word Alignment
     Route::post('/transcriptions/{transcription}/align', [TranscriptionController::class, 'align'])->name('transcriptions.align');

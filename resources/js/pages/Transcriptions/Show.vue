@@ -1,39 +1,38 @@
 <script setup lang="ts">
 import {
+    Dialog,
+    DialogPanel,
+    DialogTitle,
     Listbox,
     ListboxButton,
     ListboxOption,
     ListboxOptions,
-    Dialog,
-    DialogPanel,
-    DialogTitle,
     TransitionChild,
     TransitionRoot,
 } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import {
-    InformationCircleIcon,
-    SparklesIcon,
-    CpuChipIcon,
-    CheckCircleIcon,
-    XCircleIcon,
-    LinkIcon,
-    ArrowPathIcon,
-    DocumentTextIcon,
-    PencilIcon,
-    TrashIcon,
-    AdjustmentsHorizontalIcon,
     AcademicCapIcon,
+    AdjustmentsHorizontalIcon,
+    ArrowPathIcon,
+    CheckCircleIcon,
+    CpuChipIcon,
+    DocumentTextIcon,
+    InformationCircleIcon,
+    LinkIcon,
+    PencilIcon,
+    SparklesIcon,
+    TrashIcon,
+    XCircleIcon,
 } from '@heroicons/vue/24/outline';
 import { Loader } from 'lucide-vue-next';
 
 import AudioPlayer from '@/components/AudioPlayer.vue';
 import TranscriptionWordReview from '@/components/transcriptions/TranscriptionWordReview.vue';
 import type { BreadcrumbItem } from '@/types';
-import type { AudioMedia } from '@/types/audio-samples';
-import type { Preset } from '@/types/audio-samples';
-import type { LlmModel, LlmProvider, DiffSegment, AlignmentItem } from '@/types/transcription-show';
-import type { BaseTranscription, AsrTranscription, Transcription, WordReviewStats } from '@/types/transcriptions';
+import type { AudioMedia, Preset } from '@/types/audio-samples';
+import type { AlignmentItem, LlmModel, LlmProvider } from '@/types/transcription-show';
+import type { AsrTranscription, BaseTranscription, Transcription, WordReviewStats } from '@/types/transcriptions';
 
 const props = defineProps<{
     transcription: Transcription;
@@ -46,6 +45,14 @@ const props = defineProps<{
     } | null;
     audioMedia?: AudioMedia | null;
     presets?: Record<string, Preset>;
+    wordReview?: {
+        words: Array<Record<string, unknown>>;
+        stats: WordReviewStats;
+        config: {
+            playback_padding_seconds: number;
+            default_confidence_threshold: number;
+        };
+    } | null;
 }>();
 
 // Determine transcription type
@@ -386,25 +393,23 @@ const viewMode = ref<'alignment' | 'side-by-side'>('alignment');
 // Word Review State
 const audioPlayerRef = ref<InstanceType<typeof AudioPlayer> | null>(null);
 const wordReviewStats = ref<WordReviewStats | null>(null);
-const showWordReview = ref(true);
+const showWordReview = ref(false); // Collapsed by default
+
+// Comparison section state
+const showComparison = ref(false); // Collapsed by default
 
 // Training flag toggle
 const trainingFlagForm = useForm({});
 const toggleTrainingFlag = () => {
     if (!props.audioSample || !asrTranscription.value) return;
 
-    trainingFlagForm.post(`/api/transcriptions/${props.transcription.id}/words/toggle-training-flag`, {
+    trainingFlagForm.post(`/transcriptions/${props.transcription.id}/toggle-training`, {
         preserveScroll: true,
     });
 };
 
 const handleWordReviewStats = (stats: WordReviewStats) => {
     wordReviewStats.value = stats;
-};
-
-const handleAlignmentStarted = () => {
-    // Show a success message - the component will handle polling
-    console.log('Alignment job started');
 };
 
 // WER Range Selection
@@ -1295,94 +1300,123 @@ const chunkedAlignment = computed(() => {
 
                 <!-- ASR Comparison View -->
                 <div v-else class="space-y-6">
-                    <!-- Metrics Cards -->
-                    <div class="grid gap-4 md:grid-cols-4">
-                        <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-emerald-600">{{ asrTranscription.insertions ?? 0 }}</div>
-                            <div class="text-xs text-muted-foreground">Insertions</div>
-                        </div>
-                        <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-rose-600">{{ asrTranscription.deletions ?? 0 }}</div>
-                            <div class="text-xs text-muted-foreground">Deletions</div>
-                        </div>
-                        <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-amber-500">{{ asrTranscription.substitutions ?? 0 }}</div>
-                            <div class="text-xs text-muted-foreground">Substitutions</div>
-                        </div>
-                        <div class="rounded-xl border bg-card p-4 text-center">
-                            <div class="text-3xl font-bold text-red-600">{{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}%</div>
-                            <div class="text-xs text-muted-foreground">WER</div>
-                        </div>
-                    </div>
-
-                    <!-- View Toggle & Range Controls -->
-                    <div class="flex flex-wrap items-center justify-between gap-4">
-                        <div class="flex flex-wrap gap-2">
-                            <button @click="viewMode = 'alignment'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
-                                Alignment View
-                            </button>
-                            <button @click="viewMode = 'side-by-side'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
-                                Side-by-Side
-                            </button>
-                        </div>
-                        
-                        <div class="flex items-center gap-2">
-                            <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
-                                Ref: {{ formatRange(asrTranscription.wer_ref_start, asrTranscription.wer_ref_end, totalRefWords) }} |
-                                Hyp: {{ formatRange(asrTranscription.wer_hyp_start, asrTranscription.wer_hyp_end, totalHypWords) }}
+                    <!-- Collapsible Comparison Section -->
+                    <div class="rounded-xl border border-border bg-card">
+                        <!-- Comparison Header -->
+                        <div class="flex items-center justify-between border-b border-border px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+                                    <AdjustmentsHorizontalIcon class="h-5 w-5 text-primary" />
+                                </div>
+                                <div>
+                                    <h2 class="font-semibold text-foreground">WER Comparison</h2>
+                                    <p class="text-xs text-muted-foreground">
+                                        WER: {{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}% •
+                                        {{ asrTranscription.insertions ?? 0 }} ins / {{ asrTranscription.deletions ?? 0 }} del / {{ asrTranscription.substitutions ?? 0 }} sub
+                                    </p>
+                                </div>
                             </div>
-                            <button 
-                                @click="openRangeModal"
-                                :class="['inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted', hasCustomRange ? 'border-primary text-primary' : '']"
+                            
+                            <button
+                                @click="showComparison = !showComparison"
+                                class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
                             >
-                                <AdjustmentsHorizontalIcon class="h-4 w-4" />
-                                {{ hasCustomRange ? 'Edit Range' : 'Set Range' }}
+                                {{ showComparison ? 'Hide' : 'Show' }}
                             </button>
                         </div>
-                    </div>
 
-                    <!-- Alignment View -->
-                    <div v-if="viewMode === 'alignment'" class="rounded-xl border bg-card p-6">
-                        <div class="mb-4 font-semibold">Alignment Visualization</div>
-                        <div class="space-y-4">
-                            <div v-for="(chunk, index) in chunkedAlignment" :key="index" class="border-b pb-4 last:border-b-0" dir="rtl">
-                                <div class="mb-2 flex flex-wrap gap-1">
-                                    <span class="text-xs text-muted-foreground">Ref:</span>
-                                    <span v-for="(item, idx) in chunk" :key="`ref-${index}-${idx}`" :class="[
-                                        'rounded px-1.5 py-0.5 text-sm',
-                                        item.type === 'correct' ? 'bg-muted' :
-                                            item.type === 'sub' ? 'bg-amber-200' :
-                                                item.type === 'del' ? 'bg-rose-200 line-through' : 'text-muted-foreground',
-                                    ]">{{ item.type === 'ins' ? '—' : item.ref }}</span>
+                        <!-- Comparison Content -->
+                        <div v-show="showComparison" class="p-6 space-y-6">
+                            <!-- Metrics Cards -->
+                            <div class="grid gap-4 md:grid-cols-4">
+                                <div class="rounded-xl border bg-card p-4 text-center">
+                                    <div class="text-3xl font-bold text-emerald-600">{{ asrTranscription.insertions ?? 0 }}</div>
+                                    <div class="text-xs text-muted-foreground">Insertions</div>
                                 </div>
-                                <div class="flex flex-wrap gap-1">
-                                    <span class="text-xs text-muted-foreground">Hyp:</span>
-                                    <span v-for="(item, idx) in chunk" :key="`hyp-${index}-${idx}`" :class="[
-                                        'rounded px-1.5 py-0.5 text-sm',
-                                        item.type === 'correct' ? 'bg-muted' :
-                                            item.type === 'sub' ? 'bg-amber-200' :
-                                                item.type === 'ins' ? 'bg-emerald-200' : 'text-muted-foreground',
-                                    ]">{{ item.type === 'del' ? '—' : item.hyp }}</span>
+                                <div class="rounded-xl border bg-card p-4 text-center">
+                                    <div class="text-3xl font-bold text-rose-600">{{ asrTranscription.deletions ?? 0 }}</div>
+                                    <div class="text-xs text-muted-foreground">Deletions</div>
+                                </div>
+                                <div class="rounded-xl border bg-card p-4 text-center">
+                                    <div class="text-3xl font-bold text-amber-500">{{ asrTranscription.substitutions ?? 0 }}</div>
+                                    <div class="text-xs text-muted-foreground">Substitutions</div>
+                                </div>
+                                <div class="rounded-xl border bg-card p-4 text-center">
+                                    <div class="text-3xl font-bold text-red-600">{{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}%</div>
+                                    <div class="text-xs text-muted-foreground">WER</div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="mt-4 flex flex-wrap gap-4 text-sm">
-                            <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-muted"></span> Correct</div>
-                            <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-amber-200"></span> Substitution</div>
-                            <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-emerald-200"></span> Insertion</div>
-                            <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-rose-200"></span> Deletion</div>
-                        </div>
-                    </div>
 
-                    <!-- Side-by-Side View -->
-                    <div v-else class="grid gap-4 md:grid-cols-2">
-                        <div class="rounded-xl border bg-card p-4" dir="rtl">
-                            <div class="mb-2 text-sm font-semibold text-muted-foreground">Reference (Cleaned)</div>
-                            <p class="whitespace-pre-wrap text-sm">{{ referenceText }}</p>
-                        </div>
-                        <div class="rounded-xl border bg-card p-4" dir="rtl">
-                            <div class="mb-2 text-sm font-semibold text-muted-foreground">Hypothesis</div>
-                            <p class="whitespace-pre-wrap text-sm">{{ hypothesisText }}</p>
+                            <!-- View Toggle & Range Controls -->
+                            <div class="flex flex-wrap items-center justify-between gap-4">
+                                <div class="flex flex-wrap gap-2">
+                                    <button @click="viewMode = 'alignment'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
+                                        Alignment View
+                                    </button>
+                                    <button @click="viewMode = 'side-by-side'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
+                                        Side-by-Side
+                                    </button>
+                                </div>
+                                
+                                <div class="flex items-center gap-2">
+                                    <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
+                                        Ref: {{ formatRange(asrTranscription.wer_ref_start, asrTranscription.wer_ref_end, totalRefWords) }} |
+                                        Hyp: {{ formatRange(asrTranscription.wer_hyp_start, asrTranscription.wer_hyp_end, totalHypWords) }}
+                                    </div>
+                                    <button 
+                                        @click="openRangeModal"
+                                        :class="['inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted', hasCustomRange ? 'border-primary text-primary' : '']"
+                                    >
+                                        <AdjustmentsHorizontalIcon class="h-4 w-4" />
+                                        {{ hasCustomRange ? 'Edit Range' : 'Set Range' }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Alignment View -->
+                            <div v-if="viewMode === 'alignment'" class="rounded-xl border bg-muted/30 p-6">
+                                <div class="mb-4 font-semibold">Alignment Visualization</div>
+                                <div class="space-y-4">
+                                    <div v-for="(chunk, index) in chunkedAlignment" :key="index" class="border-b pb-4 last:border-b-0" dir="rtl">
+                                        <div class="mb-2 flex flex-wrap gap-1">
+                                            <span class="text-xs text-muted-foreground">Ref:</span>
+                                            <span v-for="(item, idx) in chunk" :key="`ref-${index}-${idx}`" :class="[
+                                                'rounded px-1.5 py-0.5 text-sm',
+                                                item.type === 'correct' ? 'bg-muted' :
+                                                    item.type === 'sub' ? 'bg-amber-200' :
+                                                        item.type === 'del' ? 'bg-rose-200 line-through' : 'text-muted-foreground',
+                                            ]">{{ item.type === 'ins' ? '—' : item.ref }}</span>
+                                        </div>
+                                        <div class="flex flex-wrap gap-1">
+                                            <span class="text-xs text-muted-foreground">Hyp:</span>
+                                            <span v-for="(item, idx) in chunk" :key="`hyp-${index}-${idx}`" :class="[
+                                                'rounded px-1.5 py-0.5 text-sm',
+                                                item.type === 'correct' ? 'bg-muted' :
+                                                    item.type === 'sub' ? 'bg-amber-200' :
+                                                        item.type === 'ins' ? 'bg-emerald-200' : 'text-muted-foreground',
+                                            ]">{{ item.type === 'del' ? '—' : item.hyp }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex flex-wrap gap-4 text-sm">
+                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-muted"></span> Correct</div>
+                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-amber-200"></span> Substitution</div>
+                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-emerald-200"></span> Insertion</div>
+                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-rose-200"></span> Deletion</div>
+                                </div>
+                            </div>
+
+                            <!-- Side-by-Side View -->
+                            <div v-else class="grid gap-4 md:grid-cols-2">
+                                <div class="rounded-xl border bg-muted/30 p-4" dir="rtl">
+                                    <div class="mb-2 text-sm font-semibold text-muted-foreground">Reference (Cleaned)</div>
+                                    <p class="whitespace-pre-wrap text-sm">{{ referenceText }}</p>
+                                </div>
+                                <div class="rounded-xl border bg-muted/30 p-4" dir="rtl">
+                                    <div class="mb-2 text-sm font-semibold text-muted-foreground">Hypothesis</div>
+                                    <p class="whitespace-pre-wrap text-sm">{{ hypothesisText }}</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1447,9 +1481,9 @@ const chunkedAlignment = computed(() => {
                         <div v-show="showWordReview" class="p-6">
                             <TranscriptionWordReview
                                 :transcription-id="props.transcription.id"
+                                :word-review="props.wordReview ?? null"
                                 :audio-player-ref="audioPlayerRef"
                                 @stats-updated="handleWordReviewStats"
-                                @alignment-started="handleAlignmentStarted"
                             />
                         </div>
                     </div>

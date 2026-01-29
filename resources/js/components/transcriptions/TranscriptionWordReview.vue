@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import {
+    ArrowPathIcon,
     CheckIcon,
+    FunnelIcon,
     PencilIcon,
     PlusIcon,
+    SpeakerWaveIcon,
     TrashIcon,
     XMarkIcon,
-    SpeakerWaveIcon,
-    FunnelIcon,
-    ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
-import { computed, onMounted, ref, watch } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -25,23 +25,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type {
     TranscriptionWord,
-    WordReviewStats,
     WordReviewConfig,
+    WordReviewStats,
 } from '@/types/transcriptions';
 
-interface AlignmentProvider {
-    id: string;
-    name: string;
-    models: string[];
-    default_model: string | null;
-    description: string | null;
-    requires_credential: boolean;
-    has_credential: boolean;
-    available: boolean;
+interface WordReviewData {
+    words: TranscriptionWord[] | Array<Record<string, unknown>>;
+    stats: WordReviewStats;
+    config: WordReviewConfig;
 }
 
 interface Props {
     transcriptionId: number;
+    wordReview: WordReviewData | null;
     audioPlayerRef?: {
         playRange: (start: number, end: number, padding?: number) => void;
     } | null;
@@ -51,32 +47,23 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
     statsUpdated: [stats: WordReviewStats];
-    alignmentStarted: [];
 }>();
 
-// State
-const words = ref<TranscriptionWord[]>([]);
-const stats = ref<WordReviewStats | null>(null);
-const config = ref<WordReviewConfig>({
+// State from props
+const words = computed(() => (props.wordReview?.words ?? []) as TranscriptionWord[]);
+const stats = computed(() => props.wordReview?.stats ?? null);
+const config = computed(() => props.wordReview?.config ?? {
     playback_padding_seconds: 2,
     default_confidence_threshold: 0.7,
 });
-const isLoading = ref(true);
-const error = ref<string | null>(null);
 
-// Alignment state
-const alignmentProviders = ref<AlignmentProvider[]>([]);
-const showAlignmentOptions = ref(false);
-
-// Alignment form using Inertia useForm
-const alignmentForm = useForm({
-    provider: '',
-    model: '',
-    overwrite: false,
-});
+// Emit stats when they change
+if (stats.value) {
+    emit('statsUpdated', stats.value);
+}
 
 // Filter state
-const confidenceThreshold = ref<string>('low'); // 'all' | 'low' | custom number
+const confidenceThreshold = ref<string>('low');
 const confidenceOptions = [
     { value: 'all', label: 'All words' },
     { value: 'low', label: 'Low confidence only' },
@@ -92,7 +79,36 @@ const editingWordId = ref<number | null>(null);
 const editValue = ref('');
 const insertAfterWordId = ref<number | null>(null);
 const insertValue = ref('');
-const savingWordId = ref<number | null>(null);
+
+// Forms for word operations
+const correctionForm = useForm({
+    corrected_word: null as string | null,
+    is_deleted: false,
+});
+
+const insertForm = useForm({
+    word: '',
+    after_word_id: null as number | null,
+});
+
+// Alignment form
+const alignmentForm = useForm({
+    provider: '',
+    model: '',
+    overwrite: false,
+});
+
+// Alignment providers state
+const alignmentProviders = ref<Array<{
+    id: string;
+    name: string;
+    models: string[];
+    default_model: string | null;
+    available: boolean;
+    requires_credential: boolean;
+    has_credential: boolean;
+}>>([]);
+const showAlignmentOptions = ref(false);
 
 // Computed
 const filteredWords = computed(() => {
@@ -106,46 +122,32 @@ const filteredWords = computed(() => {
             : parseFloat(confidenceThreshold.value);
 
     return words.value.filter((w) => {
-        // Always show inserted words and corrected words
         if (w.is_inserted || w.corrected_word !== null || w.is_deleted) {
             return true;
         }
-        // Show if confidence is null (unknown) or below threshold
         return w.confidence === null || w.confidence <= threshold;
     });
 });
 
 const hasWordData = computed(() => words.value.length > 0);
 
-// Fetch words from API
-const fetchWords = async () => {
-    isLoading.value = true;
-    error.value = null;
+// Helper to ensure number type
+const ensureNumber = (value: unknown): number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') return parseFloat(value) || 0;
+    return 0;
+};
 
-    try {
-        const response = await fetch(
-            `/api/transcriptions/${props.transcriptionId}/words`,
-        );
-        if (!response.ok) throw new Error('Failed to fetch words');
-
-        const data = await response.json();
-        words.value = data.words;
-        stats.value = data.stats;
-        config.value = data.config;
-        emit('statsUpdated', data.stats);
-    } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Unknown error';
-    } finally {
-        isLoading.value = false;
-    }
+const formatTime = (time: unknown): string => {
+    return ensureNumber(time).toFixed(2);
 };
 
 // Play word audio snippet
 const playWord = (word: TranscriptionWord) => {
     if (!props.audioPlayerRef) return;
     props.audioPlayerRef.playRange(
-        word.start_time,
-        word.end_time,
+        ensureNumber(word.start_time),
+        ensureNumber(word.end_time),
         config.value.playback_padding_seconds,
     );
 };
@@ -162,160 +164,47 @@ const cancelEdit = () => {
     editValue.value = '';
 };
 
-// Save word correction
-const saveCorrection = async (word: TranscriptionWord) => {
-    savingWordId.value = word.id;
-
-    try {
-        const response = await fetch(
-            `/api/transcriptions/${props.transcriptionId}/words/${word.id}`,
-            {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN':
-                        document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute('content') || '',
-                },
-                body: JSON.stringify({
-                    corrected_word:
-                        editValue.value === word.word ? null : editValue.value,
-                }),
+// Save word correction using Inertia
+const saveCorrection = (word: TranscriptionWord) => {
+    correctionForm.corrected_word = editValue.value === word.word ? null : editValue.value;
+    correctionForm.is_deleted = false;
+    
+    correctionForm.patch(
+        `/transcriptions/${props.transcriptionId}/words/${word.id}`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                cancelEdit();
             },
-        );
-
-        if (!response.ok) throw new Error('Failed to save correction');
-
-        const data = await response.json();
-
-        // Update local state
-        const index = words.value.findIndex((w) => w.id === word.id);
-        if (index !== -1) {
-            words.value[index] = data.word;
-        }
-        if (data.stats) {
-            stats.value = data.stats;
-            emit('statsUpdated', data.stats);
-        }
-
-        cancelEdit();
-    } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Failed to save';
-    } finally {
-        savingWordId.value = null;
-    }
+        },
+    );
 };
 
-// Delete word (mark as deleted)
-const deleteWord = async (word: TranscriptionWord) => {
-    savingWordId.value = word.id;
-
-    try {
-        if (word.is_inserted) {
-            // Permanently delete inserted words
-            const response = await fetch(
-                `/api/transcriptions/${props.transcriptionId}/words/${word.id}`,
-                {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRF-TOKEN':
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute('content') || '',
-                    },
-                },
-            );
-
-            if (!response.ok) throw new Error('Failed to delete word');
-
-            const data = await response.json();
-
-            // Remove from local state
-            words.value = words.value.filter((w) => w.id !== word.id);
-            if (data.stats) {
-                stats.value = data.stats;
-                emit('statsUpdated', data.stats);
-            }
-        } else {
-            // Soft delete original ASR words
-            const response = await fetch(
-                `/api/transcriptions/${props.transcriptionId}/words/${word.id}`,
-                {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN':
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute('content') || '',
-                    },
-                    body: JSON.stringify({ is_deleted: true }),
-                },
-            );
-
-            if (!response.ok) throw new Error('Failed to delete word');
-
-            const data = await response.json();
-
-            // Update local state
-            const index = words.value.findIndex((w) => w.id === word.id);
-            if (index !== -1) {
-                words.value[index] = data.word;
-            }
-            if (data.stats) {
-                stats.value = data.stats;
-                emit('statsUpdated', data.stats);
-            }
-        }
-    } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Failed to delete';
-    } finally {
-        savingWordId.value = null;
+// Delete word using Inertia
+const deleteWord = (word: TranscriptionWord) => {
+    if (word.is_inserted) {
+        router.delete(
+            `/transcriptions/${props.transcriptionId}/words/${word.id}`,
+            { preserveScroll: true },
+        );
+    } else {
+        correctionForm.is_deleted = true;
+        correctionForm.corrected_word = null;
+        correctionForm.patch(
+            `/transcriptions/${props.transcriptionId}/words/${word.id}`,
+            { preserveScroll: true },
+        );
     }
 };
 
 // Restore deleted word
-const restoreWord = async (word: TranscriptionWord) => {
-    savingWordId.value = word.id;
-
-    try {
-        const response = await fetch(
-            `/api/transcriptions/${props.transcriptionId}/words/${word.id}`,
-            {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN':
-                        document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute('content') || '',
-                },
-                body: JSON.stringify({
-                    is_deleted: false,
-                    corrected_word: null,
-                }),
-            },
-        );
-
-        if (!response.ok) throw new Error('Failed to restore word');
-
-        const data = await response.json();
-
-        // Update local state
-        const index = words.value.findIndex((w) => w.id === word.id);
-        if (index !== -1) {
-            words.value[index] = data.word;
-        }
-        if (data.stats) {
-            stats.value = data.stats;
-            emit('statsUpdated', data.stats);
-        }
-    } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Failed to restore';
-    } finally {
-        savingWordId.value = null;
-    }
+const restoreWord = (word: TranscriptionWord) => {
+    correctionForm.is_deleted = false;
+    correctionForm.corrected_word = null;
+    correctionForm.patch(
+        `/transcriptions/${props.transcriptionId}/words/${word.id}`,
+        { preserveScroll: true },
+    );
 };
 
 // Start insert mode
@@ -330,57 +219,31 @@ const cancelInsert = () => {
     insertValue.value = '';
 };
 
-// Insert new word
-const insertWord = async () => {
+// Insert new word using Inertia
+const insertWord = () => {
     if (!insertAfterWordId.value || !insertValue.value.trim()) return;
 
-    try {
-        const response = await fetch(
-            `/api/transcriptions/${props.transcriptionId}/words`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN':
-                        document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute('content') || '',
-                },
-                body: JSON.stringify({
-                    word: insertValue.value.trim(),
-                    after_word_id: insertAfterWordId.value,
-                }),
+    insertForm.word = insertValue.value.trim();
+    insertForm.after_word_id = insertAfterWordId.value;
+
+    insertForm.post(
+        `/transcriptions/${props.transcriptionId}/words`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                cancelInsert();
             },
-        );
-
-        if (!response.ok) throw new Error('Failed to insert word');
-
-        const data = await response.json();
-
-        // Insert into local state at correct position
-        const afterIndex = words.value.findIndex(
-            (w) => w.id === insertAfterWordId.value,
-        );
-        if (afterIndex !== -1) {
-            words.value.splice(afterIndex + 1, 0, data.word);
-        }
-        if (data.stats) {
-            stats.value = data.stats;
-            emit('statsUpdated', data.stats);
-        }
-
-        cancelInsert();
-    } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Failed to insert';
-    }
+        },
+    );
 };
 
 // Get confidence color class
 const getConfidenceColor = (confidence: number | null): string => {
     if (confidence === null) return 'bg-muted text-muted-foreground';
-    if (confidence >= 0.9) return 'bg-success/15 text-success';
-    if (confidence >= 0.7) return 'bg-primary/15 text-primary';
-    if (confidence >= 0.5) return 'bg-warning/15 text-warning';
+    const conf = ensureNumber(confidence);
+    if (conf >= 0.9) return 'bg-success/15 text-success';
+    if (conf >= 0.7) return 'bg-primary/15 text-primary';
+    if (conf >= 0.5) return 'bg-warning/15 text-warning';
     return 'bg-destructive/15 text-destructive';
 };
 
@@ -400,18 +263,13 @@ const getWordClass = (word: TranscriptionWord): string => {
     return `${base} ${getConfidenceColor(word.confidence)}`;
 };
 
-// ==================== Alignment Functions ====================
-
-// Fetch alignment providers
+// Alignment functions
 const fetchAlignmentProviders = async () => {
     try {
         const response = await fetch('/api/alignment/providers');
-        if (!response.ok) throw new Error('Failed to fetch providers');
-        
         const data = await response.json();
         alignmentProviders.value = data.providers || [];
         
-        // Set default provider
         if (data.default && alignmentProviders.value.some(p => p.id === data.default)) {
             alignmentForm.provider = data.default;
             const provider = alignmentProviders.value.find(p => p.id === data.default);
@@ -427,74 +285,33 @@ const fetchAlignmentProviders = async () => {
     }
 };
 
-// Get available models for selected provider
 const availableModels = computed(() => {
     const provider = alignmentProviders.value.find(p => p.id === alignmentForm.provider);
     return provider?.models || [];
 });
 
-// Check if alignment is available
 const canAlign = computed(() => {
     const provider = alignmentProviders.value.find(p => p.id === alignmentForm.provider);
     return provider?.available ?? false;
 });
 
-// Submit alignment request
 const submitAlignment = (overwrite = false) => {
-    if (!alignmentForm.provider) {
-        alignmentForm.setError('provider', 'Please select a provider');
-        return;
-    }
-
     alignmentForm.overwrite = overwrite;
     alignmentForm.post(`/transcriptions/${props.transcriptionId}/align`, {
         preserveScroll: true,
         onSuccess: () => {
-            emit('alignmentStarted');
             showAlignmentOptions.value = false;
-            error.value = null;
-            pollForWords();
         },
     });
 };
 
-// Poll for words after alignment is dispatched
-const pollForWords = async () => {
-    let attempts = 0;
-    const maxAttempts = 60; // 5 minutes with 5 second intervals
-    
-    const poll = async () => {
-        if (attempts >= maxAttempts) {
-            error.value = 'Alignment is taking longer than expected. Please refresh the page later.';
-            return;
-        }
-        
-        attempts++;
-        await fetchWords();
-        
-        if (words.value.length === 0) {
-            // Still no words, continue polling
-            setTimeout(poll, 5000);
-        }
-    };
-    
-    // Start polling after a short delay
-    setTimeout(poll, 3000);
-};
-
-// Load words on mount
+// Load alignment providers on mount if no word data
+import { onMounted } from 'vue';
 onMounted(() => {
-    fetchWords();
-    fetchAlignmentProviders();
+    if (!hasWordData.value) {
+        fetchAlignmentProviders();
+    }
 });
-
-// Reload when transcription changes
-watch(
-    () => props.transcriptionId,
-    () => {
-        fetchWords();
-    },
-);
 </script>
 
 <template>
@@ -505,19 +322,16 @@ watch(
                 <h3 class="text-sm font-semibold text-foreground">
                     Word-Level Review
                 </h3>
-                <span
-                    v-if="stats"
-                    class="text-xs text-muted-foreground"
-                >
+                <span v-if="stats" class="text-xs text-muted-foreground">
                     ({{ stats.total_words }} words, {{ stats.correction_count }} corrections)
                 </span>
             </div>
 
             <div class="flex items-center gap-2">
-                <!-- Re-generate alignment button (when words exist) -->
-                <DropdownMenu v-if="hasWordData && alignmentProviders.length > 0">
+                <!-- Re-generate alignment button -->
+                <DropdownMenu v-if="hasWordData">
                     <DropdownMenuTrigger as-child>
-                        <Button variant="outline" size="sm" :disabled="alignmentForm.processing">
+                        <Button variant="outline" size="sm" :disabled="alignmentForm.processing" @click="fetchAlignmentProviders">
                             <ArrowPathIcon :class="['mr-2 h-4 w-4', alignmentForm.processing ? 'animate-spin' : '']" />
                             Re-align
                         </Button>
@@ -554,9 +368,6 @@ watch(
                                     </option>
                                 </select>
                             </div>
-                            <p v-if="!canAlign && alignmentProviders.find(p => p.id === alignmentForm.provider)?.requires_credential" class="text-xs text-warning">
-                                No API key for this provider
-                            </p>
                             <Button
                                 size="sm"
                                 class="w-full"
@@ -570,7 +381,7 @@ watch(
                 </DropdownMenu>
 
                 <!-- Filter dropdown -->
-                <DropdownMenu>
+                <DropdownMenu v-if="hasWordData">
                     <DropdownMenuTrigger as-child>
                         <Button variant="outline" size="sm">
                             <FunnelIcon class="mr-2 h-4 w-4" />
@@ -594,22 +405,8 @@ watch(
             </div>
         </div>
 
-        <!-- Loading state -->
-        <div v-if="isLoading" class="flex items-center justify-center py-8">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
-
-        <!-- Error state -->
-        <div v-else-if="error" class="rounded-lg bg-destructive/10 p-4 text-destructive">
-            {{ error }}
-            <button class="ml-2 underline" @click="fetchWords">Retry</button>
-        </div>
-
         <!-- No word data -->
-        <div
-            v-else-if="!hasWordData"
-            class="rounded-lg border border-border bg-muted/50 p-8 text-center"
-        >
+        <div v-if="!hasWordData" class="rounded-lg border border-border bg-muted/50 p-8 text-center">
             <p class="text-muted-foreground">
                 No word-level data available for this transcription.
             </p>
@@ -623,7 +420,7 @@ watch(
                 <Button
                     v-if="!showAlignmentOptions"
                     variant="outline"
-                    @click="showAlignmentOptions = true"
+                    @click="showAlignmentOptions = true; fetchAlignmentProviders()"
                 >
                     <ArrowPathIcon class="mr-2 h-4 w-4" />
                     Generate Word Alignment
@@ -635,7 +432,6 @@ watch(
                         Use a forced alignment model to create word-level timing data.
                     </p>
 
-                    <!-- Provider Selection -->
                     <div class="space-y-2">
                         <label class="text-sm font-medium">Provider</label>
                         <select
@@ -655,34 +451,22 @@ watch(
                         </select>
                     </div>
 
-                    <!-- Model Selection -->
                     <div v-if="availableModels.length > 0" class="space-y-2">
                         <label class="text-sm font-medium">Model</label>
                         <select
                             v-model="alignmentForm.model"
                             class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                         >
-                            <option
-                                v-for="model in availableModels"
-                                :key="model"
-                                :value="model"
-                            >
+                            <option v-for="model in availableModels" :key="model" :value="model">
                                 {{ model }}
                             </option>
                         </select>
                     </div>
 
-                    <!-- Error message -->
-                    <div v-if="alignmentForm.errors.provider || alignmentForm.errors.error" class="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
-                        {{ alignmentForm.errors.provider || alignmentForm.errors.error }}
-                    </div>
-
-                    <!-- No credential warning -->
                     <div v-if="!canAlign" class="rounded-md bg-warning/10 p-2 text-sm text-warning">
                         No API key configured for this provider. Add your API key in Settings.
                     </div>
 
-                    <!-- Actions -->
                     <div class="flex gap-2">
                         <Button
                             :disabled="alignmentForm.processing || !canAlign"
@@ -713,10 +497,9 @@ watch(
                         <DropdownMenuTrigger as-child>
                             <button
                                 :class="getWordClass(word)"
-                                :disabled="savingWordId === word.id"
+                                :disabled="correctionForm.processing"
                                 @click.middle.prevent="playWord(word)"
                             >
-                                <!-- Show corrected word with original struck through -->
                                 <template v-if="word.corrected_word && !word.is_deleted">
                                     <span class="line-through opacity-50">{{ word.word }}</span>
                                     <span>→</span>
@@ -726,17 +509,15 @@ watch(
                                     {{ word.word }}
                                 </template>
 
-                                <!-- Confidence indicator -->
                                 <span
                                     v-if="word.confidence !== null && !word.is_inserted"
                                     class="ml-1 text-[10px] opacity-60"
                                 >
-                                    {{ Math.round(word.confidence * 100) }}%
+                                    {{ Math.round(ensureNumber(word.confidence) * 100) }}%
                                 </span>
 
-                                <!-- Loading spinner -->
                                 <span
-                                    v-if="savingWordId === word.id"
+                                    v-if="correctionForm.processing"
                                     class="ml-1 h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
                                 />
                             </button>
@@ -758,6 +539,7 @@ watch(
                                     <Button
                                         size="sm"
                                         class="flex-1"
+                                        :disabled="correctionForm.processing"
                                         @click="saveCorrection(word)"
                                     >
                                         <CheckIcon class="mr-1 h-4 w-4" />
@@ -776,21 +558,21 @@ watch(
                             <!-- Actions -->
                             <template v-else>
                                 <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">
-                                    {{ word.start_time.toFixed(2) }}s - {{ word.end_time.toFixed(2) }}s
+                                    {{ formatTime(word.start_time) }}s - {{ formatTime(word.end_time) }}s
                                     <span v-if="word.confidence !== null">
-                                        • {{ Math.round(word.confidence * 100) }}% confidence
+                                        • {{ Math.round(ensureNumber(word.confidence) * 100) }}% confidence
                                     </span>
                                 </DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 
-                                <DropdownMenuItem @click="playWord(word)">
+                                <DropdownMenuItem @select="playWord(word)">
                                     <SpeakerWaveIcon class="mr-2 h-4 w-4" />
                                     Play snippet
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem
                                     v-if="!word.is_deleted"
-                                    @click="startEdit(word)"
+                                    @select="startEdit(word)"
                                 >
                                     <PencilIcon class="mr-2 h-4 w-4" />
                                     Edit word
@@ -798,7 +580,7 @@ watch(
 
                                 <DropdownMenuItem
                                     v-if="!word.is_deleted"
-                                    @click="startInsert(word.id)"
+                                    @select="startInsert(word.id)"
                                 >
                                     <PlusIcon class="mr-2 h-4 w-4" />
                                     Insert after
@@ -808,7 +590,7 @@ watch(
 
                                 <DropdownMenuItem
                                     v-if="word.is_deleted"
-                                    @click="restoreWord(word)"
+                                    @select="restoreWord(word)"
                                 >
                                     Restore word
                                 </DropdownMenuItem>
@@ -816,7 +598,7 @@ watch(
                                 <DropdownMenuItem
                                     v-else
                                     class="text-destructive focus:text-destructive"
-                                    @click="deleteWord(word)"
+                                    @select="deleteWord(word)"
                                 >
                                     <TrashIcon class="mr-2 h-4 w-4" />
                                     Delete word
@@ -825,7 +607,7 @@ watch(
                         </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <!-- Insert input (appears after word when inserting) -->
+                    <!-- Insert input -->
                     <div
                         v-if="insertAfterWordId === word.id"
                         class="flex items-center gap-1"
@@ -840,7 +622,7 @@ watch(
                             @keyup.enter="insertWord"
                             @keyup.escape="cancelInsert"
                         />
-                        <Button size="icon" class="h-7 w-7" @click="insertWord">
+                        <Button size="icon" class="h-7 w-7" :disabled="insertForm.processing" @click="insertWord">
                             <CheckIcon class="h-4 w-4" />
                         </Button>
                         <Button
