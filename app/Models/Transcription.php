@@ -644,10 +644,15 @@ class Transcription extends Model implements HasMedia
 
     /**
      * Get the count of words marked as critical errors (respects custom range).
+     * Critical errors include: explicitly marked, deleted words, and inserted words.
      */
     public function getCriticalErrorCountAttribute(): int
     {
-        $query = $this->words()->where('is_critical_error', true);
+        $query = $this->words()->where(function ($q) {
+            $q->where('is_critical_error', true)
+                ->orWhere('is_deleted', true)
+                ->orWhere('is_inserted', true);
+        });
 
         // Apply custom range if set (using hypothesis range)
         if ($this->wer_hyp_start !== null || $this->wer_hyp_end !== null) {
