@@ -857,6 +857,54 @@ class TranscriptionController extends Controller
     }
 
     /**
+     * Bulk update words (delete or mark as critical error).
+     */
+    public function bulkUpdateWords(Request $request, Transcription $transcription): RedirectResponse
+    {
+        $validated = $request->validate([
+            'word_ids' => 'required|array|min:1',
+            'word_ids.*' => 'integer|exists:transcription_words,id',
+            'action' => 'required|string|in:delete,mark_critical_error,clear_critical_error',
+        ]);
+
+        $userId = $request->user()->id;
+        $words = TranscriptionWord::whereIn('id', $validated['word_ids'])
+            ->where('transcription_id', $transcription->id)
+            ->get();
+
+        $updated = 0;
+
+        foreach ($words as $word) {
+            switch ($validated['action']) {
+                case 'delete':
+                    if ($word->is_inserted) {
+                        $word->delete();
+                    } else {
+                        $word->markDeleted($userId);
+                    }
+                    $updated++;
+                    break;
+
+                case 'mark_critical_error':
+                    if (! $word->is_deleted && ! $word->is_inserted) {
+                        $word->markCriticalError($userId);
+                        $updated++;
+                    }
+                    break;
+
+                case 'clear_critical_error':
+                    if ($word->is_critical_error) {
+                        $word->clearCriticalError();
+                        $updated++;
+                    }
+                    break;
+            }
+        }
+
+        return back();
+    }
+
+    /**
      * Delete an inserted word permanently.
      */
     public function destroyWord(Request $request, Transcription $transcription, TranscriptionWord $word): RedirectResponse

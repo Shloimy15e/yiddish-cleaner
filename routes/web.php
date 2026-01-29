@@ -93,6 +93,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Transcription Word Operations (Inertia)
     Route::patch('/transcriptions/{transcription}/words/{word}', [TranscriptionController::class, 'updateWord'])->name('transcriptions.words.update');
     Route::post('/transcriptions/{transcription}/words', [TranscriptionController::class, 'insertWord'])->name('transcriptions.words.store');
+    Route::post('/transcriptions/{transcription}/words/bulk', [TranscriptionController::class, 'bulkUpdateWords'])->name('transcriptions.words.bulk');
     Route::delete('/transcriptions/{transcription}/words/{word}', [TranscriptionController::class, 'destroyWord'])->name('transcriptions.words.destroy');
 
     // Transcription Segment Operations (Inertia)

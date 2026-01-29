@@ -105,6 +105,11 @@ const insertAfterWordId = ref<number | null>(null);
 const insertValue = ref('');
 const savingWordId = ref<number | null>(null);
 
+// Multi-select state
+const isSelectionMode = ref(false);
+const selectedWordIds = ref<Set<number>>(new Set());
+const isBulkProcessing = ref(false);
+
 // Text editing state (for when no word data)
 const isEditingText = ref(false);
 const editedText = ref('');
@@ -320,6 +325,84 @@ const toggleCriticalError = (word: TranscriptionWord) => {
     );
 };
 
+// Multi-select functions
+const toggleSelectionMode = () => {
+    isSelectionMode.value = !isSelectionMode.value;
+    if (!isSelectionMode.value) {
+        selectedWordIds.value.clear();
+    }
+};
+
+const toggleWordSelection = (wordId: number) => {
+    if (selectedWordIds.value.has(wordId)) {
+        selectedWordIds.value.delete(wordId);
+    } else {
+        selectedWordIds.value.add(wordId);
+    }
+    // Force reactivity
+    selectedWordIds.value = new Set(selectedWordIds.value);
+};
+
+const isWordSelected = (wordId: number): boolean => {
+    return selectedWordIds.value.has(wordId);
+};
+
+const selectAllVisible = () => {
+    // Select all words that are visible (not deleted, based on current view)
+    const wordsToSelect = viewMode.value === 'alignment' 
+        ? alignmentWithWords.value.filter(item => item.wordData && !item.wordData.is_deleted).map(item => item.wordData!.id)
+        : filteredWords.value.filter(w => !w.is_deleted).map(w => w.id);
+    
+    selectedWordIds.value = new Set(wordsToSelect);
+};
+
+const clearSelection = () => {
+    selectedWordIds.value.clear();
+    selectedWordIds.value = new Set();
+};
+
+const bulkDelete = () => {
+    if (selectedWordIds.value.size === 0) return;
+    
+    isBulkProcessing.value = true;
+    router.post(
+        `/transcriptions/${props.transcriptionId}/words/bulk`,
+        { 
+            word_ids: Array.from(selectedWordIds.value),
+            action: 'delete',
+        },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                isBulkProcessing.value = false;
+                selectedWordIds.value.clear();
+                selectedWordIds.value = new Set();
+            },
+        },
+    );
+};
+
+const bulkMarkCriticalError = () => {
+    if (selectedWordIds.value.size === 0) return;
+    
+    isBulkProcessing.value = true;
+    router.post(
+        `/transcriptions/${props.transcriptionId}/words/bulk`,
+        { 
+            word_ids: Array.from(selectedWordIds.value),
+            action: 'mark_critical_error',
+        },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                isBulkProcessing.value = false;
+                selectedWordIds.value.clear();
+                selectedWordIds.value = new Set();
+            },
+        },
+    );
+};
+
 const startInsert = (afterWordId: number) => {
     insertAfterWordId.value = afterWordId;
     insertValue.value = '';
@@ -357,25 +440,27 @@ const getConfidenceColor = (confidence: number | null): string => {
 
 const getWordClass = (word: TranscriptionWord): string => {
     const base = 'inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-mono cursor-pointer transition-all hover:ring-2 hover:ring-primary/50';
+    const selected = isWordSelected(word.id) ? 'ring-2 ring-primary ring-offset-1' : '';
 
     if (word.is_deleted) {
-        return `${base} line-through opacity-50 bg-destructive/10`;
+        return `${base} ${selected} line-through opacity-50 bg-destructive/10`;
     }
     if (word.is_critical_error) {
-        return `${base} bg-orange-500/20 border-2 border-orange-500/50 ring-1 ring-orange-500/30`;
+        return `${base} ${selected} bg-orange-500/20 border-2 border-orange-500/50 ring-1 ring-orange-500/30`;
     }
     if (word.is_inserted) {
-        return `${base} bg-success/20 border border-success/30`;
+        return `${base} ${selected} bg-success/20 border border-success/30`;
     }
     if (word.corrected_word !== null) {
-        return `${base} bg-primary/20 border border-primary/30`;
+        return `${base} ${selected} bg-primary/20 border border-primary/30`;
     }
-    return `${base} ${getConfidenceColor(word.confidence)}`;
+    return `${base} ${selected} ${getConfidenceColor(word.confidence)}`;
 };
 
 const getAlignmentItemClass = (item: AlignmentItem & { wordData?: TranscriptionWord | null }): string => {
     const baseRef = 'rounded px-1.5 py-0.5 text-sm';
     const baseHyp = 'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-sm cursor-pointer transition-all hover:ring-2 hover:ring-primary/50';
+    const selected = item.wordData && isWordSelected(item.wordData.id) ? 'ring-2 ring-primary ring-offset-1' : '';
     
     // If this is a ref-only display
     if (item.type === 'del') {
@@ -386,28 +471,28 @@ const getAlignmentItemClass = (item: AlignmentItem & { wordData?: TranscriptionW
     if (item.wordData) {
         const w = item.wordData;
         if (w.is_deleted) {
-            return `${baseHyp} line-through opacity-50 bg-destructive/10`;
+            return `${baseHyp} ${selected} line-through opacity-50 bg-destructive/10`;
         }
         if (w.is_critical_error) {
-            return `${baseHyp} bg-orange-500/20 border-2 border-orange-500/50`;
+            return `${baseHyp} ${selected} bg-orange-500/20 border-2 border-orange-500/50`;
         }
         if (w.corrected_word !== null) {
-            return `${baseHyp} bg-primary/20 border border-primary/30`;
+            return `${baseHyp} ${selected} bg-primary/20 border border-primary/30`;
         }
     }
     
-    // Default alignment styling
+    // Default alignment styling with selection
     if (item.type === 'correct') {
-        return `${baseHyp} bg-muted`;
+        return `${baseHyp} ${selected} bg-muted`;
     }
     if (item.type === 'sub') {
-        return `${baseHyp} bg-amber-200 dark:bg-amber-900/50`;
+        return `${baseHyp} ${selected} bg-amber-200 dark:bg-amber-900/50`;
     }
     if (item.type === 'ins') {
-        return `${baseHyp} bg-emerald-200 dark:bg-emerald-900/50`;
+        return `${baseHyp} ${selected} bg-emerald-200 dark:bg-emerald-900/50`;
     }
     
-    return baseHyp;
+    return `${baseHyp} ${selected}`;
 };
 
 // Alignment providers (for generating alignment if no word data)
@@ -484,9 +569,60 @@ onMounted(() => {
                 <span v-if="stats" class="text-xs text-muted-foreground">
                     ({{ stats.total_words }} words, {{ stats.correction_count }} corrections)
                 </span>
+                <!-- Selection mode indicator -->
+                <span v-if="isSelectionMode && selectedWordIds.size > 0" class="rounded-full bg-primary/20 px-2 py-0.5 text-xs font-medium text-primary">
+                    {{ selectedWordIds.size }} selected
+                </span>
             </div>
 
             <div class="flex items-center gap-2">
+                <!-- Bulk actions (when in selection mode with selections) -->
+                <template v-if="isSelectionMode && selectedWordIds.size > 0">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        class="text-orange-500 hover:text-orange-600"
+                        :disabled="isBulkProcessing"
+                        @click="bulkMarkCriticalError"
+                    >
+                        <ExclamationTriangleIcon class="mr-2 h-4 w-4" />
+                        Mark CWE
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        class="text-destructive hover:text-destructive"
+                        :disabled="isBulkProcessing"
+                        @click="bulkDelete"
+                    >
+                        <TrashIcon class="mr-2 h-4 w-4" />
+                        Delete
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        @click="clearSelection"
+                    >
+                        Clear
+                    </Button>
+                </template>
+
+                <!-- Selection mode toggle -->
+                <Button
+                    v-if="hasWordData"
+                    :variant="isSelectionMode ? 'default' : 'outline'"
+                    size="sm"
+                    @click="toggleSelectionMode"
+                >
+                    <template v-if="isSelectionMode">
+                        <XMarkIcon class="mr-2 h-4 w-4" />
+                        Exit Select
+                    </template>
+                    <template v-else>
+                        <CheckIcon class="mr-2 h-4 w-4" />
+                        Select
+                    </template>
+                </Button>
                 <!-- Re-generate alignment button -->
                 <DropdownMenu v-if="hasWordData">
                     <DropdownMenuTrigger as-child>
@@ -621,7 +757,35 @@ onMounted(() => {
                                 <span v-if="item.type === 'del'" class="px-1.5 py-0.5 text-sm text-muted-foreground">—</span>
                                 
                                 <!-- Interactive word with word data -->
-                                <DropdownMenu v-else-if="item.wordData">
+                                <!-- Selection mode: click to toggle selection -->
+                                <button
+                                    v-else-if="item.wordData && isSelectionMode"
+                                    :class="getAlignmentItemClass(item)"
+                                    :disabled="savingWordId === item.wordData.id || isBulkProcessing"
+                                    @click="toggleWordSelection(item.wordData!.id)"
+                                    @click.middle.prevent="playWord(item.wordData!)"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        :checked="isWordSelected(item.wordData.id)"
+                                        class="pointer-events-none h-3 w-3"
+                                        @click.stop
+                                    />
+                                    <ExclamationTriangleIcon
+                                        v-if="item.wordData.is_critical_error"
+                                        class="h-3 w-3 text-orange-500"
+                                    />
+                                    <template v-if="item.wordData.corrected_word && !item.wordData.is_deleted">
+                                        <span class="line-through opacity-50">{{ item.hyp }}</span>
+                                        <span>→</span>
+                                        <span>{{ item.wordData.corrected_word }}</span>
+                                    </template>
+                                    <template v-else>
+                                        {{ item.hyp }}
+                                    </template>
+                                </button>
+                                <!-- Normal mode: dropdown menu -->
+                                <DropdownMenu v-else-if="item.wordData && !isSelectionMode">
                                     <DropdownMenuTrigger as-child>
                                         <button
                                             :class="getAlignmentItemClass(item)"
@@ -761,7 +925,41 @@ onMounted(() => {
                         </div>
 
                         <!-- Interactive word (with word data) -->
-                        <DropdownMenu v-else-if="item.wordData">
+                        <!-- Selection mode: click to toggle selection -->
+                        <button
+                            v-else-if="item.wordData && isSelectionMode"
+                            :class="getAlignmentItemClass(item)"
+                            :disabled="savingWordId === item.wordData.id || isBulkProcessing"
+                            @click="toggleWordSelection(item.wordData!.id)"
+                            @click.middle.prevent="playWord(item.wordData!)"
+                        >
+                            <input
+                                type="checkbox"
+                                :checked="isWordSelected(item.wordData.id)"
+                                class="pointer-events-none h-3 w-3"
+                                @click.stop
+                            />
+                            <ExclamationTriangleIcon
+                                v-if="item.wordData.is_critical_error"
+                                class="h-3 w-3 text-orange-500"
+                            />
+                            <template v-if="item.wordData.corrected_word && !item.wordData.is_deleted">
+                                <span class="line-through opacity-50">{{ item.hyp }}</span>
+                                <span>→</span>
+                                <span>{{ item.wordData.corrected_word }}</span>
+                            </template>
+                            <template v-else>
+                                {{ item.hyp }}
+                            </template>
+                            <span
+                                v-if="item.wordData.confidence !== null"
+                                class="ml-0.5 text-[9px] opacity-50"
+                            >
+                                {{ Math.round(ensureNumber(item.wordData.confidence) * 100) }}%
+                            </span>
+                        </button>
+                        <!-- Normal mode: dropdown menu -->
+                        <DropdownMenu v-else-if="item.wordData && !isSelectionMode">
                             <DropdownMenuTrigger as-child>
                                 <button
                                     :class="getAlignmentItemClass(item)"
@@ -976,7 +1174,42 @@ onMounted(() => {
                         <span class="opacity-70">{{ word.corrected_word || word.word }}</span>
                     </div>
 
-                    <!-- Word with dropdown -->
+                    <!-- Selection mode: click to toggle selection -->
+                    <button
+                        v-else-if="isSelectionMode"
+                        :class="getWordClass(word)"
+                        :disabled="savingWordId === word.id || isBulkProcessing"
+                        @click="toggleWordSelection(word.id)"
+                        @click.middle.prevent="playWord(word)"
+                    >
+                        <input
+                            type="checkbox"
+                            :checked="isWordSelected(word.id)"
+                            class="pointer-events-none h-3 w-3"
+                            @click.stop
+                        />
+                        <ExclamationTriangleIcon
+                            v-if="word.is_critical_error"
+                            class="h-3.5 w-3.5 text-orange-500"
+                        />
+                        <template v-if="word.corrected_word && !word.is_deleted">
+                            <span class="line-through opacity-50">{{ word.word }}</span>
+                            <span>→</span>
+                            <span>{{ word.corrected_word }}</span>
+                        </template>
+                        <template v-else>
+                            {{ word.word }}
+                        </template>
+
+                        <span
+                            v-if="word.confidence !== null && !word.is_inserted"
+                            class="ml-1 text-[10px] opacity-60"
+                        >
+                            {{ Math.round(ensureNumber(word.confidence) * 100) }}%
+                        </span>
+                    </button>
+
+                    <!-- Normal mode: Word with dropdown -->
                     <DropdownMenu v-else>
                         <DropdownMenuTrigger as-child>
                             <button
