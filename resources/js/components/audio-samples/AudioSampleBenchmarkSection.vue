@@ -7,12 +7,10 @@ import {
 } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
 import {
-    DocumentTextIcon,
     ExclamationTriangleIcon,
     InformationCircleIcon,
     MicrophoneIcon,
-    PlusIcon,
-    TrashIcon,
+    TrashIcon
 } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
 
@@ -212,10 +210,6 @@ const exportCsv = () => {
         `audio-sample-${props.audioSampleId}-benchmark.csv`,
         'text/csv',
     );
-};
-
-const goToTranscription = (id: number) => {
-    window.location.href = `/audio-samples/${props.audioSampleId}/transcriptions/${id}`;
 };
 </script>
 
@@ -659,9 +653,9 @@ const goToTranscription = (id: number) => {
                                 class="cursor-pointer hover:bg-muted/30"
                                 role="link"
                                 tabindex="0"
-                                @click="goToTranscription(transcription.id)"
-                                @keydown.enter.prevent="goToTranscription(transcription.id)"
-                                @keydown.space.prevent="goToTranscription(transcription.id)"
+                                @click="router.visit(route('transcriptions.show-for-sample', { transcription: transcription.id, audioSample: props.audioSampleId }))"
+                                @keydown.enter.prevent="router.visit(route('transcriptions.show-for-sample', { transcription: transcription.id, audioSample: props.audioSampleId }))"
+                                @keydown.space.prevent="router.visit(route('transcriptions.show-for-sample', { transcription: transcription.id, audioSample: props.audioSampleId }))"
                             >
                                 <td class="px-4 py-3">
                                     <div class="font-medium">

@@ -17,7 +17,7 @@ import {
     XCircleIcon,
 } from '@heroicons/vue/24/outline';
 import { CheckIcon } from '@heroicons/vue/24/solid';
-import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
 
 import { formatErrorRate, getWerColor } from '@/lib/asrMetrics';
@@ -375,8 +375,8 @@ const steps = [
 
                 <div v-else-if="failedAsrTranscriptions.length" class="mb-6">
                     <AlertError :errors="failedAsrTranscriptions.map((t) => t.error_message!)
-                        " title="ASR Transcription Failed" />
-                </div>
+                        " :title="`ASR Transcription Failed ${formatTimeAgo(failedAsrTranscriptions.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].created_at)}`" />
+                </div> 
 
                 <!-- Hero Header -->
                 <div class="mb-8">

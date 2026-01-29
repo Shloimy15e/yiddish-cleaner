@@ -7,12 +7,14 @@ use App\Jobs\CalculateTranscriptionMetricsJob;
 use App\Jobs\CleanTranscriptionJob;
 use App\Models\AudioSample;
 use App\Models\Transcription;
+use App\Models\TranscriptionWord;
 use App\Services\Alignment\AlignmentManager;
 use App\Services\Asr\WerCalculator;
 use App\Services\Document\ParserService;
 use App\Services\Llm\LlmManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -113,7 +115,7 @@ class TranscriptionController extends Controller
         // Store the source file if uploaded
         if ($request->hasFile('file')) {
             $transcription->addMediaFromRequest('file')
-                ->usingFileName('source.' . $request->file('file')->getClientOriginalExtension())
+                ->usingFileName('source.'.$request->file('file')->getClientOriginalExtension())
                 ->toMediaCollection('source_file');
         }
 
@@ -203,8 +205,7 @@ class TranscriptionController extends Controller
             ]);
 
         $totalWords = $words->where('is_inserted', false)->count();
-        $correctionCount = $words->filter(fn ($w) => 
-            $w['corrected_word'] !== null || $w['is_deleted'] || $w['is_inserted']
+        $correctionCount = $words->filter(fn ($w) => $w['corrected_word'] !== null || $w['is_deleted'] || $w['is_inserted']
         )->count();
 
         return [
@@ -250,10 +251,8 @@ class TranscriptionController extends Controller
             // Clear and re-save the cleaned file
             $transcription->clearMediaCollection('cleaned_file');
 
-            $cleanedFilePath = storage_path('app/temp/cleaned_' . $transcription->id . '.txt');
-            if (! is_dir(dirname($cleanedFilePath))) {
-                mkdir(dirname($cleanedFilePath), 0755, true);
-            }
+            $cleanedFilePath = storage_path('app/temp/cleaned_'.$transcription->id.'.txt');
+            File::ensureDirectoryExists(dirname($cleanedFilePath));
             file_put_contents($cleanedFilePath, $request->text_clean);
             $transcription->addMedia($cleanedFilePath)
                 ->usingFileName('cleaned.txt')
@@ -387,12 +386,14 @@ class TranscriptionController extends Controller
             // Skip if already cleaned and not re-cleaning
             if ($transcription->isCleaned() && ! $includeAlreadyCleaned) {
                 $skipped++;
+
                 continue;
             }
 
             // Skip if cannot be cleaned (no raw text or already processing)
             if (! $transcription->canBeCleaned()) {
                 $skipped++;
+
                 continue;
             }
 
@@ -540,7 +541,7 @@ class TranscriptionController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $modelName = $validated['provider'] . '/' . $validated['model'];
+        $modelName = $validated['provider'].'/'.$validated['model'];
 
         $transcription = Transcription::create([
             'user_id' => $request->user()->id,
@@ -563,10 +564,8 @@ class TranscriptionController extends Controller
         ]);
 
         // Save transcript as media file
-        $tempPath = storage_path('app/temp/transcript_' . $transcription->id . '.txt');
-        if (! is_dir(dirname($tempPath))) {
-            mkdir(dirname($tempPath), 0755, true);
-        }
+        $tempPath = storage_path('app/temp/transcript_'.$transcription->id.'.txt');
+        File::ensureDirectoryExists(dirname($tempPath));
         file_put_contents($tempPath, $validated['hypothesis_text']);
         $transcription->addMedia($tempPath)
             ->usingFileName('hypothesis.txt')
@@ -597,7 +596,7 @@ class TranscriptionController extends Controller
         ]);
 
         $hypothesisText = file_get_contents($request->file('file')->getRealPath());
-        $modelName = $validated['provider'] . '/' . $validated['model'];
+        $modelName = $validated['provider'].'/'.$validated['model'];
 
         $transcription = Transcription::create([
             'user_id' => $request->user()->id,
@@ -727,7 +726,7 @@ class TranscriptionController extends Controller
     /**
      * Update a word (correction or deletion).
      */
-    public function updateWord(Request $request, Transcription $transcription, \App\Models\TranscriptionWord $word): RedirectResponse
+    public function updateWord(Request $request, Transcription $transcription, TranscriptionWord $word): RedirectResponse
     {
         if ($word->transcription_id !== $transcription->id) {
             abort(403, 'Word does not belong to this transcription');
@@ -739,10 +738,11 @@ class TranscriptionController extends Controller
         ]);
 
         $userId = $request->user()->id;
+        $isDeleted = $validated['is_deleted'] ?? null;
 
-        if ($validated['is_deleted'] ?? false) {
+        if ($isDeleted === true) {
             $word->markDeleted($userId);
-        } elseif (isset($validated['is_deleted']) && $validated['is_deleted'] === false) {
+        } elseif ($isDeleted === false) {
             $word->update([
                 'is_deleted' => false,
                 'corrected_word' => $validated['corrected_word'] ?? null,
@@ -764,7 +764,7 @@ class TranscriptionController extends Controller
             'after_word_id' => 'required|integer|exists:transcription_words,id',
         ]);
 
-        $afterWord = \App\Models\TranscriptionWord::find($validated['after_word_id']);
+        $afterWord = TranscriptionWord::findOrFail($validated['after_word_id']);
 
         if ($afterWord->transcription_id !== $transcription->id) {
             abort(403, 'Word does not belong to this transcription');
@@ -775,7 +775,7 @@ class TranscriptionController extends Controller
             ->orderBy('word_index')
             ->first();
 
-        \App\Models\TranscriptionWord::insertBetween(
+        TranscriptionWord::insertBetween(
             $transcription,
             $validated['word'],
             $afterWord,
@@ -789,7 +789,7 @@ class TranscriptionController extends Controller
     /**
      * Delete an inserted word permanently.
      */
-    public function destroyWord(Request $request, Transcription $transcription, \App\Models\TranscriptionWord $word): RedirectResponse
+    public function destroyWord(Request $request, Transcription $transcription, TranscriptionWord $word): RedirectResponse
     {
         if ($word->transcription_id !== $transcription->id) {
             abort(403, 'Word does not belong to this transcription');
@@ -820,14 +820,14 @@ class TranscriptionController extends Controller
 
     /**
      * Generate word alignment for a transcription using forced alignment.
-     * 
+     *
      * This aligns the transcription text to the audio, creating word-level
      * timing data (TranscriptionWord records) for review and correction.
      */
     public function align(Request $request, Transcription $transcription, AlignmentManager $alignmentManager): RedirectResponse
     {
         $request->validate([
-            'provider' => 'sometimes|string|in:' . implode(',', $alignmentManager->getProviders()),
+            'provider' => 'sometimes|string|in:'.implode(',', $alignmentManager->getProviders()),
             'model' => 'nullable|string',
             'overwrite' => 'sometimes|boolean',
         ]);
@@ -858,7 +858,7 @@ class TranscriptionController extends Controller
         }
 
         $provider = $request->input('provider', $alignmentManager->getDefaultProvider());
-        
+
         // Only require credentials if provider needs them
         $credential = null;
         if ($alignmentManager->requiresCredential($provider)) {
