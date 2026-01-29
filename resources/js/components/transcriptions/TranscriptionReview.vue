@@ -95,6 +95,9 @@ const confidenceOptions = [
     { value: '0.9', label: '≤ 90% confidence' },
 ];
 
+// Alignment display mode: 'line-by-line' or 'panels'
+const alignmentDisplayMode = ref<'line-by-line' | 'panels'>('line-by-line');
+
 // Edit state
 const editingWordId = ref<number | null>(null);
 const editValue = ref('');
@@ -186,6 +189,17 @@ const filteredAlignmentWithWords = computed(() => {
         // Filter by confidence
         return w.confidence === null || w.confidence <= threshold;
     });
+});
+
+// Chunked alignment for line-by-line display
+const chunkedAlignment = computed(() => {
+    const perRow = 15;
+    const chunks: Array<typeof alignmentWithWords.value> = [];
+    const items = alignmentWithWords.value; // Use all items for line-by-line, not filtered
+    for (let i = 0; i < items.length; i += perRow) {
+        chunks.push(items.slice(i, i + perRow));
+    }
+    return chunks;
 });
 
 // Word-only view filtering
@@ -292,16 +306,15 @@ const restoreWord = (word: TranscriptionWord) => {
 
 const toggleCriticalError = (word: TranscriptionWord) => {
     savingWordId.value = word.id;
-    correctionForm.is_critical_error = !word.is_critical_error;
-    correctionForm.is_deleted = false;
-    correctionForm.corrected_word = null;
-    correctionForm.patch(
+    
+    // Use router.patch directly with only the critical error field
+    router.patch(
         `/transcriptions/${props.transcriptionId}/words/${word.id}`,
+        { is_critical_error: !word.is_critical_error },
         { 
             preserveScroll: true,
             onFinish: () => {
                 savingWordId.value = null;
-                correctionForm.is_critical_error = false;
             },
         },
     );
@@ -553,31 +566,162 @@ onMounted(() => {
 
         <!-- ==================== ALIGNMENT VIEW (with reference) ==================== -->
         <div v-if="viewMode === 'alignment'" class="space-y-4">
-            <!-- Reference row -->
-            <div class="rounded-lg border border-border bg-card p-4">
-                <div class="mb-2 text-xs font-semibold text-muted-foreground">Reference (Ground Truth)</div>
-                <div class="flex flex-wrap gap-1" dir="rtl">
-                    <template v-for="item in filteredAlignmentWithWords" :key="'ref-' + item.alignIdx">
-                        <span
-                            v-if="item.type !== 'ins'"
-                            :class="[
-                                'rounded px-1.5 py-0.5 text-sm',
-                                item.type === 'correct' ? 'bg-muted' :
-                                item.type === 'sub' ? 'bg-amber-200 dark:bg-amber-900/50' :
-                                item.type === 'del' ? 'bg-rose-200 dark:bg-rose-900/50 line-through' : '',
-                            ]"
-                        >
-                            {{ item.ref }}
-                        </span>
-                        <span v-else class="px-1.5 py-0.5 text-sm text-muted-foreground">—</span>
-                    </template>
+            <!-- View Mode Toggle -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-muted-foreground">View:</span>
+                <div class="flex rounded-lg border border-border bg-background p-0.5">
+                    <button
+                        @click="alignmentDisplayMode = 'line-by-line'"
+                        :class="[
+                            'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                            alignmentDisplayMode === 'line-by-line'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground',
+                        ]"
+                    >
+                        Line-by-Line
+                    </button>
+                    <button
+                        @click="alignmentDisplayMode = 'panels'"
+                        :class="[
+                            'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                            alignmentDisplayMode === 'panels'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground',
+                        ]"
+                    >
+                        Separate Panels
+                    </button>
                 </div>
             </div>
 
-            <!-- Hypothesis row (interactive) -->
-            <div class="rounded-lg border border-border bg-card p-4">
-                <div class="mb-2 text-xs font-semibold text-muted-foreground">Hypothesis (ASR Output) — Click to edit</div>
-                <div class="flex flex-wrap gap-1" dir="rtl">
+            <!-- ===== LINE-BY-LINE VIEW ===== -->
+            <div v-if="alignmentDisplayMode === 'line-by-line'" class="rounded-lg border border-border bg-card p-4">
+                <div class="space-y-4">
+                    <div v-for="(chunk, chunkIndex) in chunkedAlignment" :key="chunkIndex" class="border-b border-border pb-4 last:border-b-0 last:pb-0">
+                        <!-- Reference row -->
+                        <div class="mb-2 flex flex-wrap items-center gap-1" dir="rtl">
+                            <span class="text-xs text-muted-foreground" dir="ltr">Ref:</span>
+                            <template v-for="(item, idx) in chunk" :key="`ref-${chunkIndex}-${idx}`">
+                                <span
+                                    :class="[
+                                        'rounded px-1.5 py-0.5 text-sm',
+                                        item.type === 'correct' ? 'bg-muted' :
+                                        item.type === 'sub' ? 'bg-amber-200 dark:bg-amber-900/50' :
+                                        item.type === 'del' ? 'bg-rose-200 dark:bg-rose-900/50 line-through' : 'text-muted-foreground',
+                                    ]"
+                                >{{ item.type === 'ins' ? '—' : item.ref }}</span>
+                            </template>
+                        </div>
+                        <!-- Hypothesis row -->
+                        <div class="flex flex-wrap items-center gap-1" dir="rtl">
+                            <span class="text-xs text-muted-foreground" dir="ltr">Hyp:</span>
+                            <template v-for="(item, idx) in chunk" :key="`hyp-${chunkIndex}-${idx}`">
+                                <!-- Deletion placeholder -->
+                                <span v-if="item.type === 'del'" class="px-1.5 py-0.5 text-sm text-muted-foreground">—</span>
+                                
+                                <!-- Interactive word with word data -->
+                                <DropdownMenu v-else-if="item.wordData">
+                                    <DropdownMenuTrigger as-child>
+                                        <button
+                                            :class="getAlignmentItemClass(item)"
+                                            :disabled="savingWordId === item.wordData.id"
+                                            @click.middle.prevent="playWord(item.wordData!)"
+                                        >
+                                            <ExclamationTriangleIcon
+                                                v-if="item.wordData.is_critical_error"
+                                                class="h-3 w-3 text-orange-500"
+                                            />
+                                            <template v-if="item.wordData.corrected_word && !item.wordData.is_deleted">
+                                                <span class="line-through opacity-50">{{ item.hyp }}</span>
+                                                <span>→</span>
+                                                <span>{{ item.wordData.corrected_word }}</span>
+                                            </template>
+                                            <template v-else>
+                                                {{ item.hyp }}
+                                            </template>
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent class="w-56" align="start">
+                                        <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">
+                                            {{ formatTime(item.wordData.start_time) }}s - {{ formatTime(item.wordData.end_time) }}s
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem @select="playWord(item.wordData!)">
+                                            <SpeakerWaveIcon class="mr-2 h-4 w-4" />
+                                            Play snippet
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem v-if="!item.wordData.is_deleted" @select="startEdit(item.wordData!)">
+                                            <PencilIcon class="mr-2 h-4 w-4" />
+                                            Edit word
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            v-if="!item.wordData.is_deleted && !item.wordData.is_inserted"
+                                            :class="item.wordData.is_critical_error ? 'text-orange-600' : 'text-orange-500'"
+                                            @select="toggleCriticalError(item.wordData!)"
+                                        >
+                                            <ExclamationTriangleIcon class="mr-2 h-4 w-4" />
+                                            {{ item.wordData.is_critical_error ? 'Remove critical error' : 'Mark as critical error' }}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            v-if="!item.wordData.is_deleted"
+                                            class="text-destructive"
+                                            @select="deleteWord(item.wordData!)"
+                                        >
+                                            <TrashIcon class="mr-2 h-4 w-4" />
+                                            Delete word
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem v-if="item.wordData.is_deleted" @select="restoreWord(item.wordData!)">
+                                            Restore word
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                
+                                <!-- Non-interactive word -->
+                                <span v-else :class="getAlignmentItemClass(item)">{{ item.hyp }}</span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Legend -->
+                <div class="mt-4 flex flex-wrap gap-4 border-t border-border pt-4 text-xs text-muted-foreground">
+                    <div class="flex items-center gap-1"><span class="h-3 w-3 rounded bg-muted" /> Correct</div>
+                    <div class="flex items-center gap-1"><span class="h-3 w-3 rounded bg-amber-200 dark:bg-amber-900/50" /> Substitution</div>
+                    <div class="flex items-center gap-1"><span class="h-3 w-3 rounded bg-emerald-200 dark:bg-emerald-900/50" /> Insertion</div>
+                    <div class="flex items-center gap-1"><span class="h-3 w-3 rounded bg-rose-200 dark:bg-rose-900/50" /> Deletion</div>
+                    <div class="flex items-center gap-1"><span class="h-3 w-3 rounded border-2 border-orange-500/50 bg-orange-500/20" /> Critical error</div>
+                </div>
+            </div>
+
+            <!-- ===== SEPARATE PANELS VIEW ===== -->
+            <template v-if="alignmentDisplayMode === 'panels'">
+                <!-- Reference row -->
+                <div class="rounded-lg border border-border bg-card p-4">
+                    <div class="mb-2 text-xs font-semibold text-muted-foreground">Reference (Ground Truth)</div>
+                    <div class="flex flex-wrap gap-1" dir="rtl">
+                        <template v-for="item in filteredAlignmentWithWords" :key="'ref-' + item.alignIdx">
+                            <span
+                                v-if="item.type !== 'ins'"
+                                :class="[
+                                    'rounded px-1.5 py-0.5 text-sm',
+                                    item.type === 'correct' ? 'bg-muted' :
+                                    item.type === 'sub' ? 'bg-amber-200 dark:bg-amber-900/50' :
+                                    item.type === 'del' ? 'bg-rose-200 dark:bg-rose-900/50 line-through' : '',
+                                ]"
+                            >
+                                {{ item.ref }}
+                            </span>
+                            <span v-else class="px-1.5 py-0.5 text-sm text-muted-foreground">—</span>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Hypothesis row (interactive) -->
+                <div class="rounded-lg border border-border bg-card p-4">
+                    <div class="mb-2 text-xs font-semibold text-muted-foreground">Hypothesis (ASR Output) — Click to edit</div>
+                    <div class="flex flex-wrap gap-1" dir="rtl">
                     <template v-for="item in filteredAlignmentWithWords" :key="'hyp-' + item.alignIdx">
                         <!-- Deletion placeholder -->
                         <span v-if="item.type === 'del'" class="px-1.5 py-0.5 text-sm text-muted-foreground">—</span>
@@ -734,6 +878,7 @@ onMounted(() => {
                     </template>
                 </div>
             </div>
+            </template>
 
             <!-- Inserted words (user additions not in alignment) -->
             <div v-if="insertedWords.length > 0" class="rounded-lg border border-success/30 bg-success/5 p-4">

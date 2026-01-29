@@ -789,21 +789,35 @@ class TranscriptionController extends Controller
         ]);
 
         $userId = $request->user()->id;
-        $isDeleted = $validated['is_deleted'] ?? null;
-        $isCriticalError = $validated['is_critical_error'] ?? null;
 
-        if ($isDeleted === true) {
-            $word->markDeleted($userId);
-        } elseif ($isDeleted === false) {
-            $word->update([
-                'is_deleted' => false,
-                'corrected_word' => $validated['corrected_word'] ?? null,
-            ]);
-        } elseif ($isCriticalError === true) {
-            $word->markCriticalError($userId);
-        } elseif ($isCriticalError === false) {
-            $word->clearCriticalError();
-        } elseif (array_key_exists('corrected_word', $validated)) {
+        // Handle critical error flag (check first as it's an explicit action)
+        if (array_key_exists('is_critical_error', $validated) && $validated['is_critical_error'] !== null) {
+            if ($validated['is_critical_error'] === true) {
+                $word->markCriticalError($userId);
+            } else {
+                $word->clearCriticalError();
+            }
+
+            return back();
+        }
+
+        // Handle deletion
+        if (array_key_exists('is_deleted', $validated) && $validated['is_deleted'] !== null) {
+            if ($validated['is_deleted'] === true) {
+                $word->markDeleted($userId);
+            } else {
+                // Restore deleted word
+                $word->update([
+                    'is_deleted' => false,
+                    'corrected_word' => $validated['corrected_word'] ?? null,
+                ]);
+            }
+
+            return back();
+        }
+
+        // Handle correction
+        if (array_key_exists('corrected_word', $validated)) {
             $word->applyCorrection($validated['corrected_word'], $userId);
         }
 
