@@ -158,7 +158,7 @@ class TranscriptionController extends Controller
             abort(404);
         }
 
-        $transcription->load('audioSample.baseTranscription');
+        $transcription->load(['audioSample.baseTranscription', 'words']);
         $audioSample->load('baseTranscription');
 
         // Get audio media info for word review playback
@@ -173,6 +173,9 @@ class TranscriptionController extends Controller
         // Load word and segment review data
         $wordReviewData = $this->getWordReviewData($transcription);
         $segmentReviewData = $this->getSegmentReviewData($transcription);
+
+        // Append computed attributes for CEWR
+        $transcription->append(['cewr', 'critical_error_count', 'reviewed_word_count']);
 
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,
@@ -203,12 +206,13 @@ class TranscriptionController extends Controller
                 'corrected_word' => $word->corrected_word,
                 'is_deleted' => (bool) $word->is_deleted,
                 'is_inserted' => (bool) $word->is_inserted,
+                'is_critical_error' => (bool) $word->is_critical_error,
                 'corrected_by' => $word->corrected_by,
                 'corrected_at' => $word->corrected_at?->toISOString(),
             ]);
 
         $totalWords = $words->where('is_inserted', false)->count();
-        $correctionCount = $words->filter(fn ($w) => $w['corrected_word'] !== null || $w['is_deleted'] || $w['is_inserted']
+        $correctionCount = $words->filter(fn ($w) => $w['corrected_word'] !== null || $w['is_deleted'] || $w['is_inserted'] || $w['is_critical_error']
         )->count();
 
         return [
@@ -219,6 +223,7 @@ class TranscriptionController extends Controller
                 'correction_rate' => $totalWords > 0 ? $correctionCount / $totalWords : 0,
                 'deleted_count' => $words->where('is_deleted', true)->count(),
                 'inserted_count' => $words->where('is_inserted', true)->count(),
+                'critical_error_count' => $words->where('is_critical_error', true)->count(),
                 'low_confidence_count' => $words
                     ->filter(fn ($w) => $w['confidence'] !== null && $w['confidence'] <= 0.7)
                     ->count(),
@@ -769,7 +774,7 @@ class TranscriptionController extends Controller
     // ==================== Word Review Operations ====================
 
     /**
-     * Update a word (correction or deletion).
+     * Update a word (correction, deletion, or critical error flag).
      */
     public function updateWord(Request $request, Transcription $transcription, TranscriptionWord $word): RedirectResponse
     {
@@ -780,10 +785,12 @@ class TranscriptionController extends Controller
         $validated = $request->validate([
             'corrected_word' => 'nullable|string|max:500',
             'is_deleted' => 'nullable|boolean',
+            'is_critical_error' => 'nullable|boolean',
         ]);
 
         $userId = $request->user()->id;
         $isDeleted = $validated['is_deleted'] ?? null;
+        $isCriticalError = $validated['is_critical_error'] ?? null;
 
         if ($isDeleted === true) {
             $word->markDeleted($userId);
@@ -792,6 +799,10 @@ class TranscriptionController extends Controller
                 'is_deleted' => false,
                 'corrected_word' => $validated['corrected_word'] ?? null,
             ]);
+        } elseif ($isCriticalError === true) {
+            $word->markCriticalError($userId);
+        } elseif ($isCriticalError === false) {
+            $word->clearCriticalError();
         } elseif (array_key_exists('corrected_word', $validated)) {
             $word->applyCorrection($validated['corrected_word'], $userId);
         }

@@ -28,11 +28,11 @@ import {
 import { Loader } from 'lucide-vue-next';
 
 import AudioPlayer from '@/components/AudioPlayer.vue';
+import TranscriptionReview from '@/components/transcriptions/TranscriptionReview.vue';
 import TranscriptionSegmentReview from '@/components/transcriptions/TranscriptionSegmentReview.vue';
-import TranscriptionWordReview from '@/components/transcriptions/TranscriptionWordReview.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { AudioMedia, Preset } from '@/types/audio-samples';
-import type { AlignmentItem, LlmModel, LlmProvider } from '@/types/transcription-show';
+import type { LlmModel, LlmProvider } from '@/types/transcription-show';
 import type { AsrTranscription, BaseTranscription, SegmentReviewStats, Transcription, WordReviewStats } from '@/types/transcriptions';
 
 const props = defineProps<{
@@ -397,19 +397,13 @@ const saveDiffEdit = () => {
 
 // ==================== ASR TRANSCRIPTION STATE ====================
 
-const viewMode = ref<'alignment' | 'side-by-side'>('alignment');
-
 // Word Review State
 const audioPlayerRef = ref<InstanceType<typeof AudioPlayer> | null>(null);
 const wordReviewStats = ref<WordReviewStats | null>(null);
-const showWordReview = ref(false); // Collapsed by default
 
 // Segment Review State
 const segmentReviewStats = ref<SegmentReviewStats | null>(null);
-const showSegmentReview = ref(true); // Expanded by default (primary review method)
-
-// Comparison section state
-const showComparison = ref(false); // Collapsed by default
+const showSegmentReview = ref(false); // Collapsed by default, word review is primary now
 
 // Training flag toggle
 const trainingFlagForm = useForm({});
@@ -465,6 +459,22 @@ const formatRange = (start: number | null, end: number | null, total: number) =>
     const s = start ?? 0;
     const e = end ?? (total - 1);
     return `${s}-${e}`;
+};
+
+// Format error rate for display
+const formatErrorRate = (rate: number | null | undefined): string => {
+    if (rate === null || rate === undefined) return 'N/A';
+    return `${rate.toFixed(1)}%`;
+};
+
+// Get color class for CEWR value
+const getCewrColor = (cewr: number | null | undefined): string => {
+    if (cewr === null || cewr === undefined) return 'text-muted-foreground';
+    if (cewr === 0) return 'text-emerald-600';
+    if (cewr < 2) return 'text-emerald-500';
+    if (cewr < 5) return 'text-yellow-500';
+    if (cewr < 10) return 'text-orange-500';
+    return 'text-red-500';
 };
 
 // Check if word is in selected range
@@ -595,20 +605,6 @@ const referenceText = computed(() => {
 });
 
 const hypothesisText = computed(() => asrTranscription.value?.hypothesis_text ?? '');
-
-const alignment = computed(() => {
-    if (!referenceText.value.trim() || !hypothesisText.value.trim()) return [];
-    return buildAlignmentFromDiff(referenceText.value, hypothesisText.value);
-});
-
-const chunkedAlignment = computed(() => {
-    const perRow = 15;
-    const chunks: AlignmentItem[][] = [];
-    for (let i = 0; i < alignment.value.length; i += perRow) {
-        chunks.push(alignment.value.slice(i, i + perRow));
-    }
-    return chunks;
-});
 
 // ==================== SHARED HELPERS ====================
 // formatStatus and statusClass are imported from @/lib/transcriptionUtils
@@ -1280,23 +1276,29 @@ const chunkedAlignment = computed(() => {
                         <div>
                             <div class="text-xs uppercase text-muted-foreground">
                                 <span class="inline-flex items-center gap-1">
-                                    WER
-                                    <InformationCircleIcon class="h-4 w-4" v-tippy="'Word Error Rate'" />
+                                    CEWR
+                                    <InformationCircleIcon class="h-4 w-4" v-tippy="'Critical Word Error Rate - errors per 100 words marked during review'" />
                                 </span>
                             </div>
-                            <div class="font-mono font-semibold">{{ formatErrorRate(asrTranscription.wer) }}</div>
-                            <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
-                                (custom range)
+                            <div class="font-mono font-semibold" :class="getCewrColor(asrTranscription.cewr)">
+                                {{ formatErrorRate(asrTranscription.cewr) }}
+                            </div>
+                            <div class="text-xs text-muted-foreground">
+                                {{ asrTranscription.critical_error_count ?? 0 }} / {{ asrTranscription.reviewed_word_count ?? 0 }} words
+                                <span v-if="hasCustomRange">(custom range)</span>
                             </div>
                         </div>
                         <div>
                             <div class="text-xs uppercase text-muted-foreground">
                                 <span class="inline-flex items-center gap-1">
-                                    CER
-                                    <InformationCircleIcon class="h-4 w-4" v-tippy="'Character Error Rate'" />
+                                    WER
+                                    <InformationCircleIcon class="h-4 w-4" v-tippy="'Word Error Rate (automated)'" />
                                 </span>
                             </div>
-                            <div class="font-mono text-muted-foreground">{{ formatErrorRate(asrTranscription.cer) }}</div>
+                            <div class="font-mono text-muted-foreground">{{ formatErrorRate(asrTranscription.wer) }}</div>
+                            <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
+                                (custom range)
+                            </div>
                         </div>
                     </div>
 
@@ -1305,197 +1307,130 @@ const chunkedAlignment = computed(() => {
                     </div>
                 </div>
 
-                <!-- Missing reference text warning -->
-                <div v-if="!referenceText" class="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
-                    No validated base transcription available for comparison.
-                </div>
-
-                <!-- Missing hypothesis warning -->
-                <div v-else-if="!hypothesisText" class="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
-                    This transcription does not have hypothesis text yet.
-                </div>
-
-                <!-- ASR Comparison View -->
-                <div v-else class="space-y-6">
-                    <!-- Collapsible Comparison Section -->
-                    <div class="rounded-xl border border-border bg-card">
-                        <!-- Comparison Header -->
-                        <div class="flex items-center justify-between border-b border-border px-6 py-4">
-                            <div class="flex items-center gap-3">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
-                                    <AdjustmentsHorizontalIcon class="h-5 w-5 text-primary" />
-                                </div>
-                                <div>
-                                    <h2 class="font-semibold text-foreground">WER Comparison</h2>
-                                    <p class="text-xs text-muted-foreground">
-                                        WER: {{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}% •
-                                        {{ asrTranscription.insertions ?? 0 }} ins / {{ asrTranscription.deletions ?? 0 }} del / {{ asrTranscription.substitutions ?? 0 }} sub
-                                    </p>
-                                </div>
+                <!-- Transcription Review Section -->
+                <div class="rounded-xl border border-border bg-card">
+                    <!-- Header with WER metrics and training flag -->
+                    <div class="flex items-center justify-between border-b border-border px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+                                <DocumentTextIcon class="h-5 w-5 text-primary" />
                             </div>
-                            
-                            <button
-                                @click="showComparison = !showComparison"
-                                class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                            <div>
+                                <h2 class="font-semibold text-foreground">Transcription Review</h2>
+                                <p class="text-xs text-muted-foreground">
+                                    <span :class="getCewrColor(asrTranscription.cewr)" class="font-medium">
+                                        CEWR: {{ formatErrorRate(asrTranscription.cewr) }}
+                                    </span>
+                                    <span class="mx-1">•</span>
+                                    {{ asrTranscription.critical_error_count ?? 0 }} critical errors
+                                    <template v-if="referenceText">
+                                        <span class="mx-1">•</span>
+                                        <span class="text-muted-foreground">WER: {{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}%</span>
+                                    </template>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center gap-3">
+                            <!-- WER Range Selection (only when reference available) -->
+                            <button 
+                                v-if="referenceText && hypothesisText"
+                                @click="openRangeModal"
+                                :class="['inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted', hasCustomRange ? 'border-primary text-primary' : '']"
                             >
-                                {{ showComparison ? 'Hide' : 'Show' }}
+                                <AdjustmentsHorizontalIcon class="h-4 w-4" />
+                                {{ hasCustomRange ? 'Edit Range' : 'Set Range' }}
+                            </button>
+
+                            <!-- Training Flag Toggle -->
+                            <button
+                                @click="toggleTrainingFlag"
+                                :disabled="trainingFlagForm.processing"
+                                :class="[
+                                    'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                                    props.transcription.flagged_for_training
+                                        ? 'border-success bg-success/10 text-success hover:bg-success/20'
+                                        : 'border-border hover:bg-muted'
+                                ]"
+                                :title="props.transcription.flagged_for_training ? 'Remove from training dataset' : 'Flag for training dataset'"
+                            >
+                                <AcademicCapIcon class="h-4 w-4" />
+                                {{ props.transcription.flagged_for_training ? 'Training Data' : 'Flag for Training' }}
                             </button>
                         </div>
+                    </div>
 
-                        <!-- Comparison Content -->
-                        <div v-show="showComparison" class="p-6 space-y-6">
-                            <!-- Metrics Cards -->
-                            <div class="grid gap-4 md:grid-cols-4">
-                                <div class="rounded-xl border bg-card p-4 text-center">
-                                    <div class="text-3xl font-bold text-emerald-600">{{ asrTranscription.insertions ?? 0 }}</div>
-                                    <div class="text-xs text-muted-foreground">Insertions</div>
-                                </div>
-                                <div class="rounded-xl border bg-card p-4 text-center">
-                                    <div class="text-3xl font-bold text-rose-600">{{ asrTranscription.deletions ?? 0 }}</div>
-                                    <div class="text-xs text-muted-foreground">Deletions</div>
-                                </div>
-                                <div class="rounded-xl border bg-card p-4 text-center">
-                                    <div class="text-3xl font-bold text-amber-500">{{ asrTranscription.substitutions ?? 0 }}</div>
-                                    <div class="text-xs text-muted-foreground">Substitutions</div>
-                                </div>
-                                <div class="rounded-xl border bg-card p-4 text-center">
-                                    <div class="text-3xl font-bold text-red-600">{{ asrTranscription.wer?.toFixed(1) ?? 'N/A' }}%</div>
-                                    <div class="text-xs text-muted-foreground">WER</div>
-                                </div>
+                    <!-- Audio Player -->
+                    <div v-if="audioMedia" class="border-b border-border p-4">
+                        <AudioPlayer
+                            ref="audioPlayerRef"
+                            :src="audioMedia.url"
+                            :name="audioMedia.name"
+                            :file-size="audioMedia.size"
+                        />
+                    </div>
+
+                    <!-- WER Metrics Cards (collapsed) -->
+                    <div v-if="referenceText && hypothesisText" class="border-b border-border">
+                        <div class="flex items-center justify-between px-6 py-3">
+                            <div class="flex items-center gap-4 text-sm">
+                                <span class="flex items-center gap-1.5 text-emerald-600">
+                                    <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                                    {{ asrTranscription.insertions ?? 0 }} ins
+                                </span>
+                                <span class="flex items-center gap-1.5 text-rose-600">
+                                    <span class="inline-block h-2.5 w-2.5 rounded-full bg-rose-500"></span>
+                                    {{ asrTranscription.deletions ?? 0 }} del
+                                </span>
+                                <span class="flex items-center gap-1.5 text-amber-500">
+                                    <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+                                    {{ asrTranscription.substitutions ?? 0 }} sub
+                                </span>
                             </div>
-
-                            <!-- View Toggle & Range Controls -->
-                            <div class="flex flex-wrap items-center justify-between gap-4">
-                                <div class="flex flex-wrap gap-2">
-                                    <button @click="viewMode = 'alignment'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'alignment' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
-                                        Alignment View
-                                    </button>
-                                    <button @click="viewMode = 'side-by-side'" :class="['rounded-lg border px-3 py-1.5 text-sm font-medium', viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted']">
-                                        Side-by-Side
-                                    </button>
-                                </div>
-                                
-                                <div class="flex items-center gap-2">
-                                    <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
-                                        Ref: {{ formatRange(asrTranscription.wer_ref_start, asrTranscription.wer_ref_end, totalRefWords) }} |
-                                        Hyp: {{ formatRange(asrTranscription.wer_hyp_start, asrTranscription.wer_hyp_end, totalHypWords) }}
-                                    </div>
-                                    <button 
-                                        @click="openRangeModal"
-                                        :class="['inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted', hasCustomRange ? 'border-primary text-primary' : '']"
-                                    >
-                                        <AdjustmentsHorizontalIcon class="h-4 w-4" />
-                                        {{ hasCustomRange ? 'Edit Range' : 'Set Range' }}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Alignment View -->
-                            <div v-if="viewMode === 'alignment'" class="rounded-xl border bg-muted/30 p-6">
-                                <div class="mb-4 font-semibold">Alignment Visualization</div>
-                                <div class="space-y-4">
-                                    <div v-for="(chunk, index) in chunkedAlignment" :key="index" class="border-b pb-4 last:border-b-0" dir="rtl">
-                                        <div class="mb-2 flex flex-wrap gap-1">
-                                            <span class="text-xs text-muted-foreground">Ref:</span>
-                                            <span v-for="(item, idx) in chunk" :key="`ref-${index}-${idx}`" :class="[
-                                                'rounded px-1.5 py-0.5 text-sm',
-                                                item.type === 'correct' ? 'bg-muted' :
-                                                    item.type === 'sub' ? 'bg-amber-200' :
-                                                        item.type === 'del' ? 'bg-rose-200 line-through' : 'text-muted-foreground',
-                                            ]">{{ item.type === 'ins' ? '—' : item.ref }}</span>
-                                        </div>
-                                        <div class="flex flex-wrap gap-1">
-                                            <span class="text-xs text-muted-foreground">Hyp:</span>
-                                            <span v-for="(item, idx) in chunk" :key="`hyp-${index}-${idx}`" :class="[
-                                                'rounded px-1.5 py-0.5 text-sm',
-                                                item.type === 'correct' ? 'bg-muted' :
-                                                    item.type === 'sub' ? 'bg-amber-200' :
-                                                        item.type === 'ins' ? 'bg-emerald-200' : 'text-muted-foreground',
-                                            ]">{{ item.type === 'del' ? '—' : item.hyp }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="mt-4 flex flex-wrap gap-4 text-sm">
-                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-muted"></span> Correct</div>
-                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-amber-200"></span> Substitution</div>
-                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-emerald-200"></span> Insertion</div>
-                                    <div class="flex items-center gap-2"><span class="h-3 w-3 rounded bg-rose-200"></span> Deletion</div>
-                                </div>
-                            </div>
-
-                            <!-- Side-by-Side View -->
-                            <div v-else class="grid gap-4 md:grid-cols-2">
-                                <div class="rounded-xl border bg-muted/30 p-4" dir="rtl">
-                                    <div class="mb-2 text-sm font-semibold text-muted-foreground">Reference (Cleaned)</div>
-                                    <p class="whitespace-pre-wrap text-sm">{{ referenceText }}</p>
-                                </div>
-                                <div class="rounded-xl border bg-muted/30 p-4" dir="rtl">
-                                    <div class="mb-2 text-sm font-semibold text-muted-foreground">Hypothesis</div>
-                                    <p class="whitespace-pre-wrap text-sm">{{ hypothesisText }}</p>
-                                </div>
+                            <div v-if="hasCustomRange" class="text-xs text-muted-foreground">
+                                Range: Ref {{ formatRange(asrTranscription.wer_ref_start, asrTranscription.wer_ref_end, totalRefWords) }} |
+                                Hyp {{ formatRange(asrTranscription.wer_hyp_start, asrTranscription.wer_hyp_end, totalHypWords) }}
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Word-Level Review Section (always shown for ASR transcriptions) -->
-                <div class="rounded-xl border border-border bg-card">
-                        <!-- Audio Player for Word Playback -->
-                        <div v-if="audioMedia" class="border-b border-border p-4">
-                            <AudioPlayer
-                                ref="audioPlayerRef"
-                                :src="audioMedia.url"
-                                :name="audioMedia.name"
-                                :file-size="audioMedia.size"
-                            />
-                        </div>
+                    <!-- Unified Review Component -->
+                    <div class="p-6">
+                        <TranscriptionReview
+                            :transcription-id="props.transcription.id"
+                            :word-review="props.wordReview ?? null"
+                            :reference-text="referenceText"
+                            :hypothesis-text="hypothesisText"
+                            :audio-player-ref="audioPlayerRef"
+                            @stats-updated="handleWordReviewStats"
+                        />
+                    </div>
 
-                        <!-- Segment Review Header -->
-                        <div v-if="props.segmentReview && props.segmentReview.segments.length > 0" class="flex items-center justify-between border-b border-border px-6 py-4">
+                    <!-- Segment Review (optional, shown below word review) -->
+                    <div v-if="props.segmentReview && props.segmentReview.segments.length > 0" class="border-t border-border">
+                        <div class="flex items-center justify-between px-6 py-4">
                             <div class="flex items-center gap-3">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
-                                    <DocumentTextIcon class="h-5 w-5 text-primary" />
+                                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/15">
+                                    <DocumentTextIcon class="h-4 w-4 text-secondary" />
                                 </div>
                                 <div>
-                                    <h2 class="font-semibold text-foreground">Segment Review</h2>
+                                    <h3 class="text-sm font-semibold text-foreground">Segment Review</h3>
                                     <p class="text-xs text-muted-foreground">
-                                        Review and correct transcription by sentence
+                                        Review by sentence
                                         <span v-if="segmentReviewStats">
-                                            • {{ segmentReviewStats.correction_count }} corrections ({{ (segmentReviewStats.correction_rate * 100).toFixed(1) }}%)
+                                            • {{ segmentReviewStats.correction_count }} corrections
                                         </span>
                                     </p>
                                 </div>
                             </div>
-                            
-                            <div class="flex items-center gap-3">
-                                <!-- Training Flag Toggle -->
-                                <button
-                                    @click="toggleTrainingFlag"
-                                    :disabled="trainingFlagForm.processing"
-                                    :class="[
-                                        'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-                                        props.transcription.flagged_for_training
-                                            ? 'border-success bg-success/10 text-success hover:bg-success/20'
-                                            : 'border-border hover:bg-muted'
-                                    ]"
-                                    :title="props.transcription.flagged_for_training ? 'Remove from training dataset' : 'Flag for training dataset'"
-                                >
-                                    <AcademicCapIcon class="h-4 w-4" />
-                                    {{ props.transcription.flagged_for_training ? 'Training Data' : 'Flag for Training' }}
-                                </button>
-
-                                <!-- Collapse Toggle -->
-                                <button
-                                    @click="showSegmentReview = !showSegmentReview"
-                                    class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                                >
-                                    {{ showSegmentReview ? 'Hide' : 'Show' }}
-                                </button>
-                            </div>
+                            <button
+                                @click="showSegmentReview = !showSegmentReview"
+                                class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                            >
+                                {{ showSegmentReview ? 'Hide' : 'Show' }}
+                            </button>
                         </div>
-
-                        <!-- Segment Review Component -->
-                        <div v-if="props.segmentReview && props.segmentReview.segments.length > 0" v-show="showSegmentReview" class="p-6">
+                        <div v-show="showSegmentReview" class="p-6 pt-0">
                             <TranscriptionSegmentReview
                                 :transcription-id="props.transcription.id"
                                 :segment-review="props.segmentReview ?? null"
@@ -1503,62 +1438,8 @@ const chunkedAlignment = computed(() => {
                                 @stats-updated="handleSegmentReviewStats"
                             />
                         </div>
-
-                        <!-- Word Review Header (shown when no segments or as secondary option) -->
-                        <div class="flex items-center justify-between border-b border-border px-6 py-4" :class="{ 'border-t': props.segmentReview && props.segmentReview.segments.length > 0 }">
-                            <div class="flex items-center gap-3">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/15">
-                                    <DocumentTextIcon class="h-5 w-5 text-secondary" />
-                                </div>
-                                <div>
-                                    <h2 class="font-semibold text-foreground">Word-Level Review</h2>
-                                    <p class="text-xs text-muted-foreground">
-                                        Click words to play audio, edit corrections
-                                        <span v-if="wordReviewStats">
-                                            • {{ wordReviewStats.correction_count }} corrections ({{ (wordReviewStats.correction_rate * 100).toFixed(1) }}%)
-                                        </span>
-                                    </p>
-                                </div>
-                            </div>
-                            
-                            <div class="flex items-center gap-3">
-                                <!-- Training Flag Toggle (only show if no segment review) -->
-                                <button
-                                    v-if="!props.segmentReview || props.segmentReview.segments.length === 0"
-                                    @click="toggleTrainingFlag"
-                                    :disabled="trainingFlagForm.processing"
-                                    :class="[
-                                        'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-                                        props.transcription.flagged_for_training
-                                            ? 'border-success bg-success/10 text-success hover:bg-success/20'
-                                            : 'border-border hover:bg-muted'
-                                    ]"
-                                    :title="props.transcription.flagged_for_training ? 'Remove from training dataset' : 'Flag for training dataset'"
-                                >
-                                    <AcademicCapIcon class="h-4 w-4" />
-                                    {{ props.transcription.flagged_for_training ? 'Training Data' : 'Flag for Training' }}
-                                </button>
-
-                                <!-- Collapse Toggle -->
-                                <button
-                                    @click="showWordReview = !showWordReview"
-                                    class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                                >
-                                    {{ showWordReview ? 'Hide' : 'Show' }}
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Word Review Component -->
-                        <div v-show="showWordReview" class="p-6">
-                            <TranscriptionWordReview
-                                :transcription-id="props.transcription.id"
-                                :word-review="props.wordReview ?? null"
-                                :audio-player-ref="audioPlayerRef"
-                                @stats-updated="handleWordReviewStats"
-                            />
-                        </div>
                     </div>
+                </div>
             </template>
         </div>
 

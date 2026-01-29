@@ -19,6 +19,7 @@ export interface TranscriptionWord {
     corrected_word: string | null;
     is_deleted: boolean;
     is_inserted: boolean;
+    is_critical_error: boolean;
     corrected_by: number | null;
     corrected_at: string | null;
     created_at: string;
@@ -32,6 +33,7 @@ export interface WordReviewStats {
     correction_rate: number;
     inserted_count: number;
     deleted_count: number;
+    critical_error_count: number;
     low_confidence_count: number;
 }
 
@@ -187,6 +189,11 @@ export interface AsrTranscription extends AsrMetrics, WerRange {
     flagged_for_training: boolean;
     created_at: string;
     updated_at: string;
+
+    // CEWR (Critical Word Error Rate) - computed
+    cewr: number | null;
+    critical_error_count: number;
+    reviewed_word_count: number;
     
     // Relations
     audio_sample?: {

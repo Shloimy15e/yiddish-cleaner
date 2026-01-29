@@ -2,6 +2,7 @@
 import {
     ArrowPathIcon,
     CheckIcon,
+    ExclamationTriangleIcon,
     FunnelIcon,
     PencilIcon,
     PlusIcon,
@@ -85,6 +86,7 @@ const savingWordId = ref<number | null>(null);
 const correctionForm = useForm({
     corrected_word: null as string | null,
     is_deleted: false,
+    is_critical_error: false,
 });
 
 const insertForm = useForm({
@@ -123,7 +125,7 @@ const filteredWords = computed(() => {
             : parseFloat(confidenceThreshold.value);
 
     return words.value.filter((w) => {
-        if (w.is_inserted || w.corrected_word !== null || w.is_deleted) {
+        if (w.is_inserted || w.corrected_word !== null || w.is_deleted || w.is_critical_error) {
             return true;
         }
         return w.confidence === null || w.confidence <= threshold;
@@ -230,6 +232,22 @@ const restoreWord = (word: TranscriptionWord) => {
     );
 };
 
+// Toggle critical error flag
+const toggleCriticalError = (word: TranscriptionWord) => {
+    savingWordId.value = word.id;
+    correctionForm.is_critical_error = !word.is_critical_error;
+    correctionForm.patch(
+        `/transcriptions/${props.transcriptionId}/words/${word.id}`,
+        { 
+            preserveScroll: true,
+            onFinish: () => {
+                savingWordId.value = null;
+                correctionForm.is_critical_error = false;
+            },
+        },
+    );
+};
+
 // Start insert mode
 const startInsert = (afterWordId: number) => {
     insertAfterWordId.value = afterWordId;
@@ -276,6 +294,9 @@ const getWordClass = (word: TranscriptionWord): string => {
 
     if (word.is_deleted) {
         return `${base} line-through opacity-50 bg-destructive/10`;
+    }
+    if (word.is_critical_error) {
+        return `${base} bg-orange-500/20 border-2 border-orange-500/50 ring-1 ring-orange-500/30`;
     }
     if (word.is_inserted) {
         return `${base} bg-success/20 border border-success/30`;
@@ -562,6 +583,11 @@ onMounted(() => {
                                 :disabled="savingWordId === word.id"
                                 @click.middle.prevent="playWord(word)"
                             >
+                                <ExclamationTriangleIcon
+                                    v-if="word.is_critical_error"
+                                    class="h-3.5 w-3.5 text-orange-500"
+                                    title="Critical error"
+                                />
                                 <template v-if="word.corrected_word && !word.is_deleted">
                                     <span class="line-through opacity-50">{{ word.word }}</span>
                                     <span>→</span>
@@ -616,6 +642,15 @@ onMounted(() => {
                             </DropdownMenuItem>
 
                             <DropdownMenuSeparator />
+
+                            <DropdownMenuItem
+                                v-if="!word.is_deleted && !word.is_inserted"
+                                :class="word.is_critical_error ? 'text-orange-600 focus:text-orange-600' : 'text-orange-500 focus:text-orange-500'"
+                                @select="toggleCriticalError(word)"
+                            >
+                                <ExclamationTriangleIcon class="mr-2 h-4 w-4" />
+                                {{ word.is_critical_error ? 'Remove critical error flag' : 'Mark as critical error' }}
+                            </DropdownMenuItem>
 
                             <DropdownMenuItem
                                 v-if="word.is_deleted"
@@ -674,6 +709,10 @@ onMounted(() => {
                 <div class="flex items-center gap-1">
                     <span class="h-3 w-3 rounded bg-primary/20" />
                     Corrected
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="h-3 w-3 rounded border-2 border-orange-500/50 bg-orange-500/20" />
+                    Critical error
                 </div>
                 <div class="flex items-center gap-1">
                     <span class="h-3 w-3 rounded bg-destructive/15" />

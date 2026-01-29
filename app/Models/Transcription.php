@@ -642,6 +642,72 @@ class Transcription extends Model implements HasMedia
         return $this->metrics['word_count'] ?? 0;
     }
 
+    /**
+     * Get the count of words marked as critical errors (respects custom range).
+     */
+    public function getCriticalErrorCountAttribute(): int
+    {
+        $query = $this->words()->where('is_critical_error', true);
+
+        // Apply custom range if set (using hypothesis range)
+        if ($this->wer_hyp_start !== null || $this->wer_hyp_end !== null) {
+            $start = $this->wer_hyp_start ?? 0;
+            $end = $this->wer_hyp_end;
+
+            $query->where('word_index', '>=', $start);
+            if ($end !== null) {
+                $query->where('word_index', '<=', $end);
+            }
+        }
+
+        return $query->count();
+    }
+
+    /**
+     * Get the total word count for CEWR calculation (respects custom range).
+     */
+    public function getReviewedWordCountAttribute(): int
+    {
+        $query = $this->words();
+
+        // Apply custom range if set (using hypothesis range)
+        if ($this->wer_hyp_start !== null || $this->wer_hyp_end !== null) {
+            $start = $this->wer_hyp_start ?? 0;
+            $end = $this->wer_hyp_end;
+
+            $query->where('word_index', '>=', $start);
+            if ($end !== null) {
+                $query->where('word_index', '<=', $end);
+            }
+        }
+
+        return $query->count();
+    }
+
+    /**
+     * Get the Critical Word Error Rate (CEWR).
+     *
+     * CEWR = (critical_error_count / total_words) * 100
+     *
+     * - Only counts explicitly marked critical errors (is_critical_error = true)
+     * - Inserted words count as 1 error each AND are included in total word count
+     * - Respects custom WER range if set (wer_hyp_start/wer_hyp_end)
+     * - Returns null if no word data exists
+     * - Returns 0.0 if word data exists but no critical errors marked yet
+     */
+    public function getCewrAttribute(): ?float
+    {
+        $totalWords = $this->reviewed_word_count;
+
+        if ($totalWords === 0) {
+            return null;
+        }
+
+        $criticalErrors = $this->critical_error_count;
+
+        return ($criticalErrors / $totalWords) * 100;
+    }
+
     // ==================== Word-Level Methods ====================
 
     /**

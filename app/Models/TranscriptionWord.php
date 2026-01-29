@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class TranscriptionWord extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         'transcription_id',
         'word_index',
@@ -19,6 +20,7 @@ class TranscriptionWord extends Model
         'corrected_word',
         'is_deleted',
         'is_inserted',
+        'is_critical_error',
         'corrected_by',
         'corrected_at',
     ];
@@ -32,6 +34,7 @@ class TranscriptionWord extends Model
             'confidence' => 'decimal:3',
             'is_deleted' => 'boolean',
             'is_inserted' => 'boolean',
+            'is_critical_error' => 'boolean',
             'corrected_at' => 'datetime',
         ];
     }
@@ -57,7 +60,7 @@ class TranscriptionWord extends Model
     {
         return $query->where(function ($q) use ($threshold) {
             $q->whereNotNull('confidence')
-              ->where('confidence', '<=', $threshold);
+                ->where('confidence', '<=', $threshold);
         });
     }
 
@@ -68,8 +71,8 @@ class TranscriptionWord extends Model
     {
         return $query->where(function ($q) {
             $q->whereNotNull('corrected_word')
-              ->orWhere('is_deleted', true)
-              ->orWhere('is_inserted', true);
+                ->orWhere('is_deleted', true)
+                ->orWhere('is_inserted', true);
         });
     }
 
@@ -96,7 +99,7 @@ class TranscriptionWord extends Model
      */
     public function isCorrected(): bool
     {
-        return $this->corrected_word !== null || $this->is_deleted || $this->is_inserted;
+        return $this->corrected_word !== null || $this->is_deleted || $this->is_inserted || $this->is_critical_error;
     }
 
     /**
@@ -145,6 +148,28 @@ class TranscriptionWord extends Model
     }
 
     /**
+     * Mark this word as a critical error (without providing a fix).
+     */
+    public function markCriticalError(?int $userId = null): void
+    {
+        $this->update([
+            'is_critical_error' => true,
+            'corrected_by' => $userId,
+            'corrected_at' => now(),
+        ]);
+    }
+
+    /**
+     * Remove critical error flag from this word.
+     */
+    public function clearCriticalError(): void
+    {
+        $this->update([
+            'is_critical_error' => false,
+        ]);
+    }
+
+    /**
      * Clear any correction on this word.
      */
     public function clearCorrection(): void
@@ -152,12 +177,14 @@ class TranscriptionWord extends Model
         // Can't clear correction on inserted words - delete them instead
         if ($this->is_inserted) {
             $this->delete();
+
             return;
         }
 
         $this->update([
             'corrected_word' => null,
             'is_deleted' => false,
+            'is_critical_error' => false,
             'corrected_by' => null,
             'corrected_at' => null,
         ]);
@@ -181,7 +208,7 @@ class TranscriptionWord extends Model
         // Calculate timing - take a sliver from adjacent words
         $startTime = (float) $before->end_time;
         $endTime = $after ? (float) $after->start_time : $startTime + 0.2;
-        
+
         // If there's no gap, create a small one in the middle
         if ($endTime <= $startTime) {
             $midPoint = ($startTime + ($after ? (float) $after->end_time : $startTime + 0.4)) / 2;
