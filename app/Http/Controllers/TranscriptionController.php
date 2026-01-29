@@ -134,11 +134,27 @@ class TranscriptionController extends Controller
      */
     public function show(Transcription $transcription): Response
     {
-        $transcription->load(['audioSample.baseTranscription', 'user:id,name']);
+        $transcription->load(['audioSample.baseTranscription', 'user:id,name', 'words']);
+
+        // Get audio media info for playback
+        $audioMedia = $transcription->audioSample?->getFirstMedia('audio');
+        $audioInfo = $audioMedia ? [
+            'url' => $audioMedia->getUrl(),
+            'name' => $audioMedia->file_name,
+            'size' => $audioMedia->size,
+            'mime_type' => $audioMedia->mime_type,
+        ] : null;
+
+        // Load word and segment review data
+        $wordReviewData = $this->getWordReviewData($transcription);
+        $segmentReviewData = $this->getSegmentReviewData($transcription);
 
         $viewData = [
             'transcription' => $transcription,
             'audioSample' => $transcription->audioSample,
+            'audioMedia' => $audioInfo,
+            'wordReview' => $wordReviewData,
+            'segmentReview' => $segmentReviewData,
         ];
 
         // Add cleaning presets for base transcriptions
