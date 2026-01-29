@@ -28,11 +28,12 @@ import {
 import { Loader } from 'lucide-vue-next';
 
 import AudioPlayer from '@/components/AudioPlayer.vue';
+import TranscriptionSegmentReview from '@/components/transcriptions/TranscriptionSegmentReview.vue';
 import TranscriptionWordReview from '@/components/transcriptions/TranscriptionWordReview.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { AudioMedia, Preset } from '@/types/audio-samples';
 import type { AlignmentItem, LlmModel, LlmProvider } from '@/types/transcription-show';
-import type { AsrTranscription, BaseTranscription, Transcription, WordReviewStats } from '@/types/transcriptions';
+import type { AsrTranscription, BaseTranscription, SegmentReviewStats, Transcription, WordReviewStats } from '@/types/transcriptions';
 
 const props = defineProps<{
     transcription: Transcription;
@@ -48,6 +49,14 @@ const props = defineProps<{
     wordReview?: {
         words: Array<Record<string, unknown>>;
         stats: WordReviewStats;
+        config: {
+            playback_padding_seconds: number;
+            default_confidence_threshold: number;
+        };
+    } | null;
+    segmentReview?: {
+        segments: Array<Record<string, unknown>>;
+        stats: SegmentReviewStats;
         config: {
             playback_padding_seconds: number;
             default_confidence_threshold: number;
@@ -395,6 +404,10 @@ const audioPlayerRef = ref<InstanceType<typeof AudioPlayer> | null>(null);
 const wordReviewStats = ref<WordReviewStats | null>(null);
 const showWordReview = ref(false); // Collapsed by default
 
+// Segment Review State
+const segmentReviewStats = ref<SegmentReviewStats | null>(null);
+const showSegmentReview = ref(true); // Expanded by default (primary review method)
+
 // Comparison section state
 const showComparison = ref(false); // Collapsed by default
 
@@ -410,6 +423,10 @@ const toggleTrainingFlag = () => {
 
 const handleWordReviewStats = (stats: WordReviewStats) => {
     wordReviewStats.value = stats;
+};
+
+const handleSegmentReviewStats = (stats: SegmentReviewStats) => {
+    segmentReviewStats.value = stats;
 };
 
 // WER Range Selection
@@ -1433,8 +1450,62 @@ const chunkedAlignment = computed(() => {
                             />
                         </div>
 
-                        <!-- Word Review Header with Training Flag -->
-                        <div class="flex items-center justify-between border-b border-border px-6 py-4">
+                        <!-- Segment Review Header -->
+                        <div v-if="props.segmentReview && props.segmentReview.segments.length > 0" class="flex items-center justify-between border-b border-border px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+                                    <DocumentTextIcon class="h-5 w-5 text-primary" />
+                                </div>
+                                <div>
+                                    <h2 class="font-semibold text-foreground">Segment Review</h2>
+                                    <p class="text-xs text-muted-foreground">
+                                        Review and correct transcription by sentence
+                                        <span v-if="segmentReviewStats">
+                                            • {{ segmentReviewStats.correction_count }} corrections ({{ (segmentReviewStats.correction_rate * 100).toFixed(1) }}%)
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center gap-3">
+                                <!-- Training Flag Toggle -->
+                                <button
+                                    @click="toggleTrainingFlag"
+                                    :disabled="trainingFlagForm.processing"
+                                    :class="[
+                                        'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                                        props.transcription.flagged_for_training
+                                            ? 'border-success bg-success/10 text-success hover:bg-success/20'
+                                            : 'border-border hover:bg-muted'
+                                    ]"
+                                    :title="props.transcription.flagged_for_training ? 'Remove from training dataset' : 'Flag for training dataset'"
+                                >
+                                    <AcademicCapIcon class="h-4 w-4" />
+                                    {{ props.transcription.flagged_for_training ? 'Training Data' : 'Flag for Training' }}
+                                </button>
+
+                                <!-- Collapse Toggle -->
+                                <button
+                                    @click="showSegmentReview = !showSegmentReview"
+                                    class="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                                >
+                                    {{ showSegmentReview ? 'Hide' : 'Show' }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Segment Review Component -->
+                        <div v-if="props.segmentReview && props.segmentReview.segments.length > 0" v-show="showSegmentReview" class="p-6">
+                            <TranscriptionSegmentReview
+                                :transcription-id="props.transcription.id"
+                                :segment-review="props.segmentReview ?? null"
+                                :audio-player-ref="audioPlayerRef"
+                                @stats-updated="handleSegmentReviewStats"
+                            />
+                        </div>
+
+                        <!-- Word Review Header (shown when no segments or as secondary option) -->
+                        <div class="flex items-center justify-between border-b border-border px-6 py-4" :class="{ 'border-t': props.segmentReview && props.segmentReview.segments.length > 0 }">
                             <div class="flex items-center gap-3">
                                 <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/15">
                                     <DocumentTextIcon class="h-5 w-5 text-secondary" />
@@ -1451,8 +1522,9 @@ const chunkedAlignment = computed(() => {
                             </div>
                             
                             <div class="flex items-center gap-3">
-                                <!-- Training Flag Toggle -->
+                                <!-- Training Flag Toggle (only show if no segment review) -->
                                 <button
+                                    v-if="!props.segmentReview || props.segmentReview.segments.length === 0"
                                     @click="toggleTrainingFlag"
                                     :disabled="trainingFlagForm.processing"
                                     :class="[

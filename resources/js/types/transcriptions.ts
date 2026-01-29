@@ -48,6 +48,48 @@ export interface WordReviewResponse {
     config: WordReviewConfig;
 }
 
+// Segment-level transcription data
+export interface TranscriptionSegment {
+    id: number;
+    transcription_id: number;
+    segment_index: number;
+    text: string;
+    corrected_text: string | null;
+    start_time: number;
+    end_time: number;
+    confidence: number | null;
+    words_json: Array<{
+        word: string;
+        start: number;
+        end: number;
+    }> | null;
+    corrected_by: number | null;
+    corrected_at: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+// Segment review stats
+export interface SegmentReviewStats {
+    total_segments: number;
+    correction_count: number;
+    correction_rate: number;
+    low_confidence_count: number;
+}
+
+// Segment review config from backend
+export interface SegmentReviewConfig {
+    playback_padding_seconds: number;
+    default_confidence_threshold: number;
+}
+
+// API response for segment list
+export interface SegmentReviewResponse {
+    segments: TranscriptionSegment[];
+    stats: SegmentReviewStats;
+    config: SegmentReviewConfig;
+}
+
 // ASR transcription metrics (WER/CER)
 export interface AsrMetrics {
     wer: number | null;

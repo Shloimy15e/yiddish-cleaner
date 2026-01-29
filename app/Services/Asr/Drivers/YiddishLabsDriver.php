@@ -4,6 +4,7 @@ namespace App\Services\Asr\Drivers;
 
 use App\Services\Asr\AsrDriverInterface;
 use App\Services\Asr\AsrResult;
+use App\Services\Asr\AsrSegment;
 use App\Services\Asr\AsrWord;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -99,26 +100,33 @@ class YiddishLabsDriver implements AsrDriverInterface
             if ($data['status'] === 'completed') {
                 $text = $data['text'] ?? '';
 
-                // Parse word-level data from timestamped text
+                // Parse word and segment-level data from timestamped text
                 // Wrapped in try-catch to ensure parsing failures don't crash transcription
                 $words = null;
+                $segments = null;
                 $cleanText = $text;
 
                 try {
+                    $segments = $this->parseTimestampedTextAsSegments($text);
+
+                    // Also get words for backward compatibility
                     $words = $this->parseTimestampedText($text);
 
                     // Get clean text (without timestamps) for storage
-                    if ($words !== null && count($words) > 0) {
+                    if ($segments !== null && count($segments) > 0) {
+                        $cleanText = implode(' ', array_map(fn (AsrSegment $s) => $s->text, $segments));
+                    } elseif ($words !== null && count($words) > 0) {
                         $cleanText = $this->getCleanText($words);
                     }
                 } catch (\Throwable $e) {
                     // Log the parsing error but don't fail the transcription
-                    Log::warning('YiddishLabs word timestamp parsing failed, continuing without word-level data', [
+                    Log::warning('YiddishLabs timestamp parsing failed, continuing without timing data', [
                         'error' => $e->getMessage(),
                         'job_id' => $jobId,
                         'text_preview' => substr($text, 0, 200),
                     ]);
                     $words = null;
+                    $segments = null;
                     $cleanText = $text;
                 }
 
@@ -136,6 +144,7 @@ class YiddishLabsDriver implements AsrDriverInterface
                         'raw_timestamped_text' => $text,
                     ],
                     words: $words,
+                    segments: $segments,
                 );
             }
 
@@ -152,7 +161,185 @@ class YiddishLabsDriver implements AsrDriverInterface
     }
 
     /**
-     * Parse timestamped text from YiddishLabs into word-level data.
+     * Parse timestamped text from YiddishLabs into segment-level data.
+     *
+     * Each timestamp marker becomes a segment containing the text until the next marker.
+     *
+     * @return AsrSegment[]|null
+     */
+    protected function parseTimestampedTextAsSegments(string $text): ?array
+    {
+        // Try format: [HH:MM:SS.mmm] or [MM:SS.mmm]
+        $pattern1 = '/\[(\d{1,2}:)?(\d{1,2}):(\d{1,2})\.(\d{1,3})\]/';
+
+        // Try format: <seconds.milliseconds>
+        $pattern2 = '/<(\d+\.?\d*)>/';
+
+        // Try format: (seconds.milliseconds)
+        $pattern3 = '/\((\d+\.?\d*)\)/';
+
+        $segments = [];
+
+        if (preg_match($pattern1, $text)) {
+            $segments = $this->parseSegmentsWithBracketTimestamps($text);
+        } elseif (preg_match($pattern2, $text)) {
+            $segments = $this->parseSegmentsWithAngleBracketTimestamps($text);
+        } elseif (preg_match($pattern3, $text)) {
+            $segments = $this->parseSegmentsWithParenTimestamps($text);
+        }
+
+        return count($segments) > 0 ? $segments : null;
+    }
+
+    /**
+     * Parse text with [HH:MM:SS.mmm] timestamps into segments.
+     *
+     * @return AsrSegment[]
+     */
+    protected function parseSegmentsWithBracketTimestamps(string $text): array
+    {
+        $segments = [];
+        $pattern = '/\[(?:(\d{1,2}):)?(\d{1,2}):(\d{1,2})\.(\d{1,3})\]\s*([^\[\]]+)/';
+
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            for ($i = 0; $i < count($matches); $i++) {
+                $hours = ! empty($matches[$i][1]) ? (int) $matches[$i][1] : 0;
+                $minutes = (int) $matches[$i][2];
+                $seconds = (int) $matches[$i][3];
+                $milliseconds = (int) str_pad($matches[$i][4], 3, '0');
+
+                $startTime = $hours * 3600 + $minutes * 60 + $seconds + $milliseconds / 1000;
+                $segmentText = trim($matches[$i][5]);
+                $wordsInSegment = preg_split('/\s+/', $segmentText, -1, PREG_SPLIT_NO_EMPTY);
+
+                $endTime = isset($matches[$i + 1])
+                    ? $this->parseTimestampToSeconds($matches[$i + 1])
+                    : $startTime + (count($wordsInSegment) * 0.3);
+
+                // Create embedded word timing
+                $wordDuration = count($wordsInSegment) > 0
+                    ? ($endTime - $startTime) / count($wordsInSegment)
+                    : 0;
+
+                $embeddedWords = [];
+                foreach ($wordsInSegment as $j => $word) {
+                    $wordStart = $startTime + ($j * $wordDuration);
+                    $embeddedWords[] = [
+                        'word' => $word,
+                        'start' => $wordStart,
+                        'end' => $wordStart + $wordDuration,
+                    ];
+                }
+
+                $segments[] = new AsrSegment(
+                    text: $segmentText,
+                    start: $startTime,
+                    end: $endTime,
+                    confidence: null,
+                    words: count($embeddedWords) > 0 ? $embeddedWords : null,
+                );
+            }
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Parse text with <seconds> timestamps into segments.
+     *
+     * @return AsrSegment[]
+     */
+    protected function parseSegmentsWithAngleBracketTimestamps(string $text): array
+    {
+        $segments = [];
+        $pattern = '/<(\d+\.?\d*)>\s*([^<]+)/';
+
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            for ($i = 0; $i < count($matches); $i++) {
+                $startTime = (float) $matches[$i][1];
+                $segmentText = trim($matches[$i][2]);
+                $wordsInSegment = preg_split('/\s+/', $segmentText, -1, PREG_SPLIT_NO_EMPTY);
+
+                $endTime = isset($matches[$i + 1])
+                    ? (float) $matches[$i + 1][1]
+                    : $startTime + (count($wordsInSegment) * 0.3);
+
+                $wordDuration = count($wordsInSegment) > 0
+                    ? ($endTime - $startTime) / count($wordsInSegment)
+                    : 0;
+
+                $embeddedWords = [];
+                foreach ($wordsInSegment as $j => $word) {
+                    $wordStart = $startTime + ($j * $wordDuration);
+                    $embeddedWords[] = [
+                        'word' => $word,
+                        'start' => $wordStart,
+                        'end' => $wordStart + $wordDuration,
+                    ];
+                }
+
+                $segments[] = new AsrSegment(
+                    text: $segmentText,
+                    start: $startTime,
+                    end: $endTime,
+                    confidence: null,
+                    words: count($embeddedWords) > 0 ? $embeddedWords : null,
+                );
+            }
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Parse text with (seconds) timestamps into segments.
+     *
+     * @return AsrSegment[]
+     */
+    protected function parseSegmentsWithParenTimestamps(string $text): array
+    {
+        $segments = [];
+        $pattern = '/\((\d+\.?\d*)\)\s*([^()]+)/';
+
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            for ($i = 0; $i < count($matches); $i++) {
+                $startTime = (float) $matches[$i][1];
+                $segmentText = trim($matches[$i][2]);
+                $wordsInSegment = preg_split('/\s+/', $segmentText, -1, PREG_SPLIT_NO_EMPTY);
+
+                $endTime = isset($matches[$i + 1])
+                    ? (float) $matches[$i + 1][1]
+                    : $startTime + (count($wordsInSegment) * 0.3);
+
+                $wordDuration = count($wordsInSegment) > 0
+                    ? ($endTime - $startTime) / count($wordsInSegment)
+                    : 0;
+
+                $embeddedWords = [];
+                foreach ($wordsInSegment as $j => $word) {
+                    $wordStart = $startTime + ($j * $wordDuration);
+                    $embeddedWords[] = [
+                        'word' => $word,
+                        'start' => $wordStart,
+                        'end' => $wordStart + $wordDuration,
+                    ];
+                }
+
+                $segments[] = new AsrSegment(
+                    text: $segmentText,
+                    start: $startTime,
+                    end: $endTime,
+                    confidence: null,
+                    words: count($embeddedWords) > 0 ? $embeddedWords : null,
+                );
+            }
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Parse timestamped text from YiddishLabs into word-level data (legacy).
      *
      * Expected format variations (to be confirmed with sample response):
      * - "[00:00:01.234] word1 word2 [00:00:02.567] word3"

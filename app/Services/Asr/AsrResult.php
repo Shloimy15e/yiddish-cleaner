@@ -13,7 +13,8 @@ class AsrResult
      * @param  string|null  $summary  Summary (if provided by ASR)
      * @param  array  $keywords  Keywords (if provided by ASR)
      * @param  array  $metadata  Additional metadata
-     * @param  AsrWord[]|null  $words  Word-level timing and confidence data
+     * @param  AsrWord[]|null  $words  Word-level timing and confidence data (legacy)
+     * @param  AsrSegment[]|null  $segments  Segment-level timing and confidence data
      */
     public function __construct(
         public readonly string $text,
@@ -25,6 +26,7 @@ class AsrResult
         public readonly array $keywords = [],
         public readonly array $metadata = [],
         public readonly ?array $words = null,
+        public readonly ?array $segments = null,
     ) {}
 
     /**
@@ -62,6 +64,7 @@ class AsrResult
             'keywords' => $this->keywords,
             'metadata' => $this->metadata,
             'words' => $this->words ? array_map(fn (AsrWord $w) => $w->toArray(), $this->words) : null,
+            'segments' => $this->segments ? array_map(fn (AsrSegment $s) => $s->toArray(), $this->segments) : null,
         ];
     }
 
@@ -71,5 +74,13 @@ class AsrResult
     public function hasWords(): bool
     {
         return $this->words !== null && count($this->words) > 0;
+    }
+
+    /**
+     * Check if segment-level data is available.
+     */
+    public function hasSegments(): bool
+    {
+        return $this->segments !== null && count($this->segments) > 0;
     }
 }

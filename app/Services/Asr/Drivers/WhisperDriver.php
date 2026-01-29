@@ -4,6 +4,7 @@ namespace App\Services\Asr\Drivers;
 
 use App\Services\Asr\AsrDriverInterface;
 use App\Services\Asr\AsrResult;
+use App\Services\Asr\AsrSegment;
 use App\Services\Asr\AsrWord;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -49,11 +50,12 @@ class WhisperDriver implements AsrDriverInterface
             $request = $request->attach('language', $language);
         }
 
-        // Response format - always use verbose_json for word-level data
+        // Response format - always use verbose_json for segment and word data
         $request = $request->attach('response_format', 'verbose_json');
 
-        // Request word-level timestamps
+        // Request both word and segment granularities for complete data
         $request = $request->attach('timestamp_granularities[]', 'word');
+        $request = $request->attach('timestamp_granularities[]', 'segment');
 
         $response = $request->post("{$this->baseUrl}/audio/transcriptions");
 
@@ -68,8 +70,19 @@ class WhisperDriver implements AsrDriverInterface
         $text = $data['text'] ?? '';
         $duration = $data['duration'] ?? null;
 
-        // Extract word-level data with timing and confidence
-        // Wrapped in try-catch to ensure parsing failures don't crash transcription
+        // Extract segment-level data with timing and confidence (primary)
+        $segments = null;
+        try {
+            $segments = $this->extractSegments($data);
+        } catch (\Throwable $e) {
+            Log::warning('Whisper segment extraction failed, continuing without segment-level data', [
+                'error' => $e->getMessage(),
+                'text_preview' => substr($text, 0, 200),
+            ]);
+            $segments = null;
+        }
+
+        // Extract word-level data (legacy, for backward compatibility)
         $words = null;
         try {
             $words = $this->extractWords($data);
@@ -91,11 +104,62 @@ class WhisperDriver implements AsrDriverInterface
                 'language' => $data['language'] ?? $language ?? 'auto',
             ],
             words: $words,
+            segments: $segments,
         );
     }
 
     /**
-     * Extract word-level timing and confidence data from Whisper response.
+     * Extract segment-level timing and confidence data from Whisper response.
+     *
+     * @return AsrSegment[]|null
+     */
+    protected function extractSegments(array $data): ?array
+    {
+        // Whisper returns segments array when timestamp_granularities includes 'segment'
+        if (empty($data['segments'])) {
+            return null;
+        }
+
+        $allWords = $data['words'] ?? [];
+        $segments = [];
+
+        foreach ($data['segments'] as $segmentData) {
+            $segmentStart = (float) ($segmentData['start'] ?? 0);
+            $segmentEnd = (float) ($segmentData['end'] ?? 0);
+
+            // Convert avg_logprob to confidence score (0-1)
+            $confidence = null;
+            if (isset($segmentData['avg_logprob'])) {
+                $confidence = $this->logProbToConfidence($segmentData['avg_logprob']);
+            }
+
+            // Find words that belong to this segment for embedded word timing
+            $segmentWords = [];
+            foreach ($allWords as $wordData) {
+                $wordStart = $wordData['start'] ?? 0;
+                if ($wordStart >= $segmentStart && $wordStart < $segmentEnd) {
+                    $segmentWords[] = [
+                        'word' => $wordData['word'] ?? '',
+                        'start' => (float) ($wordData['start'] ?? 0),
+                        'end' => (float) ($wordData['end'] ?? 0),
+                    ];
+                }
+            }
+
+            $segments[] = new AsrSegment(
+                text: trim($segmentData['text'] ?? ''),
+                start: $segmentStart,
+                end: $segmentEnd,
+                confidence: $confidence,
+                words: count($segmentWords) > 0 ? $segmentWords : null,
+            );
+        }
+
+        return count($segments) > 0 ? $segments : null;
+    }
+
+    /**
+     * Extract word-level timing and confidence data from Whisper response (legacy).
      *
      * @return AsrWord[]|null
      */

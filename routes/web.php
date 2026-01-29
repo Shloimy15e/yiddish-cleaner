@@ -7,7 +7,6 @@ use App\Http\Controllers\BenchmarkController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\TrainingController;
-use App\Http\Controllers\ProcessingRunController;
 use App\Http\Controllers\TranscriptionController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -95,6 +94,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/transcriptions/{transcription}/words/{word}', [TranscriptionController::class, 'updateWord'])->name('transcriptions.words.update');
     Route::post('/transcriptions/{transcription}/words', [TranscriptionController::class, 'insertWord'])->name('transcriptions.words.store');
     Route::delete('/transcriptions/{transcription}/words/{word}', [TranscriptionController::class, 'destroyWord'])->name('transcriptions.words.destroy');
+
+    // Transcription Segment Operations (Inertia)
+    Route::patch('/transcriptions/{transcription}/segments/{segment}', [TranscriptionController::class, 'updateSegment'])->name('transcriptions.segments.update');
+
     Route::post('/transcriptions/{transcription}/toggle-training', [TranscriptionController::class, 'toggleTrainingFlag'])->name('transcriptions.toggle-training');
 
     // Word Alignment

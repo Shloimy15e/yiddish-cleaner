@@ -7,6 +7,7 @@ use App\Jobs\CalculateTranscriptionMetricsJob;
 use App\Jobs\CleanTranscriptionJob;
 use App\Models\AudioSample;
 use App\Models\Transcription;
+use App\Models\TranscriptionSegment;
 use App\Models\TranscriptionWord;
 use App\Services\Alignment\AlignmentManager;
 use App\Services\Asr\WerCalculator;
@@ -169,8 +170,9 @@ class TranscriptionController extends Controller
             'mime_type' => $audioMedia->mime_type,
         ] : null;
 
-        // Load word review data
+        // Load word and segment review data
         $wordReviewData = $this->getWordReviewData($transcription);
+        $segmentReviewData = $this->getSegmentReviewData($transcription);
 
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,
@@ -178,6 +180,7 @@ class TranscriptionController extends Controller
             'audioMedia' => $audioInfo,
             'presets' => $transcription->isBase() ? config('cleaning.presets') : null,
             'wordReview' => $wordReviewData,
+            'segmentReview' => $segmentReviewData,
         ]);
     }
 
@@ -218,6 +221,48 @@ class TranscriptionController extends Controller
                 'inserted_count' => $words->where('is_inserted', true)->count(),
                 'low_confidence_count' => $words
                     ->filter(fn ($w) => $w['confidence'] !== null && $w['confidence'] <= 0.7)
+                    ->count(),
+            ],
+            'config' => [
+                'playback_padding_seconds' => config('asr.review.playback_padding_seconds', 2.0),
+                'default_confidence_threshold' => config('asr.review.default_confidence_threshold', 0.7),
+            ],
+        ];
+    }
+
+    /**
+     * Get segment review data for a transcription.
+     */
+    private function getSegmentReviewData(Transcription $transcription): array
+    {
+        $segments = $transcription->segments()
+            ->orderBy('segment_index')
+            ->get()
+            ->map(fn ($segment) => [
+                'id' => $segment->id,
+                'transcription_id' => $segment->transcription_id,
+                'segment_index' => $segment->segment_index,
+                'text' => $segment->text,
+                'corrected_text' => $segment->corrected_text,
+                'start_time' => (float) $segment->start_time,
+                'end_time' => (float) $segment->end_time,
+                'confidence' => $segment->confidence !== null ? (float) $segment->confidence : null,
+                'words_json' => $segment->words_json,
+                'corrected_by' => $segment->corrected_by,
+                'corrected_at' => $segment->corrected_at?->toISOString(),
+            ]);
+
+        $totalSegments = $segments->count();
+        $correctionCount = $segments->filter(fn ($s) => $s['corrected_text'] !== null)->count();
+
+        return [
+            'segments' => $segments->values()->all(),
+            'stats' => [
+                'total_segments' => $totalSegments,
+                'correction_count' => $correctionCount,
+                'correction_rate' => $totalSegments > 0 ? $correctionCount / $totalSegments : 0,
+                'low_confidence_count' => $segments
+                    ->filter(fn ($s) => $s['confidence'] !== null && $s['confidence'] <= 0.7)
                     ->count(),
             ],
             'config' => [
@@ -800,6 +845,32 @@ class TranscriptionController extends Controller
         }
 
         $word->delete();
+
+        return back();
+    }
+
+    // ==================== Segment Review Operations ====================
+
+    /**
+     * Update a segment (correction).
+     */
+    public function updateSegment(Request $request, Transcription $transcription, TranscriptionSegment $segment): RedirectResponse
+    {
+        if ($segment->transcription_id !== $transcription->id) {
+            abort(403, 'Segment does not belong to this transcription');
+        }
+
+        $validated = $request->validate([
+            'corrected_text' => 'nullable|string|max:5000',
+        ]);
+
+        $userId = $request->user()->id;
+
+        if ($validated['corrected_text'] === null || $validated['corrected_text'] === $segment->text) {
+            $segment->clearCorrection();
+        } else {
+            $segment->applyCorrection($validated['corrected_text'], $userId);
+        }
 
         return back();
     }

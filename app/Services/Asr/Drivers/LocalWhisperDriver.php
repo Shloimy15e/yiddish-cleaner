@@ -4,6 +4,7 @@ namespace App\Services\Asr\Drivers;
 
 use App\Services\Asr\AsrDriverInterface;
 use App\Services\Asr\AsrResult;
+use App\Services\Asr\AsrSegment;
 use App\Services\Asr\AsrWord;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -114,7 +115,18 @@ class LocalWhisperDriver implements AsrDriverInterface
         $duration = $data['duration'] ?? null;
         $detectedLanguage = $data['language'] ?? $language;
 
-        // Extract word-level data
+        // Extract segment-level data (primary)
+        $segments = null;
+        try {
+            $segments = $this->extractSegments($data);
+        } catch (\Throwable $e) {
+            Log::warning('Local Whisper segment extraction failed, continuing without segment-level data', [
+                'error' => $e->getMessage(),
+                'text_preview' => substr($text, 0, 200),
+            ]);
+        }
+
+        // Extract word-level data (legacy)
         $words = null;
         try {
             $words = $this->extractWords($data);
@@ -136,11 +148,58 @@ class LocalWhisperDriver implements AsrDriverInterface
                 'device' => $device,
             ],
             words: $words,
+            segments: $segments,
         );
     }
 
     /**
-     * Extract word-level timing data from Whisper response.
+     * Extract segment-level timing and confidence data from Whisper response.
+     *
+     * @return AsrSegment[]|null
+     */
+    protected function extractSegments(array $data): ?array
+    {
+        if (empty($data['segments'])) {
+            return null;
+        }
+
+        $segments = [];
+
+        foreach ($data['segments'] as $segmentData) {
+            $segmentStart = (float) ($segmentData['start'] ?? 0);
+            $segmentEnd = (float) ($segmentData['end'] ?? 0);
+
+            // Convert avg_logprob to confidence score (0-1)
+            $confidence = null;
+            if (isset($segmentData['avg_logprob'])) {
+                $confidence = $this->logProbToConfidence($segmentData['avg_logprob']);
+            }
+
+            // Extract embedded word timing from segment
+            $segmentWords = [];
+            foreach ($segmentData['words'] ?? [] as $wordData) {
+                $segmentWords[] = [
+                    'word' => trim($wordData['word'] ?? ''),
+                    'start' => (float) ($wordData['start'] ?? 0),
+                    'end' => (float) ($wordData['end'] ?? 0),
+                    'probability' => $wordData['probability'] ?? null,
+                ];
+            }
+
+            $segments[] = new AsrSegment(
+                text: trim($segmentData['text'] ?? ''),
+                start: $segmentStart,
+                end: $segmentEnd,
+                confidence: $confidence,
+                words: count($segmentWords) > 0 ? $segmentWords : null,
+            );
+        }
+
+        return count($segments) > 0 ? $segments : null;
+    }
+
+    /**
+     * Extract word-level timing data from Whisper response (legacy).
      *
      * @return AsrWord[]|null
      */

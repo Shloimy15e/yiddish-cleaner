@@ -74,18 +74,18 @@ class TranscribeAudioSampleJob implements ShouldQueue
 
                 $tempAudioPath = $tempDir.'/audio_'.$this->audioSample->id.'_'.uniqid().'.'.$audioMedia->extension;
                 $disk = Storage::disk($audioMedia->disk);
-                
+
                 $stream = $disk->readStream($audioMedia->getPathRelativeToRoot());
                 if (! $stream) {
                     throw new \RuntimeException("Could not read audio file from storage: {$audioMedia->getPathRelativeToRoot()}");
                 }
-                
+
                 file_put_contents($tempAudioPath, stream_get_contents($stream));
                 fclose($stream);
-                
+
                 $audioPath = $tempAudioPath;
-                
-                Log::info("Downloaded remote audio file to temp path", [
+
+                Log::info('Downloaded remote audio file to temp path', [
                     'audio_sample_id' => $this->audioSample->id,
                     'temp_path' => $tempAudioPath,
                 ]);
@@ -147,7 +147,14 @@ class TranscribeAudioSampleJob implements ShouldQueue
                 'status' => Transcription::STATUS_COMPLETED,
             ]);
 
-            // Store word-level data if available
+            // Store segment-level data if available (preferred)
+            if ($result->hasSegments()) {
+                $transcription->storeSegments($result->segments);
+                $segmentCount = count($result->segments);
+                Log::info("Stored {$segmentCount} segments for Transcription #{$transcription->id}");
+            }
+
+            // Store word-level data if available (legacy/backup)
             if ($result->hasWords()) {
                 $transcription->storeWords($result->words);
                 Log::info("Stored {$result->getWordCount()} words for Transcription #{$transcription->id}");

@@ -18,6 +18,7 @@ class Transcription extends Model implements HasMedia
      * Type constants
      */
     public const TYPE_BASE = 'base';
+
     public const TYPE_ASR = 'asr';
 
     public const TYPES = [
@@ -29,8 +30,11 @@ class Transcription extends Model implements HasMedia
      * Status constants
      */
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_FAILED = 'failed';
 
     public const STATUSES = [
@@ -44,9 +48,13 @@ class Transcription extends Model implements HasMedia
      * Alignment status constants
      */
     public const ALIGNMENT_PENDING = 'pending';
+
     public const ALIGNMENT_PROCESSING = 'processing';
+
     public const ALIGNMENT_COMPLETED = 'completed';
+
     public const ALIGNMENT_FAILED = 'failed';
+
     public const ALIGNMENT_NOT_NEEDED = 'not_needed';
 
     public const ALIGNMENT_STATUSES = [
@@ -61,7 +69,9 @@ class Transcription extends Model implements HasMedia
      * Source constants
      */
     public const SOURCE_IMPORTED = 'imported';
+
     public const SOURCE_GENERATED = 'generated';
+
     public const SOURCE_MANUAL = 'manual';
 
     protected $fillable = [
@@ -183,6 +193,11 @@ class Transcription extends Model implements HasMedia
     public function words(): HasMany
     {
         return $this->hasMany(TranscriptionWord::class)->orderBy('word_index');
+    }
+
+    public function segments(): HasMany
+    {
+        return $this->hasMany(TranscriptionSegment::class)->orderBy('segment_index');
     }
 
     // ==================== Media Collections ====================
@@ -374,8 +389,8 @@ class Transcription extends Model implements HasMedia
      */
     public function canBeCleaned(): bool
     {
-        return $this->isBase() 
-            && $this->hasRawText() 
+        return $this->isBase()
+            && $this->hasRawText()
             && $this->status !== self::STATUS_PROCESSING;
     }
 
@@ -547,7 +562,7 @@ class Transcription extends Model implements HasMedia
      */
     public function canRetryAlignment(): bool
     {
-        return $this->hasAlignmentFailed() 
+        return $this->hasAlignmentFailed()
             || ($this->needsAlignment() && ! $this->isAligning());
     }
 
@@ -645,8 +660,8 @@ class Transcription extends Model implements HasMedia
         return $this->words()
             ->where(function ($q) {
                 $q->whereNotNull('corrected_word')
-                  ->orWhere('is_deleted', true)
-                  ->orWhere('is_inserted', true);
+                    ->orWhere('is_deleted', true)
+                    ->orWhere('is_inserted', true);
             })
             ->count();
     }
@@ -657,7 +672,7 @@ class Transcription extends Model implements HasMedia
     public function getCorrectionRate(): ?float
     {
         $totalWords = $this->words()->original()->count();
-        
+
         if ($totalWords === 0) {
             return null;
         }
@@ -686,7 +701,7 @@ class Transcription extends Model implements HasMedia
     }
 
     /**
-     * Store word-level data from ASR result.
+     * Store word-level data from ASR result (legacy).
      *
      * @param  \App\Services\Asr\AsrWord[]  $asrWords
      */
@@ -718,6 +733,81 @@ class Transcription extends Model implements HasMedia
             ]);
             // Don't re-throw - transcription is still valid without word data
         }
+    }
+
+    /**
+     * Store segment-level data from ASR result.
+     *
+     * @param  \App\Services\Asr\AsrSegment[]  $asrSegments
+     */
+    public function storeSegments(array $asrSegments): void
+    {
+        if (empty($asrSegments)) {
+            return;
+        }
+
+        try {
+            // Clear existing segments
+            $this->segments()->delete();
+
+            // Insert new segments
+            foreach ($asrSegments as $index => $asrSegment) {
+                $this->segments()->create([
+                    'segment_index' => $index,
+                    'text' => $asrSegment->text,
+                    'start_time' => $asrSegment->start,
+                    'end_time' => $asrSegment->end,
+                    'confidence' => $asrSegment->confidence,
+                    'words_json' => $asrSegment->words,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to store segment-level data for transcription, continuing without segments', [
+                'transcription_id' => $this->id,
+                'error' => $e->getMessage(),
+                'segment_count' => count($asrSegments),
+            ]);
+            // Don't re-throw - transcription is still valid without segment data
+        }
+    }
+
+    // ==================== Segment-Level Methods ====================
+
+    /**
+     * Check if this transcription has segment-level data.
+     */
+    public function hasSegmentData(): bool
+    {
+        return $this->segments()->exists();
+    }
+
+    /**
+     * Get the count of corrected segments.
+     */
+    public function getSegmentCorrectionCount(): int
+    {
+        return $this->segments()
+            ->whereNotNull('corrected_text')
+            ->count();
+    }
+
+    /**
+     * Get the corrected text from segments (applying all segment corrections).
+     */
+    public function getCorrectedTextFromSegments(): string
+    {
+        if (! $this->hasSegmentData()) {
+            return $this->hypothesis_text ?? '';
+        }
+
+        $segments = $this->segments()
+            ->orderBy('segment_index')
+            ->get();
+
+        return $segments
+            ->map(fn (TranscriptionSegment $segment) => $segment->getDisplayText())
+            ->filter(fn ($text) => $text !== '')
+            ->implode(' ');
     }
 
     // ==================== Boot ====================
