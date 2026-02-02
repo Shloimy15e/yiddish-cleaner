@@ -48,6 +48,7 @@ class AudioSample extends Model implements HasMedia
         'source_url',
         'audio_duration_seconds',
         'status',
+        'is_benchmark',
         'error_message',
     ];
 
@@ -55,6 +56,7 @@ class AudioSample extends Model implements HasMedia
     {
         return [
             'audio_duration_seconds' => 'float',
+            'is_benchmark' => 'boolean',
         ];
     }
 
@@ -279,5 +281,13 @@ class AudioSample extends Model implements HasMedia
         return $query->whereHas('media', function ($q) {
             $q->where('collection_name', 'audio');
         });
+    }
+
+    /**
+     * Gold standard benchmark samples.
+     */
+    public function scopeGoldStandard($query)
+    {
+        return $query->where('is_benchmark', true);
     }
 }

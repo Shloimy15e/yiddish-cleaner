@@ -46,6 +46,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/audio-samples/{audioSample}', [AudioSampleController::class, 'destroy'])->name('audio-samples.destroy');
     Route::post('/audio-samples/{audioSample}/transcript', [AudioSampleController::class, 'uploadTranscript'])->name('audio-samples.upload-transcript');
     Route::post('/audio-samples/{audioSample}/audio', [AudioSampleController::class, 'uploadAudio'])->name('audio-samples.upload-audio');
+    Route::post('/audio-samples/{audioSample}/toggle-benchmark', [AudioSampleController::class, 'toggleBenchmark'])->name('audio-samples.toggle-benchmark');
 
     // ASR Transcription
     Route::post('/audio-samples/{audioSample}/transcribe', [AudioSampleController::class, 'transcribe'])->name('audio-samples.transcribe');
@@ -121,6 +122,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 // Public Benchmark Routes (no auth required)
 Route::get('/benchmark', [BenchmarkController::class, 'index'])->name('benchmark.index');
+Route::get('/benchmark/gold-standard', [BenchmarkController::class, 'goldStandard'])->name('benchmark.gold-standard');
 Route::get('/benchmark/compare', [BenchmarkController::class, 'compare'])->name('benchmark.compare');
 Route::get('/benchmark/models/{modelName}', [BenchmarkController::class, 'model'])->name('benchmark.model')->where('modelName', '.*');
 

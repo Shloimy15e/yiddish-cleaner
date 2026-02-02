@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AudioSample;
 use App\Models\Transcription;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,95 @@ class BenchmarkController extends Controller
 
         return Inertia::render('Benchmark/Index', [
             'models' => $models,
+            'stats' => $stats,
+            'sort' => $sortBy,
+            'dir' => $sortDir,
+        ]);
+    }
+
+    /**
+     * Display the gold standard benchmark page.
+     * Shows only the 5 selected benchmark samples for tracking progress.
+     */
+    public function goldStandard(Request $request): Response
+    {
+        $sortBy = $request->get('sort', 'wer');
+        $sortDir = $request->get('dir', 'asc');
+
+        // Get benchmark sample IDs
+        $benchmarkSampleIds = AudioSample::goldStandard()->pluck('id');
+
+        // Get model stats for benchmark samples only
+        $models = Transcription::query()
+            ->select('model_name')
+            ->selectRaw('COUNT(*) as sample_count')
+            ->selectRaw('AVG(wer) as avg_wer')
+            ->selectRaw('AVG(cer) as avg_cer')
+            ->selectRaw('MIN(wer) as best_wer')
+            ->selectRaw('MAX(wer) as worst_wer')
+            ->selectRaw('AVG(substitutions) as avg_substitutions')
+            ->selectRaw('AVG(insertions) as avg_insertions')
+            ->selectRaw('AVG(deletions) as avg_deletions')
+            ->whereIn('audio_sample_id', $benchmarkSampleIds)
+            ->whereNotNull('wer')
+            ->where('type', 'asr')
+            ->groupBy('model_name')
+            ->havingRaw('COUNT(*) >= 1')
+            ->orderBy($sortBy === 'wer' ? 'avg_wer' : ($sortBy === 'cer' ? 'avg_cer' : 'sample_count'), $sortDir)
+            ->get()
+            ->map(function ($model, $index) {
+                return [
+                    'rank' => $index + 1,
+                    'model_name' => $model->model_name,
+                    'sample_count' => $model->sample_count,
+                    'avg_wer' => round($model->avg_wer, 2),
+                    'avg_cer' => round($model->avg_cer, 2),
+                    'best_wer' => round($model->best_wer, 2),
+                    'worst_wer' => round($model->worst_wer, 2),
+                    'avg_substitutions' => round($model->avg_substitutions, 1),
+                    'avg_insertions' => round($model->avg_insertions, 1),
+                    'avg_deletions' => round($model->avg_deletions, 1),
+                ];
+            });
+
+        // Get the benchmark samples with their transcriptions
+        $benchmarkSamples = AudioSample::goldStandard()
+            ->with(['baseTranscription', 'asrTranscriptions' => function ($query) {
+                $query->whereNotNull('wer')->orderBy('wer', 'asc');
+            }])
+            ->get()
+            ->map(function ($sample) {
+                $bestAsr = $sample->asrTranscriptions->first();
+                return [
+                    'id' => $sample->id,
+                    'name' => $sample->name,
+                    'status' => $sample->status,
+                    'has_base' => $sample->baseTranscription !== null,
+                    'asr_count' => $sample->asrTranscriptions->count(),
+                    'best_wer' => $bestAsr ? round($bestAsr->wer, 2) : null,
+                    'best_model' => $bestAsr ? $bestAsr->model_name : null,
+                ];
+            });
+
+        $stats = [
+            'benchmark_samples' => $benchmarkSamples->count(),
+            'total_transcriptions' => Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
+                ->where('type', 'asr')
+                ->whereNotNull('wer')
+                ->count(),
+            'total_models' => Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
+                ->where('type', 'asr')
+                ->distinct('model_name')
+                ->count('model_name'),
+            'avg_wer' => round(Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
+                ->where('type', 'asr')
+                ->whereNotNull('wer')
+                ->avg('wer') ?? 0, 2),
+        ];
+
+        return Inertia::render('Benchmark/GoldStandard', [
+            'models' => $models,
+            'samples' => $benchmarkSamples,
             'stats' => $stats,
             'sort' => $sortBy,
             'dir' => $sortDir,

@@ -456,4 +456,17 @@ class AudioSampleController extends Controller
 
         return response()->json(['audioSamples' => $audioSamples]);
     }
+
+    /**
+     * Toggle the benchmark (gold standard) flag for an audio sample.
+     */
+    public function toggleBenchmark(AudioSample $audioSample): RedirectResponse
+    {
+        $this->authorize('update', $audioSample);
+
+        $audioSample->update(['is_benchmark' => !$audioSample->is_benchmark]);
+
+        $status = $audioSample->is_benchmark ? 'added to' : 'removed from';
+        return back()->with('success', "Sample {$status} gold standard benchmark.");
+    }
 }
