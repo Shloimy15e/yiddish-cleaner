@@ -305,7 +305,7 @@ const linkForm = useForm({
 const submitUnlink = () => {
     router.delete(`/transcriptions/${props.transcription.id}/link`, {
         preserveScroll: true,
-        only: ['transcription'],
+        only: ['transcription', 'audioSample'],
     });
 };
 
