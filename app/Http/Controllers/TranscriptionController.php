@@ -339,10 +339,32 @@ class TranscriptionController extends Controller
             // Sync audio sample status
             if ($transcription->isLinked()) {
                 $transcription->audioSample->syncStatusFromBaseTranscription();
+
+                // Recalculate WER for all ASR transcriptions if reference text changed
+                if ($previousHash !== $newHash) {
+                    $asrTranscriptions = $transcription->audioSample->asrTranscriptions()
+                        ->whereNotNull('hypothesis_text')
+                        ->get();
+
+                    foreach ($asrTranscriptions as $asrTranscription) {
+                        CalculateTranscriptionMetricsJob::dispatch(
+                            audioSampleId: $transcription->audio_sample_id,
+                            transcriptionId: $asrTranscription->id,
+                        );
+                    }
+                }
             }
         }
 
-        return back()->with('success', 'Transcription updated.');
+        $message = 'Transcription updated.';
+        if (isset($previousHash) && isset($newHash) && $previousHash !== $newHash && $transcription->isLinked()) {
+            $asrCount = $transcription->audioSample->asrTranscriptions()->whereNotNull('hypothesis_text')->count();
+            if ($asrCount > 0) {
+                $message .= " WER is being recalculated for {$asrCount} ASR transcription(s).";
+            }
+        }
+
+        return back()->with('success', $message);
     }
 
     /**
