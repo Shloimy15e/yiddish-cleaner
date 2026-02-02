@@ -31,6 +31,7 @@ class RecalculateTranscriptionMetrics
         ?int $hypEnd = null,
     ): void {
         $referenceText = $audioSample->baseTranscription?->text_clean;
+        $ignoredWords = config('asr.wer.ignored_insertion_words', []);
 
         $werResult = $this->werCalculator->calculate(
             $referenceText,
@@ -39,6 +40,7 @@ class RecalculateTranscriptionMetrics
             $refEnd,
             $hypStart,
             $hypEnd,
+            $ignoredWords,
         );
 
         $transcription->update([

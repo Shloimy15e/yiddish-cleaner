@@ -57,7 +57,8 @@ class CalculateTranscriptionMetricsJob implements ShouldQueue
             return;
         }
 
-        $werResult = $werCalculator->calculate($referenceText, $hypothesisText);
+        $ignoredWords = config('asr.wer.ignored_insertion_words', []);
+        $werResult = $werCalculator->calculate($referenceText, $hypothesisText, ignoredInsertionWords: $ignoredWords);
 
         $transcription->update([
             'wer' => $werResult->wer,

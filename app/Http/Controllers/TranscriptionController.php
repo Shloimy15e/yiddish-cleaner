@@ -763,6 +763,7 @@ class TranscriptionController extends Controller
             return back()->with('error', 'Cannot recalculate: missing reference or hypothesis text.');
         }
 
+        $ignoredWords = config('asr.wer.ignored_insertion_words', []);
         $werResult = $werCalculator->calculate(
             $referenceText,
             $transcription->hypothesis_text,
@@ -770,6 +771,7 @@ class TranscriptionController extends Controller
             $validated['ref_end'] ?? null,
             $validated['hyp_start'] ?? null,
             $validated['hyp_end'] ?? null,
+            $ignoredWords,
         );
 
         $transcription->update([

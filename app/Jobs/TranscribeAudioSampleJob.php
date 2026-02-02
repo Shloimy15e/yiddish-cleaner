@@ -115,7 +115,8 @@ class TranscribeAudioSampleJob implements ShouldQueue
             $werResult = null;
 
             if ($referenceText) {
-                $werResult = $werCalculator->calculate($referenceText, $result->text);
+                $ignoredWords = config('asr.wer.ignored_insertion_words', []);
+                $werResult = $werCalculator->calculate($referenceText, $result->text, ignoredInsertionWords: $ignoredWords);
             }
 
             // Update Transcription record

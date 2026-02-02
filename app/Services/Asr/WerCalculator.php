@@ -23,6 +23,7 @@ class WerCalculator
      * @param  int|null  $refEnd  End word index for reference (0-based, inclusive)
      * @param  int|null  $hypStart  Start word index for hypothesis (0-based, inclusive)
      * @param  int|null  $hypEnd  End word index for hypothesis (0-based, inclusive)
+     * @param  array  $ignoredInsertionWords  Words to filter from hypothesis (won't count as insertions)
      */
     public function calculate(
         string $reference,
@@ -31,6 +32,7 @@ class WerCalculator
         ?int $refEnd = null,
         ?int $hypStart = null,
         ?int $hypEnd = null,
+        array $ignoredInsertionWords = [],
     ): WerResult {
         // Normalize texts
         $reference = $this->normalize($reference);
@@ -39,6 +41,19 @@ class WerCalculator
         // Calculate word-level metrics (WER)
         $refWords = $this->tokenizeWords($reference);
         $hypWords = $this->tokenizeWords($hypothesis);
+
+        // Filter ignored insertion words from hypothesis
+        // These words won't be counted as insertions in WER calculation
+        if (! empty($ignoredInsertionWords)) {
+            $normalizedIgnored = array_map(
+                fn ($word) => mb_strtolower(trim($word), 'UTF-8'),
+                $ignoredInsertionWords
+            );
+            $hypWords = array_values(array_filter(
+                $hypWords,
+                fn ($word) => ! in_array($word, $normalizedIgnored, true)
+            ));
+        }
 
         // Apply range slicing if specified
         $totalRefWords = count($refWords);
