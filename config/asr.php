@@ -118,4 +118,23 @@ return [
         // Default model size
         'model' => env('WHISPER_MODEL', 'base'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | WER Calculation Settings
+    |--------------------------------------------------------------------------
+    |
+    | Settings for Word Error Rate (WER) calculation.
+    |
+    */
+
+    'wer' => [
+        // Words to ignore when they appear as insertions (extra words in hypothesis)
+        // These are filtered from hypothesis before WER calculation
+        // Common uses: filler words, acceptable variants, etc.
+        'ignored_insertion_words' => [
+            // Examples:
+            // 'um', 'uh', 'ah', 'er',
+        ],
+    ],
 ];

@@ -115,4 +115,41 @@ describe('WerCalculator', function () {
         expect($array)->toHaveKey('wer_hyp_start');
         expect($array)->toHaveKey('wer_hyp_end');
     });
+
+    it('ignores specified words when counting insertions', function () {
+        $calculator = new WerCalculator();
+
+        // Reference: "hello world"
+        // Hypothesis: "hello um world" - has extra "um"
+        $reference = "hello world";
+        $hypothesis = "hello um world";
+
+        // Without ignored words, "um" counts as an insertion
+        $resultWithInsertion = $calculator->calculate($reference, $hypothesis);
+        expect($resultWithInsertion->insertions)->toBe(1);
+        expect($resultWithInsertion->wer)->toBe(50.0); // 1 insertion / 2 ref words = 50%
+
+        // With "um" in ignored list, it's filtered from hypothesis
+        $resultIgnored = $calculator->calculate($reference, $hypothesis, ignoredInsertionWords: ['um']);
+        expect($resultIgnored->insertions)->toBe(0);
+        expect($resultIgnored->wer)->toBe(0.0); // Perfect match after filtering
+
+        // Multiple ignored words
+        $hypothesis2 = "hello um uh world ah";
+        $resultMultiple = $calculator->calculate($reference, $hypothesis2, ignoredInsertionWords: ['um', 'uh', 'ah']);
+        expect($resultMultiple->insertions)->toBe(0);
+        expect($resultMultiple->wer)->toBe(0.0);
+    });
+
+    it('handles case-insensitive ignored words', function () {
+        $calculator = new WerCalculator();
+
+        $reference = "hello world";
+        $hypothesis = "hello UM World"; // Uppercase UM
+
+        // Ignored words should match case-insensitively
+        $result = $calculator->calculate($reference, $hypothesis, ignoredInsertionWords: ['um']);
+        expect($result->insertions)->toBe(0);
+        expect($result->wer)->toBe(0.0);
+    });
 });
