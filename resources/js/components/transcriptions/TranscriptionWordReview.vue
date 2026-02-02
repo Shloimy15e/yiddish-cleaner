@@ -11,7 +11,7 @@ import {
     XMarkIcon,
 } from '@heroicons/vue/24/outline';
 import { router, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -81,6 +81,9 @@ const editValue = ref('');
 const insertAfterWordId = ref<number | null>(null);
 const insertValue = ref('');
 const savingWordId = ref<number | null>(null);
+
+// Focused word for keyboard shortcuts
+const focusedWordId = ref<number | null>(null);
 
 // Forms for word operations
 const correctionForm = useForm({
@@ -349,12 +352,34 @@ const submitAlignment = (overwrite = false) => {
     });
 };
 
+// Keyboard shortcut handler for critical error toggle
+const handleKeyDown = (event: KeyboardEvent) => {
+    // 'c' key to toggle critical error on focused word
+    if (event.key === 'c' && focusedWordId.value && !editingWordId.value && !insertAfterWordId.value) {
+        // Don't trigger if typing in an input
+        const target = event.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        
+        const word = words.value.find(w => w.id === focusedWordId.value);
+        if (word && !word.is_deleted && !word.is_inserted) {
+            event.preventDefault();
+            toggleCriticalError(word);
+        }
+    }
+};
+
 // Load alignment providers on mount if no word data
-import { onMounted } from 'vue';
 onMounted(() => {
     if (!hasWordData.value) {
         fetchAlignmentProviders();
     }
+    // Add keyboard listener
+    window.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+    // Clean up keyboard listener
+    window.removeEventListener('keydown', handleKeyDown);
 });
 </script>
 
@@ -368,6 +393,9 @@ onMounted(() => {
                 </h3>
                 <span v-if="stats" class="text-xs text-muted-foreground">
                     ({{ stats.total_words }} words, {{ stats.correction_count }} corrections)
+                </span>
+                <span v-if="focusedWordId" class="text-xs text-muted-foreground/70">
+                    • Press <kbd class="rounded bg-muted px-1 py-0.5 text-[10px]">c</kbd> to toggle critical error
                 </span>
             </div>
 
@@ -579,8 +607,9 @@ onMounted(() => {
                     <DropdownMenu v-else>
                         <DropdownMenuTrigger as-child>
                             <button
-                                :class="getWordClass(word)"
+                                :class="[getWordClass(word), focusedWordId === word.id ? 'ring-2 ring-primary ring-offset-1' : '']"
                                 :disabled="savingWordId === word.id"
+                                @click="focusedWordId = word.id"
                                 @click.middle.prevent="playWord(word)"
                             >
                                 <ExclamationTriangleIcon
