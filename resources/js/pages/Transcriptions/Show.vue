@@ -210,6 +210,7 @@ onMounted(() => {
 const submitClean = () => {
     cleanForm.post(`/transcriptions/${props.transcription.id}/clean`, {
         preserveScroll: true,
+        only: ['transcription'],
         onSuccess: () => {
             showCleanForm.value = false;
         },
@@ -240,6 +241,7 @@ const cancelEditingName = () => {
 const saveName = () => {
     nameForm.patch(`/transcriptions/${props.transcription.id}`, {
         preserveScroll: true,
+        only: ['transcription'],
         onSuccess: () => {
             isEditingName.value = false;
         },
@@ -260,6 +262,7 @@ const saveEdit = () => {
     updateForm.text_clean = editedText.value;
     updateForm.patch(`/transcriptions/${props.transcription.id}`, {
         preserveScroll: true,
+        only: ['transcription'],
         onSuccess: () => {
             isEditing.value = false;
             editedText.value = '';
@@ -275,12 +278,14 @@ const validateForm = useForm({
 const submitValidate = () => {
     validateForm.post(`/transcriptions/${props.transcription.id}/validate`, {
         preserveScroll: true,
+        only: ['transcription'],
     });
 };
 
 const submitUnvalidate = () => {
     router.delete(`/transcriptions/${props.transcription.id}/validate`, {
         preserveScroll: true,
+        only: ['transcription'],
     });
 };
 
@@ -300,6 +305,7 @@ const linkForm = useForm({
 const submitUnlink = () => {
     router.delete(`/transcriptions/${props.transcription.id}/link`, {
         preserveScroll: true,
+        only: ['transcription'],
     });
 };
 
@@ -388,6 +394,7 @@ const saveDiffEdit = () => {
     updateForm.text_clean = diffEditedText.value;
     updateForm.patch(`/transcriptions/${props.transcription.id}`, {
         preserveScroll: true,
+        only: ['transcription'],
         onSuccess: () => {
             isDiffEditing.value = false;
             diffEditedText.value = '';
@@ -412,6 +419,7 @@ const toggleTrainingFlag = () => {
 
     trainingFlagForm.post(`/transcriptions/${props.transcription.id}/toggle-training`, {
         preserveScroll: true,
+        only: ['transcription'],
     });
 };
 
@@ -581,6 +589,7 @@ const submitRangeRecalculate = () => {
     
     rangeForm.post(`/audio-samples/${props.audioSample.id}/transcriptions/${asrTranscription.value.id}/recalculate`, {
         preserveScroll: true,
+        only: ['transcription'],
         onSuccess: () => {
             showRangeModal.value = false;
             selectionMode.value = null;
