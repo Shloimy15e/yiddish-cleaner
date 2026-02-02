@@ -35,6 +35,7 @@ export interface AudioSampleDetail {
     source_url: string | null;
     audio_duration_seconds: number | null;
     status: AudioSampleStatus;
+    is_benchmark: boolean;
     error_message: string | null;
     created_at: string;
     updated_at: string;
@@ -56,6 +57,7 @@ export interface AudioSampleListItem {
     id: number;
     name: string;
     status: AudioSampleStatus;
+    is_benchmark?: boolean;
     audio_duration_seconds: number | null;
     created_at: string;
     user_id?: number | null;

@@ -12,6 +12,7 @@ import {
     PlayIcon,
     PlusIcon,
     SparklesIcon,
+    StarIcon,
     TrashIcon,
     UserIcon,
     XCircleIcon,
@@ -116,6 +117,13 @@ const deleteAudioSample = () => {
     if (confirm('Are you sure you want to delete this audio sample?')) {
         router.delete(`/audio-samples/${props.audioSample.id}`);
     }
+};
+
+// Toggle benchmark status
+const toggleBenchmark = () => {
+    router.post(`/audio-samples/${props.audioSample.id}/toggle-benchmark`, {}, {
+        preserveScroll: true,
+    });
 };
 
 // Name editing
@@ -823,6 +831,24 @@ const steps = [
                                     <span class="text-sm font-semibold text-foreground">
                                         {{ asrTranscriptions.length }}
                                     </span>
+                                </div>
+                                <div class="flex items-center justify-between px-6 py-4">
+                                    <span class="text-sm text-muted-foreground flex items-center gap-1">
+                                        <StarIcon class="h-4 w-4 text-amber-500" />
+                                        Gold Standard
+                                    </span>
+                                    <button
+                                        @click="toggleBenchmark"
+                                        class="inline-flex items-center gap-1 text-sm font-medium rounded-md px-2 py-1 transition-colors"
+                                        :class="audioSample.is_benchmark
+                                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        "
+                                    >
+                                        <CheckCircleIcon v-if="audioSample.is_benchmark" class="h-4 w-4" />
+                                        <XCircleIcon v-else class="h-4 w-4" />
+                                        {{ audioSample.is_benchmark ? 'Yes' : 'No' }}
+                                    </button>
                                 </div>
                             </div>
                         </div>

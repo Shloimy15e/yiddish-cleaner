@@ -336,18 +336,19 @@ class TranscriptionController extends Controller
                 'validated_by' => $previousHash !== $newHash ? null : $transcription->validated_by,
             ]);
 
-            // Sync audio sample status
+            // Sync audio sample status and recalculate WER if text changed
+            $asrRecalculateCount = 0;
             if ($transcription->isLinked()) {
                 $transcription->audioSample->syncStatusFromBaseTranscription();
 
-                // Recalculate WER for all ASR transcriptions if reference text changed
                 if ($previousHash !== $newHash) {
                     $asrTranscriptions = $transcription->audioSample->asrTranscriptions()
                         ->whereNotNull('hypothesis_text')
                         ->get();
+                    $asrRecalculateCount = $asrTranscriptions->count();
 
                     foreach ($asrTranscriptions as $asrTranscription) {
-                        CalculateTranscriptionMetricsJob::dispatch(
+                        CalculateTranscriptionMetricsJob::dispatchAfterResponse(
                             audioSampleId: $transcription->audio_sample_id,
                             transcriptionId: $asrTranscription->id,
                         );
@@ -357,11 +358,8 @@ class TranscriptionController extends Controller
         }
 
         $message = 'Transcription updated.';
-        if (isset($previousHash) && isset($newHash) && $previousHash !== $newHash && $transcription->isLinked()) {
-            $asrCount = $transcription->audioSample->asrTranscriptions()->whereNotNull('hypothesis_text')->count();
-            if ($asrCount > 0) {
-                $message .= " WER is being recalculated for {$asrCount} ASR transcription(s).";
-            }
+        if (isset($asrRecalculateCount) && $asrRecalculateCount > 0) {
+            $message .= " WER is being recalculated for {$asrRecalculateCount} ASR transcription(s).";
         }
 
         return back()->with('success', $message);
