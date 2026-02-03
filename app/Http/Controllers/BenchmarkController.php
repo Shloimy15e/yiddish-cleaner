@@ -16,8 +16,19 @@ class BenchmarkController extends Controller
      */
     public function index(Request $request): Response
     {
+        $allowedSorts = ['wer', 'cer', 'sample_count'];
+        $allowedDirs = ['asc', 'desc'];
+
         $sortBy = $request->get('sort', 'wer');
         $sortDir = $request->get('dir', 'asc');
+
+        // Whitelist validation to prevent SQL injection
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'wer';
+        }
+        if (!in_array(strtolower($sortDir), $allowedDirs, true)) {
+            $sortDir = 'asc';
+        }
 
         $models = Transcription::query()
             ->select('model_name')
@@ -70,8 +81,19 @@ class BenchmarkController extends Controller
      */
     public function goldStandard(Request $request): Response
     {
+        $allowedSorts = ['wer', 'cer', 'sample_count'];
+        $allowedDirs = ['asc', 'desc'];
+
         $sortBy = $request->get('sort', 'wer');
         $sortDir = $request->get('dir', 'asc');
+
+        // Whitelist validation to prevent SQL injection
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'wer';
+        }
+        if (!in_array(strtolower($sortDir), $allowedDirs, true)) {
+            $sortDir = 'asc';
+        }
 
         // Get benchmark sample IDs
         $benchmarkSampleIds = AudioSample::goldStandard()->pluck('id');
