@@ -2,6 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 
 import AppLayout from '@/layouts/AppLayout.vue';
+import type { ColumnDef } from '@/components/ui/data-table/types';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { formatCreatedBy } from '@/lib/createdBy';
 import { type BreadcrumbItem } from '@/types';
@@ -15,6 +16,12 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Training', href: '/training' },
     { title: props.version.name, href: `/training/${props.version.id}` },
+];
+
+const columns: ColumnDef[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'clean_rate', label: 'Clean Rate' },
+    { key: 'actions', label: 'Actions' },
 ];
 
 const deleteVersion = () => {
@@ -87,39 +94,32 @@ const deleteVersion = () => {
             </div>
 
             <!-- Documents Table -->
-            <div class="rounded-xl border bg-card overflow-hidden">
-                <div class="border-b p-4">
+            <div>
+                <div class="mb-2 px-1">
                     <h2 class="font-semibold">Included Documents</h2>
                 </div>
-                <table class="w-full">
-                    <thead class="border-b bg-muted/50">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Name</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Clean Rate</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        <tr v-for="doc in version.documents" :key="doc.id" class="hover:bg-muted/30">
-                            <td class="px-4 py-3 font-medium">{{ doc.name }}</td>
-                            <td class="px-4 py-3">
-                                <span v-if="doc.clean_rate !== null" :class="['rounded-full px-2 py-0.5 text-xs font-medium', getCleanRateCategoryClass(doc.clean_rate_category)]">
-                                    {{ doc.clean_rate }}%
-                                </span>
-                            </td>
-                            <td class="px-4 py-3">
-                                <Link :href="`/documents/${doc.id}`" class="text-sm text-primary hover:underline">
-                                    View
-                                </Link>
-                            </td>
-                        </tr>
-                        <tr v-if="version.documents.length === 0">
-                            <td colspan="3" class="px-4 py-8 text-center text-muted-foreground">
-                                No documents in this version
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <DataTable
+                    :columns="columns"
+                    :items="version.documents"
+                    item-key="id"
+                    empty-message="No documents in this version"
+                >
+                    <template #cell-name="{ item }">
+                        <span class="font-medium">{{ item.name }}</span>
+                    </template>
+
+                    <template #cell-clean_rate="{ item }">
+                        <span v-if="item.clean_rate !== null" :class="['rounded-full px-2 py-0.5 text-xs font-medium', getCleanRateCategoryClass(item.clean_rate_category as string | null)]">
+                            {{ item.clean_rate }}%
+                        </span>
+                    </template>
+
+                    <template #cell-actions="{ item }">
+                        <Link :href="`/documents/${item.id}`" class="text-sm text-primary hover:underline">
+                            View
+                        </Link>
+                    </template>
+                </DataTable>
             </div>
         </div>
     </AppLayout>

@@ -207,7 +207,7 @@ watch(() => props.src, () => {
 </script>
 
 <template>
-    <div class="flex items-center gap-3 rounded-xl border bg-card p-4">
+    <div class="flex items-center gap-2 rounded-xl border bg-card p-3 sm:gap-3 sm:p-4">
         <!-- Hidden audio element -->
         <audio
             ref="audioRef"

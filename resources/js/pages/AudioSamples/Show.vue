@@ -18,8 +18,9 @@ import {
     XCircleIcon,
 } from '@heroicons/vue/24/outline';
 import { CheckIcon } from '@heroicons/vue/24/solid';
+import { Switch } from '@headlessui/vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { formatErrorRate, getWerColor } from '@/lib/asrMetrics';
 import { formatCreatedBy } from '@/lib/createdBy';
@@ -36,14 +37,15 @@ import type { BaseTranscription } from '@/types/transcriptions';
 const props = defineProps<{
     audioSample: AudioSampleDetail;
     audioMedia: AudioMedia | null;
+    asrProviders?: Record<string, AsrProvider>;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Audio Samples', href: '/audio-samples' },
+    { title: 'Dashboard', href: route('dashboard') },
+    { title: 'Audio Samples', href: route('audio-samples.index') },
     {
         title: props.audioSample.name,
-        href: `/audio-samples/${props.audioSample.id}`,
+        href: route('audio-samples.show', { audioSample: props.audioSample.id }),
     },
 ];
 
@@ -74,11 +76,6 @@ const failedAsrTranscriptions = computed(() =>
     ),
 );
 
-// Can run ASR benchmarks?
-const canBenchmark = computed(
-    () => hasAudio.value && hasBaseTranscription.value && baseIsValidated.value,
-);
-
 // Link modal state
 const showLinkModal = ref(false);
 
@@ -92,7 +89,7 @@ const unlinkBaseTranscription = () => {
     if (!confirm('Unlink this base transcription from the audio sample?'))
         return;
 
-    router.delete(`/transcriptions/${baseTranscription.value.id}/link`, {
+    router.delete(route('transcriptions.unlink', { transcription: baseTranscription.value.id }), {
         preserveScroll: true,
     });
 };
@@ -104,7 +101,7 @@ const audioForm = useForm({
 
 const uploadAudio = () => {
     if (!audioForm.audio) return;
-    audioForm.post(`/audio-samples/${props.audioSample.id}/audio`, {
+    audioForm.post(route('audio-samples.upload-audio', { audioSample: props.audioSample.id }), {
         preserveScroll: true,
         onSuccess: () => {
             audioForm.reset();
@@ -115,14 +112,19 @@ const uploadAudio = () => {
 // Delete audio sample
 const deleteAudioSample = () => {
     if (confirm('Are you sure you want to delete this audio sample?')) {
-        router.delete(`/audio-samples/${props.audioSample.id}`);
+        router.delete(route('audio-samples.destroy', { audioSample: props.audioSample.id }));
     }
 };
 
 // Toggle benchmark status
+const togglingBenchmark = ref(false);
 const toggleBenchmark = () => {
-    router.post(`/audio-samples/${props.audioSample.id}/toggle-benchmark`, {}, {
+    togglingBenchmark.value = true;
+    router.post(route('audio-samples.toggle-benchmark', { audioSample: props.audioSample.id }), {}, {
         preserveScroll: true,
+        onFinish: () => {
+            togglingBenchmark.value = false;
+        },
     });
 };
 
@@ -143,7 +145,7 @@ const cancelEditingName = () => {
 };
 
 const saveName = () => {
-    nameForm.patch(`/audio-samples/${props.audioSample.id}`, {
+    nameForm.patch(route('audio-samples.update', { audioSample: props.audioSample.id }), {
         preserveScroll: true,
         onSuccess: () => {
             isEditingName.value = false;
@@ -158,8 +160,7 @@ const saveName = () => {
 const showTranscriptionForm = ref(false);
 const showManualEntryForm = ref(false);
 
-// ASR providers state
-const asrProviders = ref<Record<string, AsrProvider>>({});
+// ASR providers state (loaded via deferred prop)
 const loadingAsrModels = ref(false);
 const asrProviderModels = ref<{ id: string; name: string }[]>([]);
 
@@ -195,7 +196,7 @@ const manualProviderValue = computed(() =>
 );
 
 const manualModelOptions = computed(
-    () => asrProviders.value[manualProviderSelection.value]?.models ?? [],
+    () => (props.asrProviders ?? {})[manualProviderSelection.value]?.models ?? [],
 );
 
 const isManualModelCustom = computed(
@@ -213,42 +214,22 @@ const manualModelValue = computed(() =>
 
 // ASR provider options
 const asrProviderOptions = computed(() =>
-    Object.entries(asrProviders.value).map(([key, value]) => ({
+    Object.entries(props.asrProviders ?? {}).map(([key, value]) => ({
         id: key,
         name: value.name,
         hasCredential: value.has_credential,
     })),
 );
 
-// Fetch ASR providers
-const fetchAsrProviders = async () => {
-    try {
-        const response = await fetch('/api/asr/providers');
-        const data = await response.json();
-        asrProviders.value = data;
-
-        if (data[transcribeForm.provider]) {
-            asrProviderModels.value = data[transcribeForm.provider].models;
+// Update ASR models for selected provider from prop data
+const updateAsrModelsForProvider = (provider: string) => {
+    const providers = props.asrProviders ?? {};
+    if (providers[provider]) {
+        asrProviderModels.value = providers[provider].models;
+        const modelIds = asrProviderModels.value.map((m: { id: string; name: string }) => m.id);
+        if (!modelIds.includes(transcribeForm.model)) {
+            transcribeForm.model = providers[provider].default_model;
         }
-    } catch (error) {
-        console.error('Failed to fetch ASR providers:', error);
-    }
-};
-
-// Fetch ASR models for selected provider
-const fetchAsrModelsForProvider = async (provider: string) => {
-    loadingAsrModels.value = true;
-    try {
-        if (asrProviders.value[provider]) {
-            asrProviderModels.value = asrProviders.value[provider].models;
-            const modelIds = asrProviderModels.value.map((m) => m.id);
-            if (!modelIds.includes(transcribeForm.model)) {
-                transcribeForm.model =
-                    asrProviders.value[provider].default_model;
-            }
-        }
-    } finally {
-        loadingAsrModels.value = false;
     }
 };
 
@@ -256,19 +237,27 @@ const fetchAsrModelsForProvider = async (provider: string) => {
 watch(
     () => transcribeForm.provider,
     (newProvider) => {
-        fetchAsrModelsForProvider(newProvider);
+        updateAsrModelsForProvider(newProvider);
     },
 );
 
+// Initialize models when deferred prop loads
 watch(
-    () => asrProviders.value,
+    () => props.asrProviders,
     (providers) => {
-        if (!manualProviderSelection.value) {
-            const firstProvider = Object.keys(providers)[0];
-            manualProviderSelection.value = firstProvider || 'custom';
+        if (providers) {
+            // Initialize transcribe form models
+            if (providers[transcribeForm.provider]) {
+                asrProviderModels.value = providers[transcribeForm.provider].models;
+            }
+            // Initialize manual provider selection
+            if (!manualProviderSelection.value) {
+                const firstProvider = Object.keys(providers)[0];
+                manualProviderSelection.value = firstProvider || 'custom';
+            }
         }
     },
-    { deep: true },
+    { immediate: true },
 );
 
 watch(
@@ -278,7 +267,8 @@ watch(
             manualModelSelection.value = 'custom';
             return;
         }
-        const models = asrProviders.value[provider]?.models ?? [];
+        const providers = props.asrProviders ?? {};
+        const models = providers[provider]?.models ?? [];
         if (models.length === 0) {
             manualModelSelection.value = 'custom';
             return;
@@ -289,23 +279,9 @@ watch(
     },
 );
 
-// Fetch ASR providers on mount if ready for benchmarking
-onMounted(() => {
-    if (canBenchmark.value) {
-        fetchAsrProviders();
-    }
-});
-
-// Watch for status change to ready
-watch(canBenchmark, (ready) => {
-    if (ready && Object.keys(asrProviders.value).length === 0) {
-        fetchAsrProviders();
-    }
-});
-
 // Submit ASR transcription
 const submitTranscription = () => {
-    transcribeForm.post(`/audio-samples/${props.audioSample.id}/transcribe`, {
+    transcribeForm.post(route('audio-samples.transcribe', { audioSample: props.audioSample.id }), {
         preserveScroll: true,
         onSuccess: () => {
             showTranscriptionForm.value = false;
@@ -319,7 +295,7 @@ const submitManualTranscription = () => {
     manualTranscriptionForm.provider = manualProviderValue.value;
     manualTranscriptionForm.model = manualModelValue.value;
     manualTranscriptionForm.post(
-        `/audio-samples/${props.audioSample.id}/transcriptions`,
+        route('transcriptions.store-asr', { audioSample: props.audioSample.id }),
         {
             preserveScroll: true,
             onSuccess: () => {
@@ -336,7 +312,7 @@ const submitManualTranscription = () => {
 const deleteTranscription = (transcriptionId: number) => {
     if (confirm('Are you sure you want to delete this transcription?')) {
         router.delete(
-            `/audio-samples/${props.audioSample.id}/transcriptions/${transcriptionId}`,
+            route('transcriptions.destroy-asr', { audioSample: props.audioSample.id, transcription: transcriptionId }),
             {
                 preserveScroll: true,
             },
@@ -397,11 +373,11 @@ const steps = [
                                 </div>
                                 <div>
                                     <!-- Editable name -->
-                                    <div v-if="isEditingName" class="flex items-center gap-2">
+                                    <div v-if="isEditingName" class="flex flex-wrap items-center gap-2">
                                         <input
                                             v-model="nameForm.name"
                                             type="text"
-                                            class="rounded-lg border border-border bg-background px-3 py-1.5 text-2xl font-bold tracking-tight focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                            class="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-lg font-bold tracking-tight focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto sm:text-2xl"
                                             @keyup.enter="saveName"
                                             @keyup.escape="cancelEditingName"
                                         />
@@ -419,11 +395,11 @@ const steps = [
                                             Cancel
                                         </button>
                                     </div>
-                                    <h1 v-else class="group flex items-center gap-2 text-3xl font-bold tracking-tight text-foreground">
+                                    <h1 v-else class="group flex items-center gap-2 text-xl font-bold tracking-tight text-foreground sm:text-3xl">
                                         {{ audioSample.name }}
                                         <button
                                             @click="startEditingName"
-                                            class="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                            class="rounded p-2 text-muted-foreground opacity-100 transition-opacity hover:bg-muted hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
                                             title="Edit name"
                                         >
                                             <PencilIcon class="h-4 w-4" />
@@ -449,7 +425,7 @@ const steps = [
                             </div>
                         </div>
                         <button @click="deleteAudioSample"
-                            class="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-all hover:border-red-500/50 hover:bg-red-500/20">
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-all hover:border-red-500/50 hover:bg-red-500/20 sm:w-auto sm:justify-start">
                             <TrashIcon class="h-4 w-4" />
                             Delete
                         </button>
@@ -457,13 +433,13 @@ const steps = [
                 </div>
 
                 <!-- Progress Steps -->
-                <div class="mb-8 overflow-hidden rounded-xl border border-border bg-card p-6">
+                <div class="mb-8 overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-6">
                     <Stepper :default-value="workflowStep + 1" :linear="false"
                         class="flex w-full items-start justify-between gap-2">
                         <StepperItem v-for="(step, stepIdx) in steps" :key="step.name" :step="stepIdx + 1"
                             class="relative flex flex-1 flex-col items-center gap-2">
                             <StepperSeparator v-if="stepIdx !== steps.length - 1"
-                                class="absolute top-5 right-[calc(-50%+24px)] left-[calc(50%+24px)] block h-0.5 shrink-0 rounded-full group-data-[state=completed]:bg-primary" />
+                                class="absolute top-5 right-[calc(-50%+24px)] left-[calc(50%+24px)] hidden h-0.5 shrink-0 rounded-full group-data-[state=completed]:bg-primary sm:block" />
                             <StepperTrigger as-child>
                                 <StepperIndicator
                                     class="group-data-[state=completed]:shadow-glow-sm z-10 h-10 w-10 rounded-full border-2 text-sm font-semibold transition-all duration-300 group-data-[state=active]:border-primary group-data-[state=active]:bg-primary/20 group-data-[state=active]:text-primary group-data-[state=completed]:border-primary group-data-[state=completed]:bg-primary group-data-[state=completed]:text-white group-data-[state=inactive]:border-border group-data-[state=inactive]:bg-muted group-data-[state=inactive]:text-muted-foreground">
@@ -491,7 +467,7 @@ const steps = [
                         <!-- Audio Card -->
                         <div
                             class="overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-primary/50">
-                            <div class="border-b border-border px-6 py-4">
+                            <div class="border-b border-border px-4 py-3 sm:px-6 sm:py-4">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
                                         <div
@@ -526,7 +502,7 @@ const steps = [
                                 </div>
                             </div>
 
-                            <div class="p-6">
+                            <div class="p-4 sm:p-6">
                                 <AudioPlayer v-if="hasAudio && audioMedia?.url" :src="audioMedia.url"
                                     :name="audioMedia.name" :file-size="audioMedia.size" />
 
@@ -608,7 +584,7 @@ const steps = [
                         <!-- Base Transcription Card -->
                         <div
                             class="overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-primary/50">
-                            <div class="border-b border-border px-6 py-4">
+                            <div class="border-b border-border px-4 py-3 sm:px-6 sm:py-4">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
                                         <div
@@ -655,7 +631,7 @@ const steps = [
                                 </div>
                             </div>
 
-                            <div class="p-6">
+                            <div class="p-4 sm:p-6">
                                 <!-- No Base Transcription -->
                                 <div v-if="!hasBaseTranscription" class="py-8 text-center">
                                     <div
@@ -675,7 +651,7 @@ const steps = [
                                             <LinkIcon class="h-4 w-4" />
                                             Link Existing
                                         </button>
-                                        <Link href="/transcriptions/create"
+                                        <Link :href="route('transcriptions.create')"
                                             class="inline-flex items-center gap-2 rounded-lg border border-secondary px-6 py-3 font-medium text-secondary transition-all hover:bg-secondary/10">
                                             <PlusIcon class="h-4 w-4" />
                                             Create New
@@ -687,7 +663,7 @@ const steps = [
                                 <div v-else>
                                     <div class="mb-4 flex items-start justify-between">
                                         <div>
-                                            <Link :href="`/transcriptions/${baseTranscription!.id}`"
+                                            <Link :href="route('transcriptions.show', { transcription: baseTranscription!.id })"
                                                 class="text-lg font-semibold text-foreground transition-colors hover:text-primary">
                                                 {{
                                                     baseTranscription!.name ||
@@ -745,7 +721,7 @@ const steps = [
                                         </p>
                                     </div>
 
-                                    <Link :href="`/transcriptions/${baseTranscription!.id}`"
+                                    <Link :href="route('transcriptions.show', { transcription: baseTranscription!.id })"
                                         class="hover:shadow-glow-sm inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90">
                                         <ArrowTopRightOnSquareIcon class="h-4 w-4" />
                                         {{
@@ -765,7 +741,7 @@ const steps = [
                     <div class="space-y-6">
                         <!-- Status Card -->
                         <div class="overflow-hidden rounded-xl border border-border bg-card">
-                            <div class="bg-primary px-6 py-8 text-center">
+                            <div class="bg-primary px-4 py-6 text-center sm:px-6 sm:py-8">
                                 <div
                                     class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
                                     <ChartBarIcon class="h-7 w-7 text-white" />
@@ -778,7 +754,7 @@ const steps = [
                                 </p>
                             </div>
                             <div class="divide-y divide-border">
-                                <div class="flex items-center justify-between px-6 py-4">
+                                <div class="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
                                     <span class="text-sm text-muted-foreground">Audio</span>
                                     <span class="inline-flex items-center gap-1 text-sm font-medium" :class="hasAudio
                                             ? 'text-success'
@@ -789,7 +765,7 @@ const steps = [
                                         {{ hasAudio ? 'Uploaded' : 'Missing' }}
                                     </span>
                                 </div>
-                                <div class="flex items-center justify-between px-6 py-4">
+                                <div class="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
                                     <span class="text-sm text-muted-foreground">Transcript</span>
                                     <span class="inline-flex items-center gap-1 text-sm font-medium" :class="hasBaseTranscription
                                             ? 'text-success'
@@ -804,7 +780,7 @@ const steps = [
                                         }}
                                     </span>
                                 </div>
-                                <div class="flex items-center justify-between px-6 py-4">
+                                <div class="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
                                     <span class="text-sm text-muted-foreground">Cleaned</span>
                                     <span class="inline-flex items-center gap-1 text-sm font-medium" :class="baseIsCleaned
                                             ? 'text-success'
@@ -815,7 +791,7 @@ const steps = [
                                         {{ baseIsCleaned ? 'Yes' : 'No' }}
                                     </span>
                                 </div>
-                                <div class="flex items-center justify-between px-6 py-4">
+                                <div class="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
                                     <span class="text-sm text-muted-foreground">Validated</span>
                                     <span class="inline-flex items-center gap-1 text-sm font-medium" :class="baseIsValidated
                                             ? 'text-success'
@@ -826,35 +802,38 @@ const steps = [
                                         {{ baseIsValidated ? 'Yes' : 'No' }}
                                     </span>
                                 </div>
-                                <div class="flex items-center justify-between px-6 py-4">
+                                <div class="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
                                     <span class="text-sm text-muted-foreground">Benchmarks</span>
                                     <span class="text-sm font-semibold text-foreground">
                                         {{ asrTranscriptions.length }}
                                     </span>
                                 </div>
-                                <div class="flex items-center justify-between px-6 py-4">
+                                <div class="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
                                     <span class="text-sm text-muted-foreground flex items-center gap-1">
                                         <StarIcon class="h-4 w-4 text-amber-500" />
                                         Gold Standard
                                     </span>
-                                    <button
-                                        @click="toggleBenchmark"
-                                        class="inline-flex items-center gap-1 text-sm font-medium rounded-md px-2 py-1 transition-colors"
-                                        :class="audioSample.is_benchmark
-                                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                        "
+                                    <Switch
+                                        :model-value="audioSample.is_benchmark"
+                                        @update:model-value="toggleBenchmark"
+                                        :disabled="togglingBenchmark"
+                                        :class="audioSample.is_benchmark ? 'bg-amber-500' : 'bg-muted'"
+                                        class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        <CheckCircleIcon v-if="audioSample.is_benchmark" class="h-4 w-4" />
-                                        <XCircleIcon v-else class="h-4 w-4" />
-                                        {{ audioSample.is_benchmark ? 'Yes' : 'No' }}
-                                    </button>
+                                        <span
+                                            aria-hidden="true"
+                                            :class="audioSample.is_benchmark ? 'translate-x-5' : 'translate-x-0'"
+                                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out"
+                                        >
+                                            <ArrowPathIcon v-if="togglingBenchmark" class="h-3 w-3 animate-spin text-muted-foreground absolute inset-0 m-auto" />
+                                        </span>
+                                    </Switch>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Quick Info -->
-                        <div class="rounded-xl border border-border bg-card p-6">
+                        <div class="rounded-xl border border-border bg-card p-4 sm:p-6">
                             <h3 class="mb-4 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
                                 Details
                             </h3>
@@ -897,7 +876,7 @@ const steps = [
                 <div id="benchmark-step" class="mt-6">
                     <AudioSampleBenchmarkSection :audio-sample-id="audioSample.id" :is-validated="baseIsValidated"
                         :show-transcription-form="showTranscriptionForm" :show-manual-entry-form="showManualEntryForm"
-                        :transcriptions="asrTranscriptions" :asr-providers="asrProviders"
+                        :transcriptions="asrTranscriptions" :asr-providers="asrProviders ?? {}"
                         :asr-provider-options="asrProviderOptions" :asr-provider-models="asrProviderModels"
                         :loading-asr-models="loadingAsrModels" :transcribe-form="transcribeForm"
                         :manual-transcription-form="manualTranscriptionForm"

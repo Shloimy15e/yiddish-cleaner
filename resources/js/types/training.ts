@@ -1,4 +1,5 @@
 export interface TrainingDocument {
+    [key: string]: unknown;
     id: number;
     name: string;
     clean_rate: number | null;

@@ -10,8 +10,6 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { type BreadcrumbItem } from '@/types';
 
-import PasswordController from '@/actions/App/Http/Controllers/Settings/PasswordController';
-
 const breadcrumbItems: BreadcrumbItem[] = [
     {
         title: 'Password settings',
@@ -34,7 +32,8 @@ const breadcrumbItems: BreadcrumbItem[] = [
                 />
 
                 <Form
-                    v-bind="PasswordController.update.form()"
+                    :action="route('settings.user-password.update')"
+                    method="put"
                     :options="{
                         preserveScroll: true,
                     }"

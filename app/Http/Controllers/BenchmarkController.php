@@ -12,6 +12,27 @@ use Inertia\Response;
 class BenchmarkController extends Controller
 {
     /**
+     * SQL expression for Custom WER per transcription.
+     *
+     * Uses Levenshtein insertions + deletions + critical replacements from word review.
+     * Respects the custom WER range (wer_hyp_start/wer_hyp_end).
+     */
+    private function customWerSql(): string
+    {
+        return 'CASE WHEN reference_words > 0 THEN (
+            COALESCE(insertions, 0) + COALESCE(deletions, 0) + (
+                SELECT COUNT(*) FROM transcription_words
+                WHERE transcription_words.transcription_id = transcriptions.id
+                AND transcription_words.is_critical_error = 1
+                AND transcription_words.is_deleted = 0
+                AND transcription_words.is_inserted = 0
+                AND (transcriptions.wer_hyp_start IS NULL OR transcription_words.word_index >= transcriptions.wer_hyp_start)
+                AND (transcriptions.wer_hyp_end IS NULL OR transcription_words.word_index <= transcriptions.wer_hyp_end)
+            )
+        ) / reference_words * 100 ELSE NULL END';
+    }
+
+    /**
      * Display the benchmark leaderboard.
      */
     public function index(Request $request): Response
@@ -19,11 +40,14 @@ class BenchmarkController extends Controller
         $sortBy = $request->get('sort', 'wer');
         $sortDir = $request->get('dir', 'asc');
 
+        $customWerSql = $this->customWerSql();
+
         $models = Transcription::query()
             ->select('model_name')
             ->selectRaw('COUNT(*) as sample_count')
             ->selectRaw('AVG(wer) as avg_wer')
             ->selectRaw('AVG(cer) as avg_cer')
+            ->selectRaw("AVG({$customWerSql}) as avg_custom_wer")
             ->selectRaw('MIN(wer) as best_wer')
             ->selectRaw('MAX(wer) as worst_wer')
             ->selectRaw('AVG(substitutions) as avg_substitutions')
@@ -32,13 +56,14 @@ class BenchmarkController extends Controller
             ->whereNotNull('wer')
             ->groupBy('model_name')
             ->havingRaw('COUNT(*) >= 1')
-            ->orderBy($sortBy === 'wer' ? 'avg_wer' : ($sortBy === 'cer' ? 'avg_cer' : 'sample_count'), $sortDir)
+            ->orderBy($sortBy === 'custom_wer' ? 'avg_custom_wer' : ($sortBy === 'wer' ? 'avg_wer' : ($sortBy === 'cer' ? 'avg_cer' : 'sample_count')), $sortDir)
             ->get()
             ->map(function ($model, $index) {
                 return [
                     'rank' => $index + 1,
                     'model_name' => $model->model_name,
                     'sample_count' => $model->sample_count,
+                    'avg_custom_wer' => $model->avg_custom_wer !== null ? round($model->avg_custom_wer, 2) : null,
                     'avg_wer' => round($model->avg_wer, 2),
                     'avg_cer' => round($model->avg_cer, 2),
                     'best_wer' => round($model->best_wer, 2),
@@ -52,6 +77,7 @@ class BenchmarkController extends Controller
         $stats = [
             'total_transcriptions' => Transcription::count(),
             'total_models' => Transcription::distinct('model_name')->count('model_name'),
+            'avg_custom_wer' => round(Transcription::whereNotNull('wer')->selectRaw("AVG({$customWerSql}) as val")->value('val') ?? 0, 2),
             'avg_wer' => round(Transcription::whereNotNull('wer')->avg('wer') ?? 0, 2),
             'avg_cer' => round(Transcription::whereNotNull('cer')->avg('cer') ?? 0, 2),
         ];
@@ -76,12 +102,15 @@ class BenchmarkController extends Controller
         // Get benchmark sample IDs
         $benchmarkSampleIds = AudioSample::goldStandard()->pluck('id');
 
+        $customWerSql = $this->customWerSql();
+
         // Get model stats for benchmark samples only
         $models = Transcription::query()
             ->select('model_name')
             ->selectRaw('COUNT(*) as sample_count')
             ->selectRaw('AVG(wer) as avg_wer')
             ->selectRaw('AVG(cer) as avg_cer')
+            ->selectRaw("AVG({$customWerSql}) as avg_custom_wer")
             ->selectRaw('MIN(wer) as best_wer')
             ->selectRaw('MAX(wer) as worst_wer')
             ->selectRaw('AVG(substitutions) as avg_substitutions')
@@ -92,13 +121,14 @@ class BenchmarkController extends Controller
             ->where('type', 'asr')
             ->groupBy('model_name')
             ->havingRaw('COUNT(*) >= 1')
-            ->orderBy($sortBy === 'wer' ? 'avg_wer' : ($sortBy === 'cer' ? 'avg_cer' : 'sample_count'), $sortDir)
+            ->orderBy($sortBy === 'custom_wer' ? 'avg_custom_wer' : ($sortBy === 'wer' ? 'avg_wer' : ($sortBy === 'cer' ? 'avg_cer' : 'sample_count')), $sortDir)
             ->get()
             ->map(function ($model, $index) {
                 return [
                     'rank' => $index + 1,
                     'model_name' => $model->model_name,
                     'sample_count' => $model->sample_count,
+                    'avg_custom_wer' => $model->avg_custom_wer !== null ? round($model->avg_custom_wer, 2) : null,
                     'avg_wer' => round($model->avg_wer, 2),
                     'avg_cer' => round($model->avg_cer, 2),
                     'best_wer' => round($model->best_wer, 2),
@@ -117,6 +147,7 @@ class BenchmarkController extends Controller
             ->get()
             ->map(function ($sample) {
                 $bestAsr = $sample->asrTranscriptions->first();
+
                 return [
                     'id' => $sample->id,
                     'name' => $sample->name,
@@ -128,20 +159,16 @@ class BenchmarkController extends Controller
                 ];
             });
 
+        $benchmarkQuery = Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
+            ->where('type', 'asr')
+            ->whereNotNull('wer');
+
         $stats = [
             'benchmark_samples' => $benchmarkSamples->count(),
-            'total_transcriptions' => Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
-                ->where('type', 'asr')
-                ->whereNotNull('wer')
-                ->count(),
-            'total_models' => Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
-                ->where('type', 'asr')
-                ->distinct('model_name')
-                ->count('model_name'),
-            'avg_wer' => round(Transcription::whereIn('audio_sample_id', $benchmarkSampleIds)
-                ->where('type', 'asr')
-                ->whereNotNull('wer')
-                ->avg('wer') ?? 0, 2),
+            'total_transcriptions' => (clone $benchmarkQuery)->count(),
+            'total_models' => (clone $benchmarkQuery)->distinct('model_name')->count('model_name'),
+            'avg_custom_wer' => round((clone $benchmarkQuery)->selectRaw("AVG({$customWerSql}) as val")->value('val') ?? 0, 2),
+            'avg_wer' => round((clone $benchmarkQuery)->avg('wer') ?? 0, 2),
         ];
 
         return Inertia::render('Benchmark/GoldStandard', [
@@ -159,6 +186,7 @@ class BenchmarkController extends Controller
     public function model(Request $request, string $modelName): Response
     {
         $modelName = urldecode($modelName);
+        $customWerSql = $this->customWerSql();
 
         $transcriptions = Transcription::query()
             ->with(['audioSample:id,name', 'audioSample.baseTranscription:id,audio_sample_id,text_clean'])
@@ -166,11 +194,18 @@ class BenchmarkController extends Controller
             ->orderBy('wer', 'asc')
             ->paginate(25);
 
+        // Append Custom WER attributes to each transcription
+        $transcriptions->getCollection()->each(fn ($t) => $t->append([
+            'custom_wer', 'custom_wer_error_count',
+            'custom_wer_critical_replacement_count', 'reviewed_word_count',
+        ]));
+
         $stats = Transcription::query()
             ->where('model_name', $modelName)
             ->selectRaw('COUNT(*) as sample_count')
             ->selectRaw('AVG(wer) as avg_wer')
             ->selectRaw('AVG(cer) as avg_cer')
+            ->selectRaw("AVG({$customWerSql}) as avg_custom_wer")
             ->selectRaw('MIN(wer) as best_wer')
             ->selectRaw('MAX(wer) as worst_wer')
             ->selectRaw('STDDEV(wer) as stddev_wer')
@@ -195,6 +230,7 @@ class BenchmarkController extends Controller
             'transcriptions' => $transcriptions,
             'stats' => [
                 'sample_count' => $stats->sample_count,
+                'avg_custom_wer' => $stats->avg_custom_wer !== null ? round($stats->avg_custom_wer, 2) : null,
                 'avg_wer' => round($stats->avg_wer ?? 0, 2),
                 'avg_cer' => round($stats->avg_cer ?? 0, 2),
                 'best_wer' => round($stats->best_wer ?? 0, 2),
@@ -242,10 +278,14 @@ class BenchmarkController extends Controller
                 ->with('audioSample:id,name')
                 ->whereIn('audio_sample_id', $sampleIds)
                 ->whereIn('model_name', $selectedModels)
-                ->get()
-                ->groupBy('audio_sample_id');
+                ->get();
 
-            foreach ($transcriptions as $sampleId => $sampleTranscriptions) {
+            // Append Custom WER to each transcription
+            $transcriptions->each(fn ($t) => $t->append(['custom_wer']));
+
+            $groupedTranscriptions = $transcriptions->groupBy('audio_sample_id');
+
+            foreach ($groupedTranscriptions as $sampleId => $sampleTranscriptions) {
                 $sample = $sampleTranscriptions->first()->audioSample;
                 $modelResults = [];
 
@@ -254,6 +294,7 @@ class BenchmarkController extends Controller
                     $modelResults[$model] = $t ? [
                         'wer' => $t->wer,
                         'cer' => $t->cer,
+                        'custom_wer' => $t->custom_wer,
                         'hypothesis_text' => $t->hypothesis_text,
                     ] : null;
                 }
@@ -266,13 +307,15 @@ class BenchmarkController extends Controller
             }
         }
 
+        $customWerSql = $this->customWerSql();
         $modelStats = [];
         foreach ($selectedModels as $model) {
             $stats = Transcription::where('model_name', $model)
-                ->selectRaw('AVG(wer) as avg_wer, AVG(cer) as avg_cer, COUNT(*) as count')
+                ->selectRaw("AVG(wer) as avg_wer, AVG(cer) as avg_cer, AVG({$customWerSql}) as avg_custom_wer, COUNT(*) as count")
                 ->first();
 
             $modelStats[$model] = [
+                'avg_custom_wer' => $stats->avg_custom_wer !== null ? round($stats->avg_custom_wer, 2) : null,
                 'avg_wer' => round($stats->avg_wer ?? 0, 2),
                 'avg_cer' => round($stats->avg_cer ?? 0, 2),
                 'count' => $stats->count,

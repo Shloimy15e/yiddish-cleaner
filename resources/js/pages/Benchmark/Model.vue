@@ -6,9 +6,11 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { getWerColor } from '@/lib/asrMetrics';
 import { type BreadcrumbItem } from '@/types';
 import type { BenchmarkTranscription } from '@/types/transcriptions';
+import type { ColumnDef } from '@/components/ui/data-table/types';
 
 interface Stats {
     sample_count: number;
+    avg_custom_wer: number | null;
     avg_wer: number;
     avg_cer: number;
     best_wer: number;
@@ -38,6 +40,16 @@ const getSourceBadge = (source: string) => {
     }
     return { label: 'Manual', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' };
 };
+
+const columns: ColumnDef<BenchmarkTranscription>[] = [
+    { key: 'audio_sample.name', label: 'Sample' },
+    { key: 'custom_wer', label: 'Custom WER' },
+    { key: 'wer', label: 'WER' },
+    { key: 'cer', label: 'CER' },
+    { key: 'source', label: 'Source' },
+    { key: 'notes', label: 'Notes', cellClass: 'text-sm text-muted-foreground max-w-xs truncate' },
+    { key: 'created_at', label: 'Date', cellClass: 'text-sm text-muted-foreground' },
+];
 </script>
 
 <template>
@@ -63,14 +75,19 @@ const getSourceBadge = (source: string) => {
             </div>
 
             <!-- Stats Cards -->
-            <div class="grid gap-4 md:grid-cols-5">
+            <div class="grid gap-4 md:grid-cols-6">
+                <div class="rounded-xl border bg-card p-4">
+                    <div class="text-sm text-muted-foreground">Avg Custom WER</div>
+                    <div v-if="stats.avg_custom_wer !== null" :class="['text-2xl font-bold', getWerColor(stats.avg_custom_wer, 'benchmark')]">{{ stats.avg_custom_wer }}%</div>
+                    <div v-else class="text-2xl font-bold text-muted-foreground">&mdash;</div>
+                </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Average WER</div>
-                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_wer, 'benchmark')]">{{ stats.avg_wer }}%</div>
+                    <div class="text-2xl font-bold text-muted-foreground">{{ stats.avg_wer }}%</div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Average CER</div>
-                    <div :class="['text-2xl font-bold', getWerColor(stats.avg_cer, 'benchmark')]">{{ stats.avg_cer }}%</div>
+                    <div class="text-2xl font-bold text-muted-foreground">{{ stats.avg_cer }}%</div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
                     <div class="text-sm text-muted-foreground">Best WER</div>
@@ -110,53 +127,52 @@ const getSourceBadge = (source: string) => {
             </div>
 
             <!-- Transcriptions List -->
-            <div class="rounded-xl border bg-card overflow-hidden">
-                <div class="px-4 py-3 border-b bg-muted/50">
+            <div>
+                <div class="px-4 py-3 border-b bg-muted/50 rounded-t-xl border-x border-t">
                     <h2 class="font-semibold">Sample Results</h2>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-muted/30">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Sample</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">WER</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">CER</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Source</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Notes</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Date</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            <tr v-for="t in transcriptions.data" :key="t.id" class="hover:bg-muted/30">
-                                <td class="px-4 py-3">
-                                    <Link :href="`/audio-samples/${t.audio_sample.id}`" class="font-medium text-primary hover:underline">
-                                        {{ t.audio_sample.name }}
-                                    </Link>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span :class="['font-bold', getWerColor(t.wer, 'benchmark')]">{{ t.wer }}%</span>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span :class="['font-medium', getWerColor(t.cer, 'benchmark')]">{{ t.cer }}%</span>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', getSourceBadge(t.source).class]">
-                                        {{ getSourceBadge(t.source).label }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 text-sm text-muted-foreground max-w-xs truncate">
-                                    {{ t.notes || '-' }}
-                                </td>
-                                <td class="px-4 py-3 text-sm text-muted-foreground">{{ t.created_at }}</td>
-                            </tr>
-                            <tr v-if="transcriptions.data.length === 0">
-                                <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
-                                    No transcriptions found for this model.
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <DataTable
+                    :columns="columns"
+                    :items="transcriptions.data"
+                    item-key="id"
+                    class="rounded-t-none border-t-0"
+                    empty-message="No transcriptions found for this model."
+                >
+                    <template #cell-audio_sample.name="{ item }">
+                        <Link :href="`/audio-samples/${item.audio_sample.id}`" class="font-medium text-primary hover:underline">
+                            {{ item.audio_sample.name }}
+                        </Link>
+                    </template>
+
+                    <template #cell-custom_wer="{ item }">
+                        <span v-if="item.custom_wer !== null" :class="['font-bold', getWerColor(item.custom_wer, 'benchmark')]">
+                            {{ item.custom_wer }}%
+                        </span>
+                        <span v-else class="text-muted-foreground">&mdash;</span>
+                    </template>
+
+                    <template #cell-wer="{ item }">
+                        <span class="font-medium text-muted-foreground">{{ item.wer }}%</span>
+                    </template>
+
+                    <template #cell-cer="{ item }">
+                        <span class="text-muted-foreground">{{ item.cer }}%</span>
+                    </template>
+
+                    <template #cell-source="{ item }">
+                        <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', getSourceBadge(item.source).class]">
+                            {{ getSourceBadge(item.source).label }}
+                        </span>
+                    </template>
+
+                    <template #cell-notes="{ item }">
+                        {{ item.notes || '-' }}
+                    </template>
+
+                    <template #cell-created_at="{ value }">
+                        {{ value }}
+                    </template>
+                </DataTable>
             </div>
         </div>
     </AppLayout>

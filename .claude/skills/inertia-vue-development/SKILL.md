@@ -6,7 +6,6 @@ description: >-
   working with deferred props, prefetching, or polling; or when user mentions
   Vue with Inertia, Vue pages, Vue forms, or Vue navigation.
 ---
-
 # Inertia Vue Development
 
 ## When to Apply
@@ -155,17 +154,6 @@ import { Form } from '@inertiajs/vue3'
         <input type="text" name="name" />
         <div v-if="errors.name">{{ errors.name }}</div>
 
-        <input type="email" name="email" />
-        <div v-if="errors.email">{{ errors.email }}</div>
-
-        <button type="submit" :disabled="processing">
-            {{ processing ? 'Creating...' : 'Create User' }}
-        </button>
-
-        <div v-if="wasSuccessful">User created!</div>
-    </Form>
-</template>
-
 </code-snippet>
 
 ### Form Component With All Props
@@ -199,18 +187,6 @@ import { Form } from '@inertiajs/vue3'
         <input type="text" name="name" :value="defaults.name" />
         <div v-if="errors.name">{{ errors.name }}</div>
 
-        <button type="submit" :disabled="processing">
-            {{ processing ? 'Saving...' : 'Save' }}
-        </button>
-
-        <progress v-if="progress" :value="progress.percentage" max="100">
-            {{ progress.percentage }}%
-        </progress>
-
-        <div v-if="wasSuccessful">Saved!</div>
-    </Form>
-</template>
-
 </code-snippet>
 
 ### Form Component Reset Props
@@ -239,12 +215,6 @@ import { Form } from '@inertiajs/vue3'
     >
         <input type="text" name="name" />
         <div v-if="errors.name">{{ errors.name }}</div>
-
-        <button type="submit" :disabled="processing">
-            Submit
-        </button>
-    </Form>
-</template>
 
 </code-snippet>
 
@@ -276,18 +246,6 @@ function submit() {
     <form @submit.prevent="submit">
         <input type="text" v-model="form.name" />
         <div v-if="form.errors.name">{{ form.errors.name }}</div>
-
-        <input type="email" v-model="form.email" />
-        <div v-if="form.errors.email">{{ form.errors.email }}</div>
-
-        <input type="password" v-model="form.password" />
-        <div v-if="form.errors.password">{{ form.errors.password }}</div>
-
-        <button type="submit" :disabled="form.processing">
-            Create User
-        </button>
-    </form>
-</template>
 
 </code-snippet>
 
@@ -377,18 +335,6 @@ defineProps({
         <div v-for="user in users.data" :key="user.id">
             {{ user.name }}
         </div>
-
-        <WhenVisible
-            v-if="users.next_page_url"
-            data="users"
-            :params="{ page: users.current_page + 1 }"
-        >
-            <template #fallback>
-                <div>Loading more...</div>
-            </template>
-        </WhenVisible>
-    </div>
-</template>
 
 </code-snippet>
 

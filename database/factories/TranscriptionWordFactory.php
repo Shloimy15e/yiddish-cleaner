@@ -22,7 +22,7 @@ class TranscriptionWordFactory extends Factory
     {
         static $index = 0;
         $index++;
-        
+
         $startTime = ($index - 1) * 0.5;
         $endTime = $startTime + 0.5;
 
@@ -54,7 +54,7 @@ class TranscriptionWordFactory extends Factory
     /**
      * Mark the word as corrected.
      */
-    public function corrected(string $correction = null): static
+    public function corrected(?string $correction = null): static
     {
         return $this->state(fn (array $attributes) => [
             'corrected_word' => $correction ?? $this->faker->word(),
@@ -82,6 +82,16 @@ class TranscriptionWordFactory extends Factory
             'is_inserted' => true,
             'confidence' => null,
             'corrected_at' => now(),
+        ]);
+    }
+
+    /**
+     * Mark the word as a critical error.
+     */
+    public function criticalError(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_critical_error' => true,
         ]);
     }
 

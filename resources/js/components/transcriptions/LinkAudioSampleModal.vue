@@ -1,15 +1,7 @@
 <script setup lang="ts">
 import {
-    Dialog,
-    DialogPanel,
-    DialogTitle,
-    TransitionChild,
-    TransitionRoot,
-} from '@headlessui/vue';
-import {
     MagnifyingGlassIcon,
     MusicalNoteIcon,
-    XMarkIcon,
     LinkIcon,
 } from '@heroicons/vue/24/outline';
 import { router } from '@inertiajs/vue3';
@@ -135,47 +127,10 @@ const selectedAudioSample = computed(() =>
 </script>
 
 <template>
-    <TransitionRoot appear :show="isOpen" as="template">
-        <Dialog as="div" @close="close" class="relative z-50">
-            <TransitionChild
-                as="template"
-                enter="duration-300 ease-out"
-                enter-from="opacity-0"
-                enter-to="opacity-100"
-                leave="duration-200 ease-in"
-                leave-from="opacity-100"
-                leave-to="opacity-0"
-            >
-                <div class="fixed inset-0 bg-black/40" />
-            </TransitionChild>
+    <Modal :show="isOpen" max-width="2xl" panel-class="overflow-hidden" @close="close">
+        <template #title>Link to Audio Sample</template>
 
-            <div class="fixed inset-0 overflow-y-auto">
-                <div class="flex min-h-full items-center justify-center p-4">
-                    <TransitionChild
-                        as="template"
-                        enter="duration-300 ease-out"
-                        enter-from="opacity-0 scale-95"
-                        enter-to="opacity-100 scale-100"
-                        leave="duration-200 ease-in"
-                        leave-from="opacity-100 scale-100"
-                        leave-to="opacity-0 scale-95"
-                    >
-                        <DialogPanel class="w-full max-w-2xl transform overflow-hidden rounded-2xl bg-background border shadow-xl transition-all">
-                            <!-- Header -->
-                            <div class="flex items-center justify-between border-b px-6 py-4">
-                                <DialogTitle class="text-lg font-semibold">
-                                    Link to Audio Sample
-                                </DialogTitle>
-                                <button
-                                    @click="close"
-                                    class="rounded-lg p-1 hover:bg-muted"
-                                >
-                                    <XMarkIcon class="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <!-- Content -->
-                            <div class="p-6">
+        <div class="p-6">
                                 <p class="text-sm text-muted-foreground mb-4">
                                     Select an audio sample without a base transcription to link 
                                     <strong>{{ transcriptionName || `Transcription #${transcriptionId}` }}</strong> to.
@@ -237,35 +192,31 @@ const selectedAudioSample = computed(() =>
                                 </div>
                             </div>
 
-                            <!-- Footer -->
-                            <div class="flex items-center justify-between border-t bg-muted/50 px-6 py-4">
-                                <div class="text-sm text-muted-foreground">
-                                    <span v-if="selectedAudioSample">
-                                        Selected: <strong>{{ selectedAudioSample.name || `#${selectedAudioSample.id}` }}</strong>
-                                    </span>
-                                    <span v-else>No audio sample selected</span>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button
-                                        @click="close"
-                                        class="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        @click="handleLink"
-                                        :disabled="!selectedId || linking"
-                                        class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                                    >
-                                        <LinkIcon class="h-4 w-4" />
-                                        {{ linking ? 'Linking...' : 'Link to Audio Sample' }}
-                                    </button>
-                                </div>
-                            </div>
-                        </DialogPanel>
-                    </TransitionChild>
+        <template #footer>
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm text-muted-foreground">
+                    <span v-if="selectedAudioSample">
+                        Selected: <strong>{{ selectedAudioSample.name || `#${selectedAudioSample.id}` }}</strong>
+                    </span>
+                    <span v-else>No audio sample selected</span>
+                </div>
+                <div class="flex gap-2">
+                    <button
+                        @click="close"
+                        class="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        @click="handleLink"
+                        :disabled="!selectedId || linking"
+                        class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                        <LinkIcon class="h-4 w-4" />
+                        {{ linking ? 'Linking...' : 'Link to Audio Sample' }}
+                    </button>
                 </div>
             </div>
-        </Dialog>
-    </TransitionRoot>
+        </template>
+    </Modal>
 </template>

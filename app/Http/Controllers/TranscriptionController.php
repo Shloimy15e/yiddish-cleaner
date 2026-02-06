@@ -21,6 +21,35 @@ use Inertia\Response;
 
 class TranscriptionController extends Controller
 {
+    /**
+     * Get LLM providers with their models for the current user.
+     *
+     * @return array<string, array{name: string, default_model: string, has_credential: bool, models: array}>
+     */
+    private function getLlmProviders(Request $request): array
+    {
+        $user = $request->user();
+        $providers = config('cleaning.llm_providers', []);
+        $llmController = app(\App\Http\Controllers\Api\LlmController::class);
+
+        $result = [];
+        foreach ($providers as $name => $config) {
+            $hasCredential = \App\Models\ApiCredential::where('user_id', $user->id)
+                ->where('provider', $name)
+                ->where('type', 'llm')
+                ->exists();
+
+            $result[$name] = [
+                'name' => ucfirst($name),
+                'default_model' => $config['default_model'],
+                'has_credential' => $hasCredential,
+                'models' => $hasCredential ? $llmController->getStaticModels($name) : [],
+            ];
+        }
+
+        return $result;
+    }
+
     // ==================== Base Transcription CRUD ====================
 
     /**
@@ -55,6 +84,7 @@ class TranscriptionController extends Controller
             'transcriptions' => $transcriptions,
             'filters' => $request->only(['search', 'status', 'linked']),
             'presets' => config('cleaning.presets'),
+            'llmProviders' => Inertia::optional(fn () => $this->getLlmProviders($request)),
         ]);
     }
 
@@ -132,7 +162,7 @@ class TranscriptionController extends Controller
     /**
      * Display a single transcription (base or ASR).
      */
-    public function show(Transcription $transcription): Response
+    public function show(Request $request, Transcription $transcription): Response
     {
         $transcription->load(['audioSample.baseTranscription', 'user:id,name', 'words']);
 
@@ -157,9 +187,20 @@ class TranscriptionController extends Controller
             'segmentReview' => $segmentReviewData,
         ];
 
-        // Add cleaning presets for base transcriptions
+        // Add cleaning presets and LLM providers for base transcriptions
         if ($transcription->isBase()) {
             $viewData['presets'] = config('cleaning.presets');
+            $viewData['llmProviders'] = Inertia::defer(fn () => $this->getLlmProviders($request));
+        }
+
+        // Append computed Custom WER attributes for ASR transcriptions
+        if ($transcription->isAsr()) {
+            $transcription->append([
+                'custom_wer', 'custom_wer_error_count',
+                'custom_wer_insertion_count', 'custom_wer_deletion_count',
+                'custom_wer_critical_replacement_count', 'custom_wer_replacement_count',
+                'reviewed_word_count',
+            ]);
         }
 
         return Inertia::render('Transcriptions/Show', $viewData);
@@ -190,8 +231,13 @@ class TranscriptionController extends Controller
         $wordReviewData = $this->getWordReviewData($transcription);
         $segmentReviewData = $this->getSegmentReviewData($transcription);
 
-        // Append computed attributes for CEWR
-        $transcription->append(['cewr', 'critical_error_count', 'reviewed_word_count']);
+        // Append computed Custom WER attributes
+        $transcription->append([
+            'custom_wer', 'custom_wer_error_count',
+            'custom_wer_insertion_count', 'custom_wer_deletion_count',
+            'custom_wer_critical_replacement_count', 'custom_wer_replacement_count',
+            'reviewed_word_count',
+        ]);
 
         return Inertia::render('Transcriptions/Show', [
             'transcription' => $transcription,
@@ -240,6 +286,14 @@ class TranscriptionController extends Controller
                 'deleted_count' => $words->where('is_deleted', true)->count(),
                 'inserted_count' => $words->where('is_inserted', true)->count(),
                 'critical_error_count' => $words->where('is_critical_error', true)->count(),
+                'critical_replacement_count' => $words->filter(fn ($w) => $w['is_critical_error'] === true
+                    && $w['is_deleted'] === false
+                    && $w['is_inserted'] === false
+                )->count(),
+                'replacement_count' => $words->filter(fn ($w) => $w['corrected_word'] !== null
+                    && $w['is_deleted'] === false
+                    && $w['is_inserted'] === false
+                )->count(),
                 'low_confidence_count' => $words
                     ->filter(fn ($w) => $w['confidence'] !== null && $w['confidence'] <= 0.7)
                     ->count(),

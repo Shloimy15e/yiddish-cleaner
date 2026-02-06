@@ -34,6 +34,8 @@ export interface WordReviewStats {
     inserted_count: number;
     deleted_count: number;
     critical_error_count: number;
+    critical_replacement_count: number;
+    replacement_count: number;
     low_confidence_count: number;
 }
 
@@ -94,6 +96,7 @@ export interface SegmentReviewResponse {
 
 // ASR transcription metrics (WER/CER)
 export interface AsrMetrics {
+    [key: string]: unknown;
     wer: number | null;
     cer: number | null;
     substitutions: number;
@@ -190,9 +193,13 @@ export interface AsrTranscription extends AsrMetrics, WerRange {
     created_at: string;
     updated_at: string;
 
-    // CEWR (Critical Word Error Rate) - computed
-    cewr: number | null;
-    critical_error_count: number;
+    // Custom WER - Levenshtein base with only critical substitutions from review
+    custom_wer: number | null;
+    custom_wer_error_count: number;
+    custom_wer_insertion_count: number;
+    custom_wer_deletion_count: number;
+    custom_wer_critical_replacement_count: number;
+    custom_wer_replacement_count: number;
     reviewed_word_count: number;
     
     // Relations
@@ -221,12 +228,24 @@ export interface TranscriptionDetail extends AsrMetrics {
 
 export interface TranscriptionWithStatus extends TranscriptionDetail {
     status: TranscriptionStatus;
+    // Custom WER (appended when available)
+    custom_wer?: number | null;
+    custom_wer_error_count?: number;
+    custom_wer_insertion_count?: number;
+    custom_wer_deletion_count?: number;
+    custom_wer_critical_replacement_count?: number;
+    custom_wer_replacement_count?: number;
+    reviewed_word_count?: number;
 }
 
 export interface BenchmarkTranscription {
     id: number;
     wer: number;
     cer: number;
+    custom_wer: number | null;
+    custom_wer_error_count: number;
+    custom_wer_critical_replacement_count: number;
+    reviewed_word_count: number;
     hypothesis_text: string;
     notes: string | null;
     source: string;

@@ -170,6 +170,8 @@ declare global {
   const usePage: typeof import('@inertiajs/vue3').usePage
   const useRoute: typeof import('./composables/useRoute').useRoute
   const useSlots: typeof import('vue').useSlots
+  const useSmartPagination: typeof import('./composables/useSmartPagination').useSmartPagination
+  const useTableSelection: typeof import('./composables/useTableSelection').useTableSelection
   const useTemplateRef: typeof import('vue').useTemplateRef
   const useTwoFactorAuth: typeof import('./composables/useTwoFactorAuth').useTwoFactorAuth
   const userPassword: typeof import('./routes/user-password/index').default
@@ -292,6 +294,8 @@ declare module 'vue' {
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>
     readonly usePage: UnwrapRef<typeof import('@inertiajs/vue3')['usePage']>
     readonly useSlots: UnwrapRef<typeof import('vue')['useSlots']>
+    readonly useSmartPagination: UnwrapRef<typeof import('./composables/useSmartPagination')['useSmartPagination']>
+    readonly useTableSelection: UnwrapRef<typeof import('./composables/useTableSelection')['useTableSelection']>
     readonly useTemplateRef: UnwrapRef<typeof import('vue')['useTemplateRef']>
     readonly useTwoFactorAuth: UnwrapRef<typeof import('./composables/useTwoFactorAuth')['useTwoFactorAuth']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>

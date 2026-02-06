@@ -643,16 +643,22 @@ class Transcription extends Model implements HasMedia
     }
 
     /**
-     * Get the count of words marked as critical errors (respects custom range).
-     * Critical errors include: explicitly marked, deleted words, and inserted words.
+     * Get the count of critical substitutions from word review (respects custom range).
+     *
+     * Counts words flagged is_critical_error=true that are NOT deleted or inserted.
+     * A correction (corrected_word) is NOT required — the critical flag alone
+     * is sufficient to count as a critical substitution in Custom WER.
      */
-    public function getCriticalErrorCountAttribute(): int
+    public function getCustomWerCriticalReplacementCountAttribute(): int
     {
-        $query = $this->words()->where(function ($q) {
-            $q->where('is_critical_error', true)
-                ->orWhere('is_deleted', true)
-                ->orWhere('is_inserted', true);
-        });
+        if (isset($this->attributes['_critical_replacement_cache'])) {
+            return $this->attributes['_critical_replacement_cache'];
+        }
+
+        $query = $this->words()
+            ->where('is_critical_error', true)
+            ->where('is_deleted', false)
+            ->where('is_inserted', false);
 
         // Apply custom range if set (using hypothesis range)
         if ($this->wer_hyp_start !== null || $this->wer_hyp_end !== null) {
@@ -665,52 +671,78 @@ class Transcription extends Model implements HasMedia
             }
         }
 
-        return $query->count();
+        $count = $query->count();
+        $this->attributes['_critical_replacement_cache'] = $count;
+
+        return $count;
     }
 
     /**
-     * Get the total word count for CEWR calculation (respects custom range).
+     * Get insertions count for Custom WER (from standard Levenshtein).
+     */
+    public function getCustomWerInsertionCountAttribute(): int
+    {
+        return $this->insertions ?? 0;
+    }
+
+    /**
+     * Get deletions count for Custom WER (from standard Levenshtein).
+     */
+    public function getCustomWerDeletionCountAttribute(): int
+    {
+        return $this->deletions ?? 0;
+    }
+
+    /**
+     * Get total substitution count for Custom WER display (from standard Levenshtein).
+     *
+     * This is ALL substitutions from the automated comparison, shown for context.
+     * Only critical replacements (from manual review) count toward the rate.
+     */
+    public function getCustomWerReplacementCountAttribute(): int
+    {
+        return $this->substitutions ?? 0;
+    }
+
+    /**
+     * Get reference word count used as denominator (from standard Levenshtein).
      */
     public function getReviewedWordCountAttribute(): int
     {
-        $query = $this->words();
-
-        // Apply custom range if set (using hypothesis range)
-        if ($this->wer_hyp_start !== null || $this->wer_hyp_end !== null) {
-            $start = $this->wer_hyp_start ?? 0;
-            $end = $this->wer_hyp_end;
-
-            $query->where('word_index', '>=', $start);
-            if ($end !== null) {
-                $query->where('word_index', '<=', $end);
-            }
-        }
-
-        return $query->count();
+        return $this->reference_words ?? 0;
     }
 
     /**
-     * Get the Critical Word Error Rate (CEWR).
+     * Get the total Custom WER error count.
      *
-     * CEWR = (critical_error_count / total_words) * 100
-     *
-     * - Only counts explicitly marked critical errors (is_critical_error = true)
-     * - Inserted words count as 1 error each AND are included in total word count
-     * - Respects custom WER range if set (wer_hyp_start/wer_hyp_end)
-     * - Returns null if no word data exists
-     * - Returns 0.0 if word data exists but no critical errors marked yet
+     * Uses Levenshtein insertions + deletions + manual critical replacements.
      */
-    public function getCewrAttribute(): ?float
+    public function getCustomWerErrorCountAttribute(): int
     {
-        $totalWords = $this->reviewed_word_count;
+        return $this->custom_wer_insertion_count
+            + $this->custom_wer_deletion_count
+            + $this->custom_wer_critical_replacement_count;
+    }
 
-        if ($totalWords === 0) {
+    /**
+     * Get the Custom Word Error Rate.
+     *
+     * Custom WER = (levenshtein_insertions + levenshtein_deletions + critical_replacements) / reference_words × 100
+     *
+     * Uses the standard Levenshtein WER as a base but only counts substitutions
+     * that are marked as critical errors during manual review.
+     *
+     * Returns null if no standard WER data exists (reference_words = 0).
+     */
+    public function getCustomWerAttribute(): ?float
+    {
+        $referenceWords = $this->reference_words;
+
+        if (! $referenceWords) {
             return null;
         }
 
-        $criticalErrors = $this->critical_error_count;
-
-        return ($criticalErrors / $totalWords) * 100;
+        return round(($this->custom_wer_error_count / $referenceWords) * 100, 2);
     }
 
     // ==================== Word-Level Methods ====================

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import { computed, watch } from 'vue';
 
 import AppLayout from '@/layouts/AppLayout.vue';
+import type { ColumnDef } from '@/components/ui/data-table/types';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
+import { useTableSelection } from '@/composables/useTableSelection';
 import { type BreadcrumbItem } from '@/types';
 import type { TrainingDocument } from '@/types/training';
 
@@ -44,27 +46,18 @@ const filteredDocuments = computed(() => {
     });
 });
 
-const allSelected = computed(() => {
-    return filteredDocuments.value.length > 0 && 
-           filteredDocuments.value.every(doc => form.document_ids.includes(doc.id));
-});
+const { selectedIds, selectedCount, allSelected } = useTableSelection(filteredDocuments);
 
-const toggleAll = () => {
-    if (allSelected.value) {
-        form.document_ids = [];
-    } else {
-        form.document_ids = filteredDocuments.value.map(doc => doc.id);
-    }
-};
+// Sync selectedIds (Set) to form.document_ids (number[])
+watch(selectedIds, (ids) => {
+    form.document_ids = Array.from(ids) as number[];
+}, { deep: true });
 
-const toggleDocument = (id: number) => {
-    const index = form.document_ids.indexOf(id);
-    if (index > -1) {
-        form.document_ids.splice(index, 1);
-    } else {
-        form.document_ids.push(id);
-    }
-};
+const columns: ColumnDef[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'clean_rate', label: 'Clean Rate' },
+    { key: 'status', label: 'Status' },
+];
 
 const submit = () => {
     form.post('/training');
@@ -82,13 +75,13 @@ const submit = () => {
                 <!-- Version Info -->
                 <div class="rounded-xl border bg-card p-6 space-y-4">
                     <h2 class="font-semibold">Version Information</h2>
-                    
+
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label class="block text-sm font-medium mb-2">Version Number</label>
-                            <input 
+                            <input
                                 v-model="form.version"
-                                type="text" 
+                                type="text"
                                 placeholder="1.0.0"
                                 class="w-full rounded-lg border p-2"
                             />
@@ -96,9 +89,9 @@ const submit = () => {
                         </div>
                         <div>
                             <label class="block text-sm font-medium mb-2">Name</label>
-                            <input 
+                            <input
                                 v-model="form.name"
-                                type="text" 
+                                type="text"
                                 placeholder="Training v1 - Full Clean"
                                 class="w-full rounded-lg border p-2"
                             />
@@ -110,14 +103,14 @@ const submit = () => {
                 <!-- Criteria -->
                 <div class="rounded-xl border bg-card p-6 space-y-4">
                     <h2 class="font-semibold">Selection Criteria</h2>
-                    
+
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label class="block text-sm font-medium mb-2">Minimum Clean Rate (%)</label>
-                            <input 
+                            <input
                                 v-model.number="form.min_clean_rate"
-                                type="range" 
-                                min="0" 
+                                type="range"
+                                min="0"
                                 max="100"
                                 class="w-full"
                             />
@@ -128,9 +121,9 @@ const submit = () => {
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <input 
+                            <input
                                 v-model="form.validated_only"
-                                type="checkbox" 
+                                type="checkbox"
                                 id="validated_only"
                                 class="h-4 w-4 rounded border-gray-300"
                             />
@@ -146,67 +139,48 @@ const submit = () => {
                 </div>
 
                 <!-- Document Selection -->
-                <div class="rounded-xl border bg-card overflow-hidden">
-                    <div class="flex items-center justify-between border-b p-4">
-                        <h2 class="font-semibold">Select Documents ({{ form.document_ids.length }} selected)</h2>
-                        <button type="button" @click="toggleAll" class="text-sm text-primary hover:underline">
+                <div>
+                    <div class="flex items-center justify-between mb-2 px-1">
+                        <h2 class="font-semibold">Select Documents ({{ selectedCount }} selected)</h2>
+                        <button type="button" @click="() => { if (allSelected) { selectedIds = new Set(); } else { selectedIds = new Set(filteredDocuments.map(d => d.id)); } }" class="text-sm text-primary hover:underline">
                             {{ allSelected ? 'Deselect All' : 'Select All' }}
                         </button>
                     </div>
-                    
-                    <div class="max-h-96 overflow-y-auto">
-                        <table class="w-full">
-                            <thead class="border-b bg-muted/50 sticky top-0">
-                                <tr>
-                                    <th class="px-4 py-2 text-left w-10">
-                                        <input 
-                                            type="checkbox"
-                                            :checked="allSelected"
-                                            @change="toggleAll"
-                                            class="h-4 w-4 rounded border-gray-300"
-                                        />
-                                    </th>
-                                    <th class="px-4 py-2 text-left text-sm font-medium">Name</th>
-                                    <th class="px-4 py-2 text-left text-sm font-medium">Clean Rate</th>
-                                    <th class="px-4 py-2 text-left text-sm font-medium">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y">
-                                <tr v-for="doc in filteredDocuments" :key="doc.id" class="hover:bg-muted/30">
-                                    <td class="px-4 py-2">
-                                        <input 
-                                            type="checkbox"
-                                            :checked="form.document_ids.includes(doc.id)"
-                                            @change="toggleDocument(doc.id)"
-                                            class="h-4 w-4 rounded border-gray-300"
-                                        />
-                                    </td>
-                                    <td class="px-4 py-2 font-medium">{{ doc.name }}</td>
-                                    <td class="px-4 py-2">
-                                            <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', getCleanRateCategoryClass(doc.clean_rate_category)]">
-                                            {{ doc.clean_rate }}%
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-2">
-                                        <span v-if="doc.validated_at" class="text-green-600">Validated</span>
-                                        <span v-else class="text-muted-foreground">Pending</span>
-                                    </td>
-                                </tr>
-                                <tr v-if="filteredDocuments.length === 0">
-                                    <td colspan="4" class="px-4 py-8 text-center text-muted-foreground">
-                                        No documents match the criteria
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+
+                    <div class="max-h-96 overflow-y-auto rounded-xl border bg-card">
+                        <DataTable
+                            :columns="columns"
+                            :items="filteredDocuments"
+                            item-key="id"
+                            selectable
+                            v-model:selected="selectedIds"
+                            empty-message="No documents match the criteria"
+                            class="border-0 rounded-none"
+                            table-class="[&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10"
+                        >
+                            <template #cell-name="{ item }">
+                                <span class="font-medium">{{ item.name }}</span>
+                            </template>
+
+                            <template #cell-clean_rate="{ item }">
+                                <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', getCleanRateCategoryClass(item.clean_rate_category as string | null)]">
+                                    {{ item.clean_rate }}%
+                                </span>
+                            </template>
+
+                            <template #cell-status="{ item }">
+                                <span v-if="item.validated_at" class="text-green-600">Validated</span>
+                                <span v-else class="text-muted-foreground">Pending</span>
+                            </template>
+                        </DataTable>
                     </div>
                 </div>
 
                 <p v-if="form.errors.document_ids" class="text-sm text-red-600">{{ form.errors.document_ids }}</p>
 
                 <div class="flex gap-4">
-                    <button 
-                        type="submit" 
+                    <button
+                        type="submit"
                         :disabled="form.processing || form.document_ids.length === 0"
                         class="rounded-lg bg-primary px-6 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >

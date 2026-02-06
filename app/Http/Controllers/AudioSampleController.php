@@ -16,6 +16,33 @@ use Inertia\Response as InertiaResponse;
 class AudioSampleController extends Controller
 {
     /**
+     * Get ASR providers with their models for the current user.
+     *
+     * @return array<string, array{name: string, default_model: string, models: array, has_credential: bool, async: bool, description: string}>
+     */
+    private function getAsrProviders(Request $request): array
+    {
+        $user = $request->user();
+        $providers = config('asr.providers', []);
+
+        $result = [];
+        foreach ($providers as $key => $config) {
+            $credential = $user->getApiCredential($key, 'asr');
+
+            $result[$key] = [
+                'name' => $config['name'],
+                'default_model' => $config['default_model'],
+                'models' => array_map(fn ($m) => ['id' => $m, 'name' => $m], $config['models']),
+                'has_credential' => $credential !== null,
+                'async' => $config['async'] ?? false,
+                'description' => $config['description'] ?? '',
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * List all audio samples for the current user.
      */
     public function index(Request $request): InertiaResponse
@@ -43,17 +70,26 @@ class AudioSampleController extends Controller
             'audioSamples' => $audioSamples,
             'filters' => $request->only(['search', 'status', 'validated', 'category']),
             'statuses' => AudioSample::STATUSES,
+            'asrProviders' => Inertia::optional(fn () => $this->getAsrProviders($request)),
         ]);
     }
 
     /**
      * Display an audio sample.
      */
-    public function show(AudioSample $audioSample): InertiaResponse
+    public function show(Request $request, AudioSample $audioSample): InertiaResponse
     {
         $this->authorize('view', $audioSample);
 
         $audioSample->load(['user:id,name', 'processingRun', 'baseTranscription', 'asrTranscriptions']);
+
+        // Append Custom WER attributes to each ASR transcription
+        $audioSample->asrTranscriptions->each(fn ($t) => $t->append([
+            'custom_wer', 'custom_wer_error_count',
+            'custom_wer_insertion_count', 'custom_wer_deletion_count',
+            'custom_wer_critical_replacement_count', 'custom_wer_replacement_count',
+            'reviewed_word_count',
+        ]));
 
         $audioMedia = $audioSample->getFirstMedia('audio');
         $audioInfo = $audioMedia ? [
@@ -67,6 +103,7 @@ class AudioSampleController extends Controller
             'audioSample' => $audioSample,
             'audioMedia' => $audioInfo,
             'presets' => config('cleaning.presets'),
+            'asrProviders' => Inertia::defer(fn () => $this->getAsrProviders($request)),
         ]);
     }
 
@@ -464,9 +501,10 @@ class AudioSampleController extends Controller
     {
         $this->authorize('update', $audioSample);
 
-        $audioSample->update(['is_benchmark' => !$audioSample->is_benchmark]);
+        $audioSample->update(['is_benchmark' => ! $audioSample->is_benchmark]);
 
         $status = $audioSample->is_benchmark ? 'added to' : 'removed from';
+
         return back()->with('success', "Sample {$status} gold standard benchmark.");
     }
 }

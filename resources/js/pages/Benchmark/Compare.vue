@@ -10,6 +10,7 @@ import { type BreadcrumbItem } from '@/types';
 interface ModelResult {
     wer: number;
     cer: number;
+    custom_wer: number | null;
     hypothesis_text: string;
 }
 
@@ -20,6 +21,7 @@ interface ComparisonRow {
 }
 
 interface ModelStats {
+    avg_custom_wer: number | null;
     avg_wer: number;
     avg_cer: number;
     count: number;
@@ -49,9 +51,12 @@ const getBestModel = (row: ComparisonRow): string | null => {
     let best: string | null = null;
     let bestWer = Infinity;
     for (const [model, result] of Object.entries(row.models)) {
-        if (result && result.wer < bestWer) {
-            bestWer = result.wer;
-            best = model;
+        if (result) {
+            const score = result.custom_wer ?? result.wer;
+            if (score < bestWer) {
+                bestWer = score;
+                best = model;
+            }
         }
     }
     return best;
@@ -117,10 +122,15 @@ const getBestModel = (row: ComparisonRow): string | null => {
                     <h3 class="font-semibold truncate mb-2" :title="model">{{ model }}</h3>
                     <div class="grid grid-cols-2 gap-2 text-sm">
                         <div>
-                            <span class="text-muted-foreground">Avg WER:</span>
-                                <span :class="['ml-1 font-bold', getWerColor(modelStats[model]?.avg_wer ?? 0, 'benchmark')]">
-                                {{ modelStats[model]?.avg_wer ?? '-' }}%
+                            <span class="text-muted-foreground">Avg Custom WER:</span>
+                            <span v-if="modelStats[model]?.avg_custom_wer !== null" :class="['ml-1 font-bold', getWerColor(modelStats[model]?.avg_custom_wer ?? 0, 'benchmark')]">
+                                {{ modelStats[model]?.avg_custom_wer ?? '-' }}%
                             </span>
+                            <span v-else class="ml-1 text-muted-foreground">&mdash;</span>
+                        </div>
+                        <div>
+                            <span class="text-muted-foreground">Avg WER:</span>
+                            <span class="ml-1 font-medium text-muted-foreground">{{ modelStats[model]?.avg_wer ?? '-' }}%</span>
                         </div>
                         <div>
                             <span class="text-muted-foreground">Samples:</span>
@@ -131,45 +141,48 @@ const getBestModel = (row: ComparisonRow): string | null => {
             </div>
 
             <!-- Comparison Table -->
-            <div v-if="comparison.length > 0" class="rounded-xl border bg-card overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-muted/50">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Sample</th>
-                                <th v-for="model in selectedModels" :key="model" class="px-4 py-3 text-left text-sm font-medium">
-                                    <span class="truncate block max-w-32" :title="model">{{ model }}</span>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            <tr v-for="row in comparison" :key="row.sample_id" class="hover:bg-muted/30">
-                                <td class="px-4 py-3">
-                                    <Link :href="`/audio-samples/${row.sample_id}`" class="font-medium text-primary hover:underline">
-                                        {{ row.sample_name }}
-                                    </Link>
-                                </td>
-                                <td 
-                                    v-for="model in selectedModels" 
-                                    :key="model" 
-                                    class="px-4 py-3"
-                                    :class="{ 'bg-green-50 dark:bg-green-900/20': getBestModel(row) === model }"
-                                >
-                                    <template v-if="row.models[model]">
-                                            <span :class="['font-bold', getWerColor(row.models[model]!.wer, 'benchmark')]">
-                                            {{ row.models[model]!.wer }}%
-                                        </span>
-                                        <span class="text-xs text-muted-foreground ml-1">
-                                            ({{ row.models[model]!.cer }}% CER)
-                                        </span>
-                                    </template>
-                                    <span v-else class="text-muted-foreground">-</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <Table v-if="comparison.length > 0">
+                <TableHeader>
+                    <tr>
+                        <TableHead>Sample</TableHead>
+                        <TableHead v-for="model in selectedModels" :key="model">
+                            <span class="truncate block max-w-32" :title="model">{{ model }}</span>
+                        </TableHead>
+                    </tr>
+                </TableHeader>
+                <TableBody>
+                    <TableRow v-for="row in comparison" :key="row.sample_id">
+                        <TableCell>
+                            <Link :href="`/audio-samples/${row.sample_id}`" class="font-medium text-primary hover:underline">
+                                {{ row.sample_name }}
+                            </Link>
+                        </TableCell>
+                        <TableCell
+                            v-for="model in selectedModels"
+                            :key="model"
+                            :class="{ 'bg-green-50 dark:bg-green-900/20': getBestModel(row) === model }"
+                        >
+                            <template v-if="row.models[model]">
+                                <div>
+                                    <span v-if="row.models[model]!.custom_wer !== null" :class="['font-bold', getWerColor(row.models[model]!.custom_wer!, 'benchmark')]">
+                                        {{ row.models[model]!.custom_wer }}%
+                                    </span>
+                                    <span v-else :class="['font-bold', getWerColor(row.models[model]!.wer, 'benchmark')]">
+                                        {{ row.models[model]!.wer }}%
+                                    </span>
+                                </div>
+                                <span class="text-xs text-muted-foreground">
+                                    WER: {{ row.models[model]!.wer }}% &middot; CER: {{ row.models[model]!.cer }}%
+                                </span>
+                            </template>
+                            <span v-else class="text-muted-foreground">-</span>
+                        </TableCell>
+                    </TableRow>
+                    <TableEmpty v-if="comparison.length === 0" :colspan="selectedModels.length + 1">
+                        No samples have transcriptions from all selected models.
+                    </TableEmpty>
+                </TableBody>
+            </Table>
 
             <div v-else-if="selectedModels.length >= 2" class="rounded-xl border bg-card p-8 text-center text-muted-foreground">
                 No samples have transcriptions from all selected models. Try selecting different models.

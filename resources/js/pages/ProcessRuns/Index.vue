@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
 
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatCreatedBy } from '@/lib/createdBy';
@@ -11,6 +10,7 @@ import {
 } from '@/lib/processRunStatus';
 import { type BreadcrumbItem } from '@/types';
 import type { ProcessingRunListItem } from '@/types/process-runs';
+import type { ColumnDef } from '@/components/ui/data-table/types';
 
 const props = defineProps<{
     runs: {
@@ -27,40 +27,20 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Import Runs', href: route('audio-samples.runs') },
 ];
 
+const columns: ColumnDef<ProcessingRunListItem>[] = [
+    { key: 'id', label: 'Run' },
+    { key: 'source_type', label: 'Source' },
+    { key: 'progress', label: 'Progress' },
+    { key: 'status', label: 'Status' },
+    { key: 'user', label: 'Created By' },
+    { key: 'created_at', label: 'Started' },
+    { key: 'actions', label: 'Actions' },
+];
+
 const progressPercent = (run: ProcessingRunListItem) => {
     if (!run.total) return 0;
     return Math.min(100, Math.round(((run.completed + run.failed) / run.total) * 100));
 };
-
-const visiblePages = computed(() => {
-    const current = props.runs.current_page;
-    const last = props.runs.last_page;
-    const delta = 2;
-    const pages: (number | 'ellipsis')[] = [];
-
-    pages.push(1);
-
-    const rangeStart = Math.max(2, current - delta);
-    const rangeEnd = Math.min(last - 1, current + delta);
-
-    if (rangeStart > 2) {
-        pages.push('ellipsis');
-    }
-
-    for (let i = rangeStart; i <= rangeEnd; i++) {
-        pages.push(i);
-    }
-
-    if (rangeEnd < last - 1) {
-        pages.push('ellipsis');
-    }
-
-    if (last > 1) {
-        pages.push(last);
-    }
-
-    return pages;
-});
 
 const goToPage = (page: number) => {
     router.get(route('audio-samples.runs'), { page }, { preserveState: true });
@@ -82,106 +62,69 @@ const goToPage = (page: number) => {
                 </Link>
             </div>
 
-            <div class="rounded-xl border bg-card overflow-hidden">
-                <table class="w-full">
-                    <thead class="border-b bg-muted/50">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Run</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Source</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Progress</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Created By</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Started</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        <tr v-for="run in runs.data" :key="run.id" class="hover:bg-muted/30">
-                            <td class="px-4 py-3">
-                                <div class="font-medium">#{{ run.id }}</div>
-                                <div class="text-xs text-muted-foreground">
-                                    {{ run.completed + run.failed }} / {{ run.total || 0 }} processed
-                                </div>
-                            </td>
-                            <td class="px-4 py-3">
-                                <div class="text-sm capitalize">{{ run.source_type || 'sheet' }}</div>
-                                <div v-if="run.source_url" class="text-xs text-muted-foreground truncate max-w-65">
-                                    {{ run.source_url }}
-                                </div>
-                            </td>
-                            <td class="px-4 py-3">
-                                <div class="h-2 w-full rounded-full bg-muted">
-                                    <div
-                                        class="h-2 rounded-full bg-primary transition-all"
-                                        :style="{ width: `${progressPercent(run)}%` }"
-                                    ></div>
-                                </div>
-                                <div class="text-xs text-muted-foreground mt-1">{{ progressPercent(run) }}%</div>
-                            </td>
-                            <td class="px-4 py-3">
-                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', getProcessRunStatusClass(run.status)]">
-                                    {{ getProcessRunStatusLabel(run.status) }}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-muted-foreground">
-                                {{
-                                    formatCreatedBy(
-                                        run.user,
-                                        undefined
-                                    )
-                                }}
-                            </td>
-                            <td class="px-4 py-3 text-sm text-muted-foreground">
-                                {{ formatDateTime(run.created_at) }}
-                            </td>
-                            <td class="px-4 py-3">
-                                <Link :href="route('audio-samples.run', run.id)" class="text-sm text-primary hover:underline">
-                                    View
-                                </Link>
-                            </td>
-                        </tr>
-                        <tr v-if="runs.data.length === 0">
-                            <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">
-                                No import runs yet
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <DataTable
+                :columns="columns"
+                :items="runs.data"
+                item-key="id"
+                empty-message="No import runs yet"
+            >
+                <template #cell-id="{ item }">
+                    <div class="font-medium">#{{ item.id }}</div>
+                    <div class="text-xs text-muted-foreground">
+                        {{ item.completed + item.failed }} / {{ item.total || 0 }} processed
+                    </div>
+                </template>
 
-            <div v-if="runs.last_page > 1" class="flex items-center justify-between">
-                <span class="text-sm text-muted-foreground">
-                    Showing {{ (runs.current_page - 1) * runs.per_page + 1 }} to
-                    {{ Math.min(runs.current_page * runs.per_page, runs.total) }} of
-                    {{ runs.total }} runs
-                </span>
-                <div class="flex gap-1">
-                    <button
-                        @click="goToPage(runs.current_page - 1)"
-                        :disabled="runs.current_page === 1"
-                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
-                    >
-                        Previous
-                    </button>
-                    <template v-for="(page, idx) in visiblePages" :key="idx">
-                        <span v-if="page === 'ellipsis'" class="px-2 py-1 text-muted-foreground">...</span>
-                        <button
-                            v-else
-                            @click="goToPage(page)"
-                            :class="['rounded-lg px-3 py-1 text-sm', page === runs.current_page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted']"
-                        >
-                            {{ page }}
-                        </button>
-                    </template>
-                    <button
-                        @click="goToPage(runs.current_page + 1)"
-                        :disabled="runs.current_page === runs.last_page"
-                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
-                    >
-                        Next
-                    </button>
-                </div>
-            </div>
+                <template #cell-source_type="{ item }">
+                    <div class="text-sm capitalize">{{ item.source_type || 'sheet' }}</div>
+                    <div v-if="item.source_url" class="text-xs text-muted-foreground truncate max-w-65">
+                        {{ item.source_url }}
+                    </div>
+                </template>
+
+                <template #cell-progress="{ item }">
+                    <div class="h-2 w-full rounded-full bg-muted">
+                        <div
+                            class="h-2 rounded-full bg-primary transition-all"
+                            :style="{ width: `${progressPercent(item)}%` }"
+                        ></div>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-1">{{ progressPercent(item) }}%</div>
+                </template>
+
+                <template #cell-status="{ item }">
+                    <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', getProcessRunStatusClass(item.status)]">
+                        {{ getProcessRunStatusLabel(item.status) }}
+                    </span>
+                </template>
+
+                <template #cell-user="{ item }">
+                    <span class="text-sm text-muted-foreground">
+                        {{ formatCreatedBy(item.user, undefined) }}
+                    </span>
+                </template>
+
+                <template #cell-created_at="{ item }">
+                    <span class="text-sm text-muted-foreground">
+                        {{ formatDateTime(item.created_at) }}
+                    </span>
+                </template>
+
+                <template #cell-actions="{ item }">
+                    <Link :href="route('audio-samples.run', item.id)" class="text-sm text-primary hover:underline">
+                        View
+                    </Link>
+                </template>
+            </DataTable>
+
+            <TablePagination
+                :current-page="runs.current_page"
+                :last-page="runs.last_page"
+                :per-page="runs.per_page"
+                :total="runs.total"
+                noun="runs"
+                @page-change="goToPage"
+            />
         </div>
     </AppLayout>
 </template>

@@ -191,7 +191,7 @@ const getConfidenceColor = (confidence: number | null): string => {
 
 // Get segment card class
 const getSegmentClass = (segment: TranscriptionSegment): string => {
-    const base = 'rounded-lg border p-4 transition-all';
+    const base = 'rounded-lg border p-4 transition-colors';
 
     if (segment.corrected_text !== null) {
         return `${base} border-primary/50 bg-primary/5`;
@@ -274,7 +274,7 @@ const getConfidenceBadgeClass = (confidence: number | null): string => {
                 :class="getSegmentClass(segment)"
             >
                 <!-- Segment header -->
-                <div class="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                     <div class="flex items-center gap-2">
                         <span class="font-medium">
                             {{ formatTime(segment.start_time) }} - {{ formatTime(segment.end_time) }}
@@ -379,7 +379,7 @@ const getConfidenceBadgeClass = (confidence: number | null): string => {
         </div>
 
         <!-- Legend -->
-        <div v-if="hasSegmentData" class="flex flex-wrap gap-4 border-t border-border pt-4 text-xs text-muted-foreground">
+        <div v-if="hasSegmentData" class="flex flex-wrap gap-2 border-t border-border pt-4 text-xs text-muted-foreground sm:gap-4">
             <div class="flex items-center gap-1">
                 <span class="h-3 w-3 rounded bg-primary/20 border border-primary/30" />
                 Corrected

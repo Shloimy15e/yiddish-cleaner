@@ -193,7 +193,7 @@ class LlmController extends Controller
     /**
      * Get static model list for a provider (fallback).
      */
-    protected function getStaticModels(string $provider): array
+    public function getStaticModels(string $provider): array
     {
         $models = [
             'openrouter' => [

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue';
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/vue';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/vue/20/solid';
-import { CpuChipIcon, MicrophoneIcon, ArrowPathIcon, XMarkIcon, SparklesIcon } from '@heroicons/vue/24/outline';
+import { CpuChipIcon, MicrophoneIcon, ArrowPathIcon, SparklesIcon } from '@heroicons/vue/24/outline';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 
 import AppLayout from '@/layouts/AppLayout.vue';
+import type { ColumnDef } from '@/components/ui/data-table/types';
 import { getAudioSampleStatusClass, getAudioSampleStatusLabel } from '@/lib/audioSampleStatus';
 import { getCleanRateCategoryClass } from '@/lib/cleanRate';
 import { formatCreatedBy } from '@/lib/createdBy';
@@ -29,6 +30,7 @@ const props = defineProps<{
         status?: string;
         category?: string;
     };
+    asrProviders?: Record<string, AsrProvider>;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -40,9 +42,21 @@ const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || '');
 const category = ref(props.filters.category || '');
 
-// Selection state
-const selectedIds = ref<Set<number>>(new Set());
-const selectAll = ref(false);
+// Selection via composable
+const { selectedIds, selectedCount, clearSelection, selectedArray } = useTableSelection(
+    computed(() => props.audioSamples.data),
+);
+
+// Column definitions
+const columns: ColumnDef<AudioSampleListItem>[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'clean_rate', label: 'Clean Rate' },
+    { key: 'method', label: 'Method', hideBelow: 'hidden md:table-cell' },
+    { key: 'status', label: 'Status' },
+    { key: 'created_by', label: 'Created By', hideBelow: 'hidden md:table-cell' },
+    { key: 'created_at', label: 'Date', hideBelow: 'hidden md:table-cell' },
+    { key: 'actions', label: 'Actions' },
+];
 
 // Derive clean rate category from value
 const getCleanRateCategoryFromValue = (rate: number | null | undefined): string => {
@@ -78,35 +92,6 @@ const selectedCategory = computed(
     () => categoryOptions.find((o) => o.value === category.value) || categoryOptions[0],
 );
 
-// Selection helpers
-const isSelected = (id: number) => selectedIds.value.has(id);
-const toggleSelection = (id: number) => {
-    if (selectedIds.value.has(id)) {
-        selectedIds.value.delete(id);
-    } else {
-        selectedIds.value.add(id);
-    }
-    selectedIds.value = new Set(selectedIds.value);
-    updateSelectAll();
-};
-
-const toggleSelectAll = () => {
-    if (selectAll.value) {
-        selectedIds.value = new Set();
-    } else {
-        selectedIds.value = new Set(props.audioSamples.data.map((s) => s.id));
-    }
-    selectAll.value = !selectAll.value;
-};
-
-const updateSelectAll = () => {
-    selectAll.value =
-        props.audioSamples.data.length > 0 &&
-        props.audioSamples.data.every((s) => selectedIds.value.has(s.id));
-};
-
-const selectedCount = computed(() => selectedIds.value.size);
-
 // Bulk actions
 const bulkDeleteForm = useForm({
     ids: [] as number[],
@@ -117,13 +102,10 @@ const submitBulkDelete = () => {
         return;
     }
 
-    bulkDeleteForm.ids = Array.from(selectedIds.value);
+    bulkDeleteForm.ids = selectedArray.value as number[];
     bulkDeleteForm.delete(route('audio-samples.bulk-delete'), {
         preserveScroll: true,
-        onSuccess: () => {
-            selectedIds.value = new Set();
-            selectAll.value = false;
-        },
+        onSuccess: () => clearSelection(),
     });
 };
 
@@ -135,75 +117,63 @@ const bulkTranscribeForm = useForm({
     model: '',
 });
 
-// ASR providers/models
-const asrProviders = ref<Record<string, AsrProvider>>({});
+// ASR providers/models (loaded via optional prop)
 const loadingProviders = ref(false);
-const providerError = ref<string | null>(null);
 
 // Only show providers that user has authenticated
 const authenticatedAsrProviders = computed(() => {
     return Object.fromEntries(
-        Object.entries(asrProviders.value).filter(([, provider]) => provider.has_credential)
+        Object.entries(props.asrProviders ?? {}).filter(([, provider]) => provider.has_credential)
     );
 });
 
 const hasAuthenticatedAsrProviders = computed(() => Object.keys(authenticatedAsrProviders.value).length > 0);
 
 const currentProviderModels = computed(() => {
-    const provider = asrProviders.value[bulkTranscribeForm.provider];
+    const provider = (props.asrProviders ?? {})[bulkTranscribeForm.provider];
     return provider?.models || [];
 });
-
-const fetchAsrProviders = async () => {
-    loadingProviders.value = true;
-    providerError.value = null;
-    try {
-        const response = await fetch('/api/asr/providers');
-        if (!response.ok) {
-            throw new Error(`Failed to fetch providers: ${response.statusText}`);
-        }
-        asrProviders.value = await response.json();
-        // Set default provider to first authenticated one if current is not authenticated
-        const authKeys = Object.keys(authenticatedAsrProviders.value);
-        if (authKeys.length > 0 && !authenticatedAsrProviders.value[bulkTranscribeForm.provider]) {
-            bulkTranscribeForm.provider = authKeys[0];
-        }
-        // Set default model for the selected provider
-        const provider = asrProviders.value[bulkTranscribeForm.provider];
-        if (provider) {
-            bulkTranscribeForm.model = provider.default_model;
-        }
-    } catch (error) {
-        console.error('Failed to fetch ASR providers:', error);
-        providerError.value = 'Failed to load ASR providers. Please try again.';
-    } finally {
-        loadingProviders.value = false;
-    }
-};
 
 watch(
     () => bulkTranscribeForm.provider,
     (newProvider) => {
-        const provider = asrProviders.value[newProvider];
+        const provider = (props.asrProviders ?? {})[newProvider];
         if (provider) {
             bulkTranscribeForm.model = provider.default_model;
         }
     }
 );
 
-const openBulkTranscribeModal = async () => {
+// Initialize form defaults when providers load
+watch(
+    () => props.asrProviders,
+    (providers) => {
+        if (!providers) return;
+        loadingProviders.value = false;
+        const authKeys = Object.keys(authenticatedAsrProviders.value);
+        if (authKeys.length > 0 && !authenticatedAsrProviders.value[bulkTranscribeForm.provider]) {
+            bulkTranscribeForm.provider = authKeys[0];
+        }
+        const provider = providers[bulkTranscribeForm.provider];
+        if (provider) {
+            bulkTranscribeForm.model = provider.default_model;
+        }
+    },
+);
+
+const openBulkTranscribeModal = () => {
     showBulkTranscribeModal.value = true;
-    await fetchAsrProviders();
+    loadingProviders.value = true;
+    router.reload({ only: ['asrProviders'] });
 };
 
 const submitBulkTranscribe = () => {
-    bulkTranscribeForm.ids = Array.from(selectedIds.value);
+    bulkTranscribeForm.ids = selectedArray.value as number[];
     bulkTranscribeForm.post(route('audio-samples.bulk-transcribe'), {
         preserveScroll: true,
         onSuccess: () => {
             showBulkTranscribeModal.value = false;
-            selectedIds.value = new Set();
-            selectAll.value = false;
+            clearSelection();
             bulkTranscribeForm.reset();
         },
     });
@@ -267,37 +237,6 @@ const goToPage = (page: number) => {
     );
 };
 
-// Smart pagination - show limited page numbers with ellipsis
-const visiblePages = computed(() => {
-    const current = props.audioSamples.current_page;
-    const last = props.audioSamples.last_page;
-    const delta = 2;
-    const pages: (number | 'ellipsis')[] = [];
-
-    pages.push(1);
-
-    const rangeStart = Math.max(2, current - delta);
-    const rangeEnd = Math.min(last - 1, current + delta);
-
-    if (rangeStart > 2) {
-        pages.push('ellipsis');
-    }
-
-    for (let i = rangeStart; i <= rangeEnd; i++) {
-        pages.push(i);
-    }
-
-    if (rangeEnd < last - 1) {
-        pages.push('ellipsis');
-    }
-
-    if (last > 1) {
-        pages.push(last);
-    }
-
-    return pages;
-});
-
 // Debounced search
 let searchTimeout: ReturnType<typeof setTimeout>;
 watch(search, () => {
@@ -320,13 +259,13 @@ watch(search, () => {
 
             <!-- Filters -->
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <input 
+                <input
                     v-model="search"
-                    type="text" 
+                    type="text"
                     placeholder="Search audio samples..."
                     class="h-11 w-full rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
-                
+
                 <!-- Status Filter -->
                 <Listbox :model-value="selectedStatus" @update:model-value="setStatus">
                     <div class="relative w-full">
@@ -404,22 +343,22 @@ watch(search, () => {
             <div v-if="selectedCount > 0" class="rounded-xl border-2 border-primary bg-primary/5 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex flex-wrap items-center gap-3">
                     <span class="font-medium">{{ selectedCount }} selected</span>
-                    <button 
-                        @click="selectedIds = new Set(); selectAll = false"
+                    <button
+                        @click="clearSelection"
                         class="text-sm text-muted-foreground hover:text-foreground"
                     >
                         Clear selection
                     </button>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <button 
+                    <button
                         @click="openBulkTranscribeModal"
                         class="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 font-medium hover:bg-primary/90"
                     >
                         <MicrophoneIcon class="h-4 w-4" />
                         Bulk Transcribe
                     </button>
-                    <button 
+                    <button
                         @click="submitBulkDelete"
                         :disabled="bulkDeleteForm.processing"
                         class="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white px-4 py-2 font-medium hover:bg-red-700 disabled:opacity-50"
@@ -430,180 +369,90 @@ watch(search, () => {
             </div>
 
             <!-- Audio Samples Table -->
-            <div class="rounded-xl border border-border bg-card overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full min-w-180">
-                    <thead class="border-b border-border bg-muted/40">
-                        <tr>
-                            <th class="w-10 px-4 py-3 text-left text-sm font-medium text-muted-foreground">
-                                <input 
-                                    type="checkbox" 
-                                    :checked="selectAll"
-                                    @change="toggleSelectAll"
-                                    class="h-4 w-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary/30"
-                                />
-                            </th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Name</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Clean Rate</th>
-                            <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Method</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Status</th>
-                            <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Created By</th>
-                            <th class="hidden px-4 py-3 text-left text-sm font-medium md:table-cell">Date</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        <tr 
-                            v-for="sample in audioSamples.data" 
-                            :key="sample.id" 
-                            :class="['hover:bg-muted/30', isSelected(sample.id) ? 'bg-primary/5' : '']"
+            <DataTable
+                :columns="columns"
+                :items="audioSamples.data"
+                selectable
+                v-model:selected="selectedIds"
+                empty-message="No audio samples found"
+                table-class="min-w-180"
+            >
+                <template #cell-name="{ item }">
+                    <div class="min-w-0">
+                        <Link
+                            :href="route('audio-samples.show', { audioSample: item.id })"
+                            class="block truncate font-medium hover:text-primary transition-colors"
                         >
-                            <td class="px-4 py-4">
-                                <input 
-                                    type="checkbox" 
-                                    :checked="isSelected(sample.id)"
-                                    @change="toggleSelection(sample.id)"
-                                    class="h-4 w-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary/30"
-                                />
-                            </td>
-                            <td class="px-4 py-4">
-                                <div class="min-w-0">
-                                    <Link
-                                        :href="route('audio-samples.show', { audioSample: sample.id })"
-                                        class="block truncate font-medium hover:text-primary transition-colors"
-                                    >
-                                        {{ sample.name }}
-                                    </Link>
-                                </div>
-                            </td>
-                                <td class="px-4 py-4">
-                                <span v-if="sample.base_transcription?.clean_rate !== null && sample.base_transcription?.clean_rate !== undefined" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCleanRateCategoryFromValue(sample.base_transcription?.clean_rate)]">
-                                    {{ sample.base_transcription?.clean_rate }}%
-                                </span>
-                                <span v-else class="text-muted-foreground">-</span>
-                            </td>
-                            <td class="hidden px-4 py-4 md:table-cell">
-                                <template v-if="getMethodDisplay(sample.processing_run)">
-                                    <div class="flex min-w-0 items-center gap-1.5 text-sm">
-                                        <SparklesIcon
-                                            v-if="getMethodDisplay(sample.processing_run)?.mode === 'llm'"
-                                            class="h-3.5 w-3.5 text-secondary"
-                                        />
-                                        <CpuChipIcon
-                                            v-else
-                                            class="h-3.5 w-3.5 text-primary"
-                                        />
-                                        <span class="truncate text-muted-foreground capitalize">
-                                            {{ getMethodDisplay(sample.processing_run)?.text }}
-                                        </span>
-                                    </div>
-                                </template>
-                                <span v-else class="text-muted-foreground">-</span>
-                            </td>
-                            <td class="px-4 py-4">
-                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap', getAudioSampleStatusClass(sample.status)]">
-                                    {{ getAudioSampleStatusLabel(sample.status) }}
-                                </span>
-                            </td>
-                            <td class="hidden px-4 py-4 text-sm text-muted-foreground md:table-cell whitespace-nowrap">
-                                {{ formatCreatedBy(sample.user, undefined) }}
-                            </td>
-                            <td class="hidden px-4 py-4 text-sm text-muted-foreground md:table-cell whitespace-nowrap">
-                                {{ sample.created_at }}
-                            </td>
-                            <td class="px-4 py-4">
-                                <Link :href="route('audio-samples.show', { audioSample: sample.id })" class="text-sm font-medium text-primary hover:text-primary/80">
-                                    View
-                                </Link>
-                            </td>
-                        </tr>
-                        <tr v-if="audioSamples.data.length === 0">
-                            <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">
-                                No audio samples found
-                            </td>
-                        </tr>
-                    </tbody>
-                    </table>
-                </div>
-            </div>
+                            {{ item.name }}
+                        </Link>
+                    </div>
+                </template>
+
+                <template #cell-clean_rate="{ item }">
+                    <span v-if="item.base_transcription?.clean_rate !== null && item.base_transcription?.clean_rate !== undefined" :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap', getCleanRateCategoryFromValue(item.base_transcription?.clean_rate)]">
+                        {{ item.base_transcription?.clean_rate }}%
+                    </span>
+                    <span v-else class="text-muted-foreground">-</span>
+                </template>
+
+                <template #cell-method="{ item }">
+                    <template v-if="getMethodDisplay(item.processing_run)">
+                        <div class="flex min-w-0 items-center gap-1.5 text-sm">
+                            <SparklesIcon
+                                v-if="getMethodDisplay(item.processing_run)?.mode === 'llm'"
+                                class="h-3.5 w-3.5 text-secondary"
+                            />
+                            <CpuChipIcon
+                                v-else
+                                class="h-3.5 w-3.5 text-primary"
+                            />
+                            <span class="truncate text-muted-foreground capitalize">
+                                {{ getMethodDisplay(item.processing_run)?.text }}
+                            </span>
+                        </div>
+                    </template>
+                    <span v-else class="text-muted-foreground">-</span>
+                </template>
+
+                <template #cell-status="{ item }">
+                    <span :class="['inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap', getAudioSampleStatusClass(item.status)]">
+                        {{ getAudioSampleStatusLabel(item.status) }}
+                    </span>
+                </template>
+
+                <template #cell-created_by="{ item }">
+                    <span class="text-sm text-muted-foreground whitespace-nowrap">
+                        {{ formatCreatedBy(item.user, undefined) }}
+                    </span>
+                </template>
+
+                <template #cell-created_at="{ item }">
+                    <span class="text-sm text-muted-foreground whitespace-nowrap">{{ item.created_at }}</span>
+                </template>
+
+                <template #cell-actions="{ item }">
+                    <Link :href="route('audio-samples.show', { audioSample: item.id })" class="text-sm font-medium text-primary hover:text-primary/80">
+                        View
+                    </Link>
+                </template>
+            </DataTable>
 
             <!-- Pagination -->
-            <div v-if="audioSamples.last_page > 1" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span class="text-sm text-muted-foreground">
-                    Showing {{ (audioSamples.current_page - 1) * audioSamples.per_page + 1 }} to 
-                    {{ Math.min(audioSamples.current_page * audioSamples.per_page, audioSamples.total) }} of 
-                    {{ audioSamples.total }} audio samples
-                </span>
-                <div class="flex flex-wrap gap-1">
-                    <button 
-                        @click="goToPage(audioSamples.current_page - 1)"
-                        :disabled="audioSamples.current_page === 1"
-                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
-                    >
-                        Previous
-                    </button>
-                    <template v-for="(page, idx) in visiblePages" :key="idx">
-                        <span v-if="page === 'ellipsis'" class="px-2 py-1 text-muted-foreground">...</span>
-                        <button 
-                            v-else
-                            @click="goToPage(page)"
-                            :class="['rounded-lg px-3 py-1 text-sm', page === audioSamples.current_page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted']"
-                        >
-                            {{ page }}
-                        </button>
-                    </template>
-                    <button 
-                        @click="goToPage(audioSamples.current_page + 1)"
-                        :disabled="audioSamples.current_page === audioSamples.last_page"
-                        class="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
-                    >
-                        Next
-                    </button>
-                </div>
-            </div>
+            <TablePagination
+                :current-page="audioSamples.current_page"
+                :last-page="audioSamples.last_page"
+                :per-page="audioSamples.per_page"
+                :total="audioSamples.total"
+                noun="audio samples"
+                @page-change="goToPage"
+            />
         </div>
 
         <!-- Bulk Transcribe Modal -->
-        <TransitionRoot appear :show="showBulkTranscribeModal" as="template">
-            <Dialog as="div" @close="showBulkTranscribeModal = false" class="relative z-50">
-                <TransitionChild
-                    as="template"
-                    enter="duration-300 ease-out"
-                    enter-from="opacity-0"
-                    enter-to="opacity-100"
-                    leave="duration-200 ease-in"
-                    leave-from="opacity-100"
-                    leave-to="opacity-0"
-                >
-                    <div class="fixed inset-0 bg-black/25 backdrop-blur-sm" />
-                </TransitionChild>
+        <Modal :show="showBulkTranscribeModal" max-width="md" @close="showBulkTranscribeModal = false">
+            <template #title>Bulk Transcribe Audio Samples</template>
 
-                <div class="fixed inset-0 overflow-y-auto">
-                    <div class="flex min-h-full items-center justify-center p-4">
-                        <TransitionChild
-                            as="template"
-                            enter="duration-300 ease-out"
-                            enter-from="opacity-0 scale-95"
-                            enter-to="opacity-100 scale-100"
-                            leave="duration-200 ease-in"
-                            leave-from="opacity-100 scale-100"
-                            leave-to="opacity-0 scale-95"
-                        >
-                            <DialogPanel class="w-full max-w-md transform rounded-2xl bg-background border p-6 shadow-xl transition-all">
-                                <div class="flex items-center justify-between mb-4">
-                                    <DialogTitle as="h3" class="text-lg font-semibold">
-                                        Bulk Transcribe Audio Samples
-                                    </DialogTitle>
-                                    <button
-                                        type="button"
-                                        @click="showBulkTranscribeModal = false"
-                                        class="rounded-lg p-1 text-muted-foreground hover:bg-muted"
-                                    >
-                                        <XMarkIcon class="h-5 w-5" />
-                                    </button>
-                                </div>
-
-                                <form @submit.prevent="submitBulkTranscribe" class="space-y-4">
+                                <form @submit.prevent="submitBulkTranscribe" class="space-y-4 p-6">
                                     <!-- Selection summary -->
                                     <div class="rounded-lg bg-muted/50 p-3 text-sm">
                                         <p>
@@ -620,18 +469,11 @@ watch(search, () => {
                                         <span class="ml-2 text-sm text-muted-foreground">Loading providers...</span>
                                     </div>
 
-                                    <!-- Error state -->
-                                    <div v-else-if="providerError" class="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-                                        <p class="text-sm text-red-800 dark:text-red-200">
-                                            {{ providerError }}
-                                        </p>
-                                    </div>
-
                                     <!-- No authenticated providers warning -->
                                     <div v-else-if="!hasAuthenticatedAsrProviders" class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
                                         <p class="text-sm text-yellow-800 dark:text-yellow-200">
                                             No ASR providers configured.
-                                            <Link href="/settings/credentials" class="font-medium underline hover:no-underline">
+                                            <Link :href="route('settings.credentials')" class="font-medium underline hover:no-underline">
                                                 Add API credentials
                                             </Link>
                                             to use transcription.
@@ -643,7 +485,7 @@ watch(search, () => {
                                         <div>
                                             <div class="mb-2 flex items-center justify-between">
                                                 <label class="block text-sm font-medium">ASR Provider</label>
-                                                <Link href="/settings/credentials" class="text-xs text-muted-foreground hover:text-primary">
+                                                <Link :href="route('settings.credentials')" class="text-xs text-muted-foreground hover:text-primary">
                                                     Add more
                                                 </Link>
                                             </div>
@@ -717,7 +559,7 @@ watch(search, () => {
                                         </button>
                                         <button
                                             type="submit"
-                                            :disabled="bulkTranscribeForm.processing || !hasAuthenticatedAsrProviders || loadingProviders || !!providerError"
+                                            :disabled="bulkTranscribeForm.processing || !hasAuthenticatedAsrProviders || loadingProviders"
                                             class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                                         >
                                             <ArrowPathIcon v-if="bulkTranscribeForm.processing" class="h-4 w-4 animate-spin" />
@@ -726,11 +568,6 @@ watch(search, () => {
                                         </button>
                                     </div>
                                 </form>
-                            </DialogPanel>
-                        </TransitionChild>
-                    </div>
-                </div>
-            </Dialog>
-        </TransitionRoot>
+        </Modal>
     </AppLayout>
 </template>

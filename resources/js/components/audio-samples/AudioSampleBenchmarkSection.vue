@@ -14,6 +14,7 @@ import {
 } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
 
+import type { ColumnDef } from '@/components/ui/data-table/types';
 import type { AsrProvider } from '@/types/audio-samples';
 import type { TranscriptionWithStatus } from '@/types/transcriptions';
 
@@ -133,6 +134,9 @@ const summary = computed(() => {
     const cerRates = sortedTranscriptions.value
         .map((t) => normalizeRate(t.cer))
         .filter((value): value is number => value !== null);
+    const customWerRates = sortedTranscriptions.value
+        .map((t) => t.custom_wer != null ? normalizeRate(t.custom_wer) : null)
+        .filter((value): value is number => value !== null);
 
     const bestWer = rates.length ? Math.min(...rates) : null;
     const avgWer = rates.length
@@ -141,11 +145,17 @@ const summary = computed(() => {
     const avgCer = cerRates.length
         ? cerRates.reduce((sum, value) => sum + value, 0) / cerRates.length
         : null;
+    const bestCustomWer = customWerRates.length ? Math.min(...customWerRates) : null;
+    const avgCustomWer = customWerRates.length
+        ? customWerRates.reduce((sum, value) => sum + value, 0) / customWerRates.length
+        : null;
 
     return {
         bestWer,
         avgWer,
         avgCer,
+        bestCustomWer,
+        avgCustomWer,
     };
 });
 
@@ -211,6 +221,23 @@ const exportCsv = () => {
         'text/csv',
     );
 };
+
+const benchmarkColumns: ColumnDef[] = [
+    { key: 'model', label: 'Model' },
+    { key: 'source', label: 'Source', hideBelow: 'hidden sm:table-cell' },
+    { key: 'custom_wer', label: 'Custom WER', align: 'center' },
+    { key: 'wer', label: 'WER', align: 'center' },
+    { key: 'cer', label: 'CER', align: 'center', hideBelow: 'hidden sm:table-cell' },
+    { key: 'status', label: 'Status', align: 'center' },
+    { key: 'errors', label: 'Errors', align: 'center', hideBelow: 'hidden md:table-cell' },
+    { key: 'notes', label: 'Notes', hideBelow: 'hidden md:table-cell' },
+    { key: 'created_at', label: 'Date', hideBelow: 'hidden lg:table-cell' },
+    { key: 'actions', label: 'Actions', align: 'right' },
+];
+
+const getTranscriptionLink = (item: Record<string, any>) => {
+    return route('transcriptions.show-for-sample', { transcription: item.id, audioSample: props.audioSampleId });
+};
 </script>
 
 <template>
@@ -238,7 +265,7 @@ const exportCsv = () => {
 
         <div
             v-if="showTranscriptionForm"
-            class="rounded-xl border bg-card p-6"
+            class="rounded-xl border bg-card p-4 sm:p-6"
         >
             <h3 class="mb-4 font-semibold">Run ASR transcription</h3>
             <form
@@ -519,22 +546,28 @@ const exportCsv = () => {
         </details>
 
         <div v-if="transcriptions.length > 0" class="space-y-4">
-            <div class="grid gap-4 md:grid-cols-3">
+            <div class="grid gap-4 md:grid-cols-4">
                 <div class="rounded-xl border bg-card p-4">
-                    <div class="text-xs uppercase text-muted-foreground">Best WER</div>
+                    <div class="text-xs uppercase text-muted-foreground">Best Custom WER</div>
                     <div class="text-2xl font-semibold">
-                        {{ summary.bestWer !== null ? `${(summary.bestWer * 100).toFixed(2)}%` : 'N/A' }}
+                        {{ summary.bestCustomWer !== null ? `${(summary.bestCustomWer * 100).toFixed(2)}%` : 'N/A' }}
                     </div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
-                    <div class="text-xs uppercase text-muted-foreground">Average WER</div>
+                    <div class="text-xs uppercase text-muted-foreground">Avg Custom WER</div>
                     <div class="text-2xl font-semibold">
+                        {{ summary.avgCustomWer !== null ? `${(summary.avgCustomWer * 100).toFixed(2)}%` : 'N/A' }}
+                    </div>
+                </div>
+                <div class="rounded-xl border bg-card p-4">
+                    <div class="text-xs uppercase text-muted-foreground">Avg WER</div>
+                    <div class="text-2xl font-semibold text-muted-foreground">
                         {{ summary.avgWer !== null ? `${(summary.avgWer * 100).toFixed(2)}%` : 'N/A' }}
                     </div>
                 </div>
                 <div class="rounded-xl border bg-card p-4">
-                    <div class="text-xs uppercase text-muted-foreground">Average CER</div>
-                    <div class="text-2xl font-semibold">
+                    <div class="text-xs uppercase text-muted-foreground">Avg CER</div>
+                    <div class="text-2xl font-semibold text-muted-foreground">
                         {{ summary.avgCer !== null ? `${(summary.avgCer * 100).toFixed(2)}%` : 'N/A' }}
                     </div>
                 </div>
@@ -607,126 +640,138 @@ const exportCsv = () => {
                 </details>
             </div>
 
-            <div class="overflow-hidden rounded-xl border bg-card">
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-muted/50">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Model</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Source</th>
-                                <th class="px-4 py-3 text-center text-sm font-medium">
-                                    <span class="inline-flex items-center gap-1">
-                                        WER
-                                        <InformationCircleIcon
-                                            class="h-4 w-4 text-muted-foreground"
-                                            v-tippy="'Word Error Rate: percent of words that were wrong. Lower is better.'"
-                                        />
-                                    </span>
-                                </th>
-                                <th class="px-4 py-3 text-center text-sm font-medium">
-                                    <span class="inline-flex items-center gap-1">
-                                        CER
-                                        <InformationCircleIcon
-                                            class="h-4 w-4 text-muted-foreground"
-                                            v-tippy="'Character Error Rate: percent of characters that were wrong. Lower is better.'"
-                                        />
-                                    </span>
-                                </th>
-                                <th class="px-4 py-3 text-center text-sm font-medium">
-                                    <span class="inline-flex items-center gap-1">
-                                        Status
-                                        <InformationCircleIcon
-                                            class="h-4 w-4 text-muted-foreground"
-                                            v-tippy="'Breakdown of substitutions, insertions, and deletions in the transcription.'"
-                                        />
-                                    </span>
-                                </th>
-                                <th class="px-4 py-3 text-center text-sm font-medium">Errors</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium">Notes</th>
-                                <th class="px-4 py-3 text-right text-sm font-medium">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            <tr
-                                v-for="transcription in filteredTranscriptions"
-                                :key="transcription.id"
-                                class="cursor-pointer hover:bg-muted/30"
-                                role="link"
-                                tabindex="0"
-                                @click="router.visit(route('transcriptions.show-for-sample', { transcription: transcription.id, audioSample: props.audioSampleId }))"
-                                @keydown.enter.prevent="router.visit(route('transcriptions.show-for-sample', { transcription: transcription.id, audioSample: props.audioSampleId }))"
-                                @keydown.space.prevent="router.visit(route('transcriptions.show-for-sample', { transcription: transcription.id, audioSample: props.audioSampleId }))"
-                            >
-                                <td class="px-4 py-3">
-                                    <div class="font-medium">
-                                        {{ transcription.model_name }}
-                                    </div>
-                                    <div v-if="transcription.model_version" class="text-xs text-muted-foreground">
-                                        v{{ transcription.model_version }}
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span
-                                        :class="[
-                                            'rounded-full px-2 py-0.5 text-xs font-medium',
-                                            getSourceColor(transcription.source),
-                                        ]"
-                                    >
-                                        {{ transcription.source === 'generated' ? 'API' : 'Manual' }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span
-                                        :class="['font-mono font-semibold', getWerColor(transcription.wer)]"
-                                    >
-                                        {{ formatErrorRate(transcription.wer) }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="font-mono text-muted-foreground">
-                                        {{ formatErrorRate(transcription.cer) }}
-                                    </span>
-                                </td>
-                                <td class="">
-                                    <span
-                                        class="inline-block rounded-full border px-2 py-0.5 text-xs font-medium capitalize"
-                                    :class="getStatusColor(transcription.status)">
-                                        {{ transcription.status }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <div class="text-xs text-muted-foreground">
-                                        <span title="Substitutions">S:{{ transcription.substitutions }}</span>
-                                        <span class="mx-1">·</span>
-                                        <span title="Insertions">I:{{ transcription.insertions }}</span>
-                                        <span class="mx-1">·</span>
-                                        <span title="Deletions">D:{{ transcription.deletions }}</span>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span
-                                        v-if="transcription.notes"
-                                        class="block max-w-48 truncate text-sm text-muted-foreground"
-                                        :title="transcription.notes"
-                                    >
-                                        {{ transcription.notes }}
-                                    </span>
-                                    <span v-else class="text-muted-foreground/50">—</span>
-                                </td>
-                                <td class="px-4 py-3 text-right">
-                                    <button
-                                        @click.stop="emit('deleteTranscription', transcription.id)"
-                                        class="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                        title="Delete transcription"
-                                    >
-                                        <TrashIcon class="h-4 w-4" />
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <DataTable
+                :columns="benchmarkColumns"
+                :items="filteredTranscriptions"
+                item-key="id"
+                :row-link="getTranscriptionLink"
+            >
+                <template #header-custom_wer>
+                    <span class="inline-flex items-center gap-1">
+                        Custom WER
+                        <InformationCircleIcon
+                            class="h-4 w-4 text-muted-foreground"
+                            v-tippy="'WER with only critical substitutions counted. Insertions + deletions from Levenshtein, substitutions only if marked critical.'"
+                        />
+                    </span>
+                </template>
+
+                <template #header-wer>
+                    <span class="inline-flex items-center gap-1">
+                        WER
+                        <InformationCircleIcon
+                            class="h-4 w-4 text-muted-foreground"
+                            v-tippy="'Standard Word Error Rate (Levenshtein). Lower is better.'"
+                        />
+                    </span>
+                </template>
+
+                <template #header-cer>
+                    <span class="inline-flex items-center gap-1">
+                        CER
+                        <InformationCircleIcon
+                            class="h-4 w-4 text-muted-foreground"
+                            v-tippy="'Character Error Rate: percent of characters that were wrong. Lower is better.'"
+                        />
+                    </span>
+                </template>
+
+                <template #header-status>
+                    <span class="inline-flex items-center gap-1">
+                        Status
+                        <InformationCircleIcon
+                            class="h-4 w-4 text-muted-foreground"
+                            v-tippy="'Breakdown of substitutions, insertions, and deletions in the transcription.'"
+                        />
+                    </span>
+                </template>
+
+                <template #cell-model="{ item }">
+                    <div class="font-medium">
+                        {{ item.model_name }}
+                    </div>
+                    <div v-if="item.model_version" class="text-xs text-muted-foreground">
+                        v{{ item.model_version }}
+                    </div>
+                </template>
+
+                <template #cell-source="{ item }">
+                    <span
+                        :class="[
+                            'rounded-full px-2 py-0.5 text-xs font-medium',
+                            getSourceColor((item.source as string)),
+                        ]"
+                    >
+                        {{ item.source === 'generated' ? 'API' : 'Manual' }}
+                    </span>
+                </template>
+
+                <template #cell-custom_wer="{ item }">
+                    <span :class="['font-mono font-semibold', getWerColor((item.custom_wer as number | null))]">
+                        {{ formatErrorRate((item.custom_wer as number | null)) }}
+                    </span>
+                    <div v-if="item.custom_wer != null" class="text-[10px] text-muted-foreground">
+                        {{ item.custom_wer_critical_replacement_count ?? 0 }} crit
+                    </div>
+                </template>
+
+                <template #cell-wer="{ item }">
+                    <span class="font-mono text-muted-foreground">
+                        {{ formatErrorRate((item.wer as number | null)) }}
+                    </span>
+                </template>
+
+                <template #cell-cer="{ item }">
+                    <span class="font-mono text-muted-foreground">
+                        {{ formatErrorRate((item.cer as number | null)) }}
+                    </span>
+                </template>
+
+                <template #cell-status="{ item }">
+                    <span
+                        class="inline-block rounded-full border px-2 py-0.5 text-xs font-medium capitalize"
+                        :class="getStatusColor((item.status as string))"
+                    >
+                        {{ item.status }}
+                    </span>
+                </template>
+
+                <template #cell-errors="{ item }">
+                    <div class="text-xs text-muted-foreground">
+                        <span title="Substitutions">S:{{ item.substitutions }}</span>
+                        <span class="mx-1">·</span>
+                        <span title="Insertions">I:{{ item.insertions }}</span>
+                        <span class="mx-1">·</span>
+                        <span title="Deletions">D:{{ item.deletions }}</span>
+                    </div>
+                </template>
+
+                <template #cell-notes="{ item }">
+                    <span
+                        v-if="item.notes"
+                        class="block max-w-48 truncate text-sm text-muted-foreground"
+                        :title="(item.notes as string)"
+                    >
+                        {{ item.notes }}
+                    </span>
+                    <span v-else class="text-muted-foreground/50">—</span>
+                </template>
+
+                <template #cell-created_at="{ item }">
+                    <TimeAgo v-if="item.created_at" :value="(item.created_at as string)" class="text-sm text-muted-foreground" />
+                    <span v-else class="text-muted-foreground/50">—</span>
+                </template>
+
+                <template #cell-actions="{ item }">
+                    <button
+                        @click.stop.prevent="emit('deleteTranscription', (item.id as number))"
+                        class="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Delete transcription"
+                    >
+                        <TrashIcon class="h-4 w-4" />
+                    </button>
+                </template>
+            </DataTable>
         </div>
 
         <div
