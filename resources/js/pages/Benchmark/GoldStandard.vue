@@ -27,6 +27,7 @@ interface BenchmarkSample {
     status: string;
     has_base: boolean;
     asr_count: number;
+    best_custom_wer: number | null;
     best_wer: number | null;
     best_model: string | null;
 }
@@ -80,6 +81,7 @@ const sampleColumns: ColumnDef<BenchmarkSample>[] = [
     { key: 'status', label: 'Status' },
     { key: 'has_base', label: 'Base Transcription' },
     { key: 'asr_count', label: 'ASR Results' },
+    { key: 'best_custom_wer', label: 'Best Custom WER' },
     { key: 'best_wer', label: 'Best WER' },
     { key: 'best_model', label: 'Best Model' },
 ];
@@ -181,8 +183,15 @@ const leaderboardColumns: ColumnDef<ModelStats>[] = [
                         {{ value }}
                     </template>
 
+                    <template #cell-best_custom_wer="{ item }">
+                        <span v-if="item.best_custom_wer !== null" :class="['font-bold', getWerColor(item.best_custom_wer, 'benchmark')]">
+                            {{ item.best_custom_wer }}%
+                        </span>
+                        <span v-else class="text-muted-foreground">&mdash;</span>
+                    </template>
+
                     <template #cell-best_wer="{ item }">
-                        <span v-if="item.best_wer !== null" :class="['font-bold', getWerColor(item.best_wer, 'benchmark')]">
+                        <span v-if="item.best_wer !== null" class="text-muted-foreground">
                             {{ item.best_wer }}%
                         </span>
                         <span v-else class="text-muted-foreground">&mdash;</span>

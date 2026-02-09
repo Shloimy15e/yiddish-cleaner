@@ -1,6 +1,16 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:\\\\Users\\\\shloi\\\\Desktop\\\\yiddish-cleaner\" diff)",
+      "Bash(git -C \"c:\\\\Users\\\\shloi\\\\Desktop\\\\yiddish-cleaner\" add resources/js/components/transcriptions/WerRangeModal.vue tests/Feature/TranscriptionRecalculateTest.php)",
+      "Bash(git -C \"c:\\\\Users\\\\shloi\\\\Desktop\\\\yiddish-cleaner\" commit -m \"$\\(cat <<''EOF''\nrefactor: simplify WerRangeModal to use Inertia Form component\n\nReplace useForm + manual submit with declarative <Form> component,\ndeduplicate word class/click handlers, use v-tippy and watch for init.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\shloi\\\\Desktop\\\\yiddish-cleaner\" status)",
+      "Bash(git -C \"c:\\\\Users\\\\shloi\\\\Desktop\\\\yiddish-cleaner\" push)",
+      "mcp__laravel-boost__get-config"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "laravel-boost"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

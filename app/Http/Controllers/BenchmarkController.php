@@ -96,7 +96,7 @@ class BenchmarkController extends Controller
      */
     public function goldStandard(Request $request): Response
     {
-        $sortBy = $request->get('sort', 'wer');
+        $sortBy = $request->get('sort', 'custom_wer');
         $sortDir = $request->get('dir', 'asc');
 
         // Get benchmark sample IDs
@@ -141,8 +141,10 @@ class BenchmarkController extends Controller
 
         // Get the benchmark samples with their transcriptions
         $benchmarkSamples = AudioSample::goldStandard()
-            ->with(['baseTranscription', 'asrTranscriptions' => function ($query) {
-                $query->whereNotNull('wer')->orderBy('wer', 'asc');
+            ->with(['baseTranscription', 'asrTranscriptions' => function ($query) use ($customWerSql) {
+                $query->whereNotNull('wer')
+                    ->selectRaw("*, ({$customWerSql}) as computed_custom_wer")
+                    ->orderByRaw("({$customWerSql}) ASC");
             }])
             ->get()
             ->map(function ($sample) {
@@ -154,8 +156,9 @@ class BenchmarkController extends Controller
                     'status' => $sample->status,
                     'has_base' => $sample->baseTranscription !== null,
                     'asr_count' => $sample->asrTranscriptions->count(),
+                    'best_custom_wer' => $bestAsr?->computed_custom_wer !== null ? round($bestAsr->computed_custom_wer, 2) : null,
                     'best_wer' => $bestAsr ? round($bestAsr->wer, 2) : null,
-                    'best_model' => $bestAsr ? $bestAsr->model_name : null,
+                    'best_model' => $bestAsr?->model_name,
                 ];
             });
 
